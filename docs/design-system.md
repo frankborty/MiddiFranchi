@@ -184,10 +184,11 @@ colore.
   `AccountSettingsDialog`; il cestino elimina il conto con conferma. I conti speciali Cash e
   Prestiti sono marcati «Speciale» e non possono essere eliminati: possono essere disattivati
   dalle impostazioni. Un conto con operazioni registrate viene rifiutato dal servizio.
-- **Aggiungi conto**: il campo «Banca / conto» propone un elenco predefinito con datalist —
-  BBVA, Banco di Sardegna, Directa, ING, Intesa San Paolo, PayPal, PostePay, Revolut, Unicredit —
-  e permette di digitare un nome nuovo. PostePay imposta il tipo Carta; gli altri Conto corrente.
-  I loghi sono in `wwwroot/logos`. Dopo la creazione colore e icona si configurano dall'ingranaggio.
+- **Aggiungi conto**: griglia di tessere predefinite con logo — BBVA, Banco di Sardegna, Directa,
+  ING, Intesa San Paolo, PayPal, PostePay, Revolut, Unicredit — più la tessera «Nuovo conto» per un
+  nome libero. Si seleziona una tessera e si conferma. I nuovi conti sono creati come Conto
+  corrente; il tipo resta configurabile dalle impostazioni per i conti speciali. I loghi sono in
+  `wwwroot/logos`. Dopo la creazione colore e icona si configurano dall'ingranaggio.
 - **Categorie**: `CategoryManagementPanel` con elenco e creazione. La stessa pagina `/categories`
   resta disponibile e usa lo stesso pannello.
 - Il conteggio dei conti è affiancato al titolo «Conti».
