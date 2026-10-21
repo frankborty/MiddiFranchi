@@ -9,5 +9,7 @@ public interface IPriceObservationRepository
         DateOnly asOfDate,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<PriceObservation>> ListAsync(CancellationToken cancellationToken = default);
+
     Task AddAsync(PriceObservation observation, CancellationToken cancellationToken = default);
 }

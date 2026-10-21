@@ -1,0 +1,393 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Shared
+
+<section class="card dashboard-overview" aria-labelledby="overview-title">
+    <div class="overview-top">
+        <div>
+            <h2 id="overview-title"><MfIcon Name="chart" Size="18" /> Panoramica</h2>
+        </div>
+    </div>
+
+    <div class="overview-toolbar">
+        <div class="overview-tabs" role="group" aria-label="Categorie della panoramica">
+            <button type="button" class="@TabClass(_showInvestments, "investments")" aria-pressed="@AriaPressed(_showInvestments)" @onclick="ToggleInvestments">
+                <span class="tab-icon" aria-hidden="true"><MfIcon Name="pie" Size="14" /></span>
+                Investimenti
+            </button>
+            <button type="button" class="@TabClass(_showAccounts, "accounts")" aria-pressed="@AriaPressed(_showAccounts)" @onclick="ToggleAccounts">
+                <span class="tab-icon" aria-hidden="true"><MfIcon Name="wallet" Size="14" /></span>
+                Conti
+            </button>
+            <button type="button" class="@TabClass(_showTotal, "total")" aria-pressed="@AriaPressed(_showTotal)" @onclick="ToggleTotal">
+                <span class="tab-icon" aria-hidden="true"><MfIcon Name="chart" Size="14" /></span>
+                Totale
+            </button>
+        </div>
+
+        <div class="overview-ranges" role="group" aria-label="Intervallo temporale">
+            @foreach (var option in Ranges)
+            {
+                <button type="button" class="@RangeClass(option.Range)" aria-pressed="@AriaPressed(_range == option.Range)"
+                        @onclick="() => SetRange(option.Range)">
+                    @option.Label
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="overview-total">
+        @if (TotalValue is { } total)
+        {
+            <strong class="overview-value">@Format.Money(total)</strong>
+        }
+        else
+        {
+            <strong class="overview-value overview-value-missing">Non calcolabile</strong>
+        }
+
+        <p class="overview-subtitle">
+            @if ((_showInvestments || TotalOnly) && Data.Investments.CurrentValue is { } investmentsValue)
+            {
+                if (Data.Investments.CurrentChange is { } currentChange &&
+                    Data.Investments.CurrentChangePercent is { } currentPercent)
+                {
+                    <span class="overview-change @Tone(currentChange)">
+                        @Format.MoneySigned(currentChange) @Format.SignedPercent(currentPercent)
+                    </span>
+                    if (Data.Investments.CurrentReference is { } invested)
+                    {
+                        <span>su @Format.Money(invested) versati</span>
+                    }
+                }
+                else
+                {
+                    <span class="overview-change neutral">Rendimento non calcolabile</span>
+                }
+
+                @if (_showAccounts || TotalOnly)
+                {
+                    <span class="overview-subtitle-sep">·</span>
+                    <span class="overview-breakdown contributions">
+                        <span class="overview-category investments">Investimenti</span>
+                        @Format.Money(investmentsValue)
+                    </span>
+                    <span class="overview-breakdown contributions">
+                        <span class="overview-category accounts">Conti</span>
+                        @if (Data.Accounts.CurrentValue is { } accountsValue)
+                        {
+                            @Format.Money(accountsValue)
+                        }
+                        else
+                        {
+                            <span>Non disponibile</span>
+                        }
+                    </span>
+                }
+            }
+            else if (_showAccounts && SelectedCategories.Count == 1 &&
+                     Data.Accounts.CurrentValue is not null)
+            {
+                var window = WindowFor(Data.Accounts);
+                if (window.Points.Count > 0 &&
+                    window.Points[0].IsComplete &&
+                    window.Points[^1].IsComplete &&
+                    window.Change is { } change)
+                {
+                    <span class="overview-change @Tone(change)">@Format.MoneySigned(change)</span>
+                    if (window.ChangePercent is { } percent)
+                    {
+                        <span class="overview-change @Tone(change)">@Format.SignedPercent(percent)</span>
+                    }
+                    <span>nel periodo</span>
+                }
+                else
+                {
+                    <span class="overview-change neutral">Variazione non calcolabile</span>
+                }
+            }
+        </p>
+    </div>
+
+    @if (ChartHasData)
+    {
+        <ApexTimeSeriesChart Title="Andamento"
+                             Currency="@Data.Investments.Currency"
+                             Series="@BuildSeries()"
+                             XAxisLabelMode="@RangeLabelMode"
+                             XAxisMin="@XAxisMin"
+                             XAxisMax="@XAxisMax"
+                             XAxisTickAmount="@XAxisTickAmount"
+                             ShowHeader="false"
+                             ShowFooter="false"
+                             ShowDataTable="false"
+                             ShowMarkers="false"
+                             SharedTooltip="true" />
+    }
+    else
+    {
+        <p class="page-status">Nessun dato storico disponibile per le categorie selezionate.</p>
+    }
+
+    @foreach (var category in SelectedCategories.Where(category =>
+        !category.IsComplete && category.IncompletenessReasons.Count > 0))
+    {
+        <details class="investment-details">
+            <summary>Dettagli sui dati mancanti · @category.Label</summary>
+            <ul class="investment-reasons">
+                @foreach (var reason in category.IncompletenessReasons)
+                {
+                    <li>@reason</li>
+                }
+            </ul>
+        </details>
+    }
+</section>
+
+@code {
+    private static readonly (DashboardOverviewRange Range, string Label)[] Ranges =
+    [
+        (DashboardOverviewRange.OneDay, "1G"),
+        (DashboardOverviewRange.SevenDays, "7G"),
+        (DashboardOverviewRange.OneMonth, "1M"),
+        (DashboardOverviewRange.YearToDate, "Anno"),
+        (DashboardOverviewRange.OneYear, "1A"),
+        (DashboardOverviewRange.ThreeYears, "3A"),
+        (DashboardOverviewRange.Max, "Max"),
+    ];
+
+    private bool _showInvestments = true;
+    private bool _showAccounts = true;
+    private bool _showTotal = true;
+    private DashboardOverviewRange _range = DashboardOverviewRange.Max;
+
+    [Parameter, EditorRequired]
+    public DashboardOverview Data { get; set; } = null!;
+
+    private IReadOnlyList<DashboardOverviewCategory> SelectedCategories
+    {
+        get
+        {
+            var categories = new List<DashboardOverviewCategory>(2);
+            if (_showInvestments)
+            {
+                categories.Add(Data.Investments);
+            }
+
+            if (_showAccounts)
+            {
+                categories.Add(Data.Accounts);
+            }
+
+            return categories;
+        }
+    }
+
+    /// <summary>Totale delle categorie selezionate: somma solo quando ogni valore è noto, mai stime.</summary>
+    private Money? TotalValue
+    {
+        get
+        {
+            // Con entrambe le categorie attive, o con il solo totale, il valore è la somma;
+            // resta non calcolabile se manca uno dei due addendi.
+            if (_showInvestments == _showAccounts)
+            {
+                return Data.Investments.CurrentValue is { } investments &&
+                       Data.Accounts.CurrentValue is { } accounts
+                    ? investments + accounts
+                    : null;
+            }
+
+            return _showInvestments ? Data.Investments.CurrentValue : Data.Accounts.CurrentValue;
+        }
+    }
+
+    private bool TotalOnly => !_showInvestments && !_showAccounts;
+
+    private DashboardOverviewWindow WindowFor(DashboardOverviewCategory category) =>
+        category.Window(_range, Data.ValuationDate);
+
+    /// <summary>Una serie è visibile se una categoria è attiva, o se il totale è visibile (entrambe o nessuna attiva).</summary>
+    private bool ChartHasData => _showInvestments || _showAccounts || TotalVisible;
+
+    private bool TotalVisible => _showTotal && _showInvestments == _showAccounts;
+
+    private string RangeLabelMode => _range switch
+    {
+        DashboardOverviewRange.OneDay => "hour",
+        DashboardOverviewRange.SevenDays or DashboardOverviewRange.OneMonth => "short",
+        DashboardOverviewRange.Max => "year",
+        _ => "month",
+    };
+
+    /// <summary>Asse X ancorato alla finestra scelta: ore per 1G, giorni per 7G, anno per Max.</summary>
+    private DateTime? XAxisMin => _range switch
+    {
+        DashboardOverviewRange.OneDay => Data.ValuationDate.AddDays(-1).ToDateTime(TimeOnly.MinValue),
+        DashboardOverviewRange.SevenDays => Data.ValuationDate.AddDays(-7).ToDateTime(TimeOnly.MinValue),
+        DashboardOverviewRange.OneMonth => Data.ValuationDate.AddDays(-30).ToDateTime(TimeOnly.MinValue),
+        DashboardOverviewRange.YearToDate => new DateTime(Data.ValuationDate.Year, 1, 1),
+        DashboardOverviewRange.Max => FirstHistoryYearStart,
+        _ => null,
+    };
+
+    private DateTime? XAxisMax => _range switch
+    {
+        DashboardOverviewRange.OneDay
+            or DashboardOverviewRange.SevenDays
+            or DashboardOverviewRange.OneMonth
+            or DashboardOverviewRange.YearToDate => Data.ValuationDate.ToDateTime(TimeOnly.MinValue),
+        _ => null,
+    };
+
+    /// <summary>1G ogni 6 ore, 7G un tick per giorno.</summary>
+    private int? XAxisTickAmount => _range switch
+    {
+        DashboardOverviewRange.OneDay => 4,
+        DashboardOverviewRange.SevenDays => 7,
+        _ => null,
+    };
+
+    private DateTime? FirstHistoryYearStart =>
+        Data.Investments.Points.Select(point => (DateOnly?)point.Date)
+            .Concat(Data.Accounts.Points.Select(point => (DateOnly?)point.Date))
+            .Min() is { } first
+            ? new DateTime(first.Year, 1, 1)
+            : null;
+
+    private void ToggleInvestments()
+    {
+        _showInvestments = !_showInvestments;
+        EnsureAnySeriesVisible();
+    }
+
+    private void ToggleAccounts()
+    {
+        _showAccounts = !_showAccounts;
+        EnsureAnySeriesVisible();
+    }
+
+    private void SetRange(DashboardOverviewRange range) => _range = range;
+
+    private void ToggleTotal()
+    {
+        _showTotal = !_showTotal;
+        EnsureAnySeriesVisible();
+    }
+
+    /// <summary>Se nessuna serie resta visibile (categorie o totale), il totale si riattiva da solo.</summary>
+    private void EnsureAnySeriesVisible()
+    {
+        if (!_showInvestments && !_showAccounts && !TotalVisible)
+        {
+            _showTotal = true;
+        }
+    }
+
+    private static string TabClass(bool active, string category) =>
+        active ? $"overview-tab {category} active" : $"overview-tab {category}";
+
+    private static string AriaPressed(bool value) => value ? "true" : "false";
+
+    private string RangeClass(DashboardOverviewRange range) =>
+        _range == range ? "overview-range active" : "overview-range";
+
+    private IReadOnlyList<TimeSeriesSeries> BuildSeries()
+    {
+        // Tutte le serie condividono la stessa lista di date (quelle degli investimenti,
+        // con carry del saldo conti) così il tooltip mostra valori coerenti alla data.
+        // Le serie deselezionate ricevono punti vuoti: ApexCharts le spegne con animazione.
+        var investments = WindowFor(Data.Investments).Points;
+        // Il primo punto reale della finestra può cadere dopo l'inizio dell'asse (es. 1M):
+        // includiamo l'osservazione precedente così la linea entra dal bordo invece di partire
+        // a metà grafico. È un punto reale, non un valore interpolato.
+        if (investments.Count > 0 &&
+            Data.Investments.Points.LastOrDefault(point => point.Date < investments[0].Date) is { } previous)
+        {
+            investments = new[] { previous }.Concat(investments).ToArray();
+        }
+
+        // Il saldo conti valido a una data può provenire da una rilevazione precedente alla
+        // finestra scelta: usiamo lo storico completo per il carry-forward.
+        var accountReadings = Data.Accounts.Points
+            .Where(point => point.Value is not null)
+            .GroupBy(point => point.Date)
+            .ToDictionary(group => group.Key, group => group.First().Value);
+
+        var investmentsByDate = new Dictionary<DateOnly, Money?>();
+        var referenceByDate = new Dictionary<DateOnly, Money?>();
+        var accountsCarried = new Dictionary<DateOnly, Money?>();
+        var totalByDate = new Dictionary<DateOnly, Money?>();
+        var readings = accountReadings.OrderBy(pair => pair.Key).ToArray();
+        var readingIndex = 0;
+        Money? carry = null;
+        foreach (var point in investments)
+        {
+            // Il saldo conti valido a una data è l'ultima rilevazione registrata prima: come il patrimonio netto.
+            while (readingIndex < readings.Length && readings[readingIndex].Key <= point.Date)
+            {
+                carry = readings[readingIndex].Value;
+                readingIndex++;
+            }
+
+            if (point.Value is not null)
+            {
+                investmentsByDate[point.Date] = point.Value;
+            }
+
+            if (point.Reference is not null)
+            {
+                referenceByDate[point.Date] = point.Reference;
+            }
+
+            accountsCarried[point.Date] = carry;
+
+            if (point.Value is not null)
+            {
+                totalByDate[point.Date] = new Money(point.Value.Value.Amount + (carry?.Amount ?? 0m), point.Value.Value.Currency);
+            }
+        }
+
+        TimeSeriesPoint[] SeriesValues(Dictionary<DateOnly, Money?> map) =>
+            investments.Select(point => new TimeSeriesPoint(
+                point.Date,
+                map.TryGetValue(point.Date, out var value) ? value?.Amount : null)).ToArray();
+
+        var bothSelected = _showInvestments && _showAccounts;
+        var noneSelected = !_showInvestments && !_showAccounts;
+
+        return
+        [
+            new TimeSeriesSeries(
+                Data.Investments.ValueLabel,
+                _showInvestments ? SeriesValues(investmentsByDate) : [],
+                Color: "#ff6a00"),
+
+            new TimeSeriesSeries(
+                Data.Accounts.ValueLabel,
+                _showAccounts ? SeriesValues(accountsCarried) : [],
+                Color: "#00b2ff"),
+
+            new TimeSeriesSeries(
+                TotalLabel,
+                TotalVisible ? SeriesValues(totalByDate) : [],
+                Color: "#e2e8f0"),
+
+            new TimeSeriesSeries(
+                Data.Investments.ReferenceLabel,
+                _showInvestments && !bothSelected && !noneSelected
+                    ? SeriesValues(referenceByDate)
+                    : [],
+                Color: "#94a3b8"),
+        ];
+    }
+
+    private static string TotalLabel => "Totale";
+
+    private static string Tone(Money? value) => value switch
+    {
+        { Amount: > 0m } => "positive",
+        { Amount: < 0m } => "negative",
+        _ => "neutral",
+    };
+}

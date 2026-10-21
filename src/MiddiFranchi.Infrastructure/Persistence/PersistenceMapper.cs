@@ -53,6 +53,7 @@ internal static class PersistenceMapper
     {
         Id = instrument.Id,
         Name = instrument.Name,
+        Symbol = instrument.Symbol,
         Type = instrument.Type,
         QuoteCurrencyCode = instrument.QuoteCurrency.Code,
         PriceUnit = instrument.PriceUnit,
@@ -76,7 +77,8 @@ internal static class PersistenceMapper
             record.Type,
             Currency.Parse(record.QuoteCurrencyCode),
             record.PriceUnit,
-            notional);
+            notional,
+            record.Symbol);
     }
 
     public static PriceObservationRecord ToRecord(PriceObservation observation) => new()
@@ -116,23 +118,6 @@ internal static class PersistenceMapper
                 $"La quotazione {record.Id} ha un'unità di prezzo non supportata: {record.Unit}."),
         };
 
-    public static ExchangeRateObservationRecord ToRecord(ExchangeRateObservation observation) => new()
-    {
-        Id = observation.Id,
-        RateCurrencyCode = observation.Rate.Currency.Code,
-        Rate = observation.Rate.Rate,
-        ValidAt = observation.ValidAt,
-        ObservedAt = observation.ObservedAt,
-        Source = observation.Source,
-    };
-
-    public static ExchangeRateObservation ToDomain(ExchangeRateObservationRecord record) => new(
-        record.Id,
-        new ExchangeRate(Currency.Parse(record.RateCurrencyCode), record.Rate),
-        record.ValidAt,
-        record.ObservedAt,
-        record.Source);
-
     public static FinancialOperationRecord ToRecord(FinancialOperation operation)
     {
         var record = new FinancialOperationRecord
@@ -167,12 +152,6 @@ internal static class PersistenceMapper
                 record.SourceAmountCurrencyCode = transfer.SourceAmount.Value.Currency.Code;
                 record.DestinationAmountAmount = transfer.DestinationAmount.Value.Amount;
                 record.DestinationAmountCurrencyCode = transfer.DestinationAmount.Value.Currency.Code;
-                if (transfer.AppliedRate is not null)
-                {
-                    record.AppliedRateRate = transfer.AppliedRate.Value.Rate;
-                    record.AppliedRateCurrencyCode = transfer.AppliedRate.Value.Currency.Code;
-                }
-
                 break;
 
             case InvestmentOperation investment:
@@ -311,12 +290,6 @@ internal static class PersistenceMapper
                 RequiredAccount(accounts, record.DestinationAccountId, record.Id),
                 RequiredPositiveMoney(record.SourceAmountAmount, record.SourceAmountCurrencyCode, record.Id),
                 RequiredPositiveMoney(record.DestinationAmountAmount, record.DestinationAmountCurrencyCode, record.Id),
-                record.AppliedRateRate is null
-                    ? null
-                    : new ExchangeRate(
-                        Currency.Parse(record.AppliedRateCurrencyCode
-                            ?? throw new InvalidOperationException($"Il trasferimento {record.Id} ha un cambio senza valuta.")),
-                        record.AppliedRateRate.Value),
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
@@ -560,6 +533,29 @@ internal static class PersistenceMapper
 
         return category;
     }
+
+    public static ManualBalanceRecord ToRecord(ManualBalance reading) => new()
+    {
+        Id = reading.Id,
+        AccountId = reading.Account.Id,
+        AmountAmount = reading.Amount.Amount,
+        AmountCurrencyCode = reading.Amount.Currency.Code,
+        ValidAt = reading.ValidAt,
+        RecordedAt = reading.RecordedAt,
+    };
+
+    public static ManualBalance ToDomain(
+        ManualBalanceRecord record,
+        IReadOnlyDictionary<Guid, Account> accounts) =>
+        new(
+            record.Id,
+            accounts.TryGetValue(record.AccountId, out var account)
+                ? account
+                : throw new InvalidOperationException(
+                    $"Il conto della rilevazione {record.Id} non è stato caricato."),
+            new Money(record.AmountAmount, Currency.Parse(record.AmountCurrencyCode)),
+            record.ValidAt,
+            record.RecordedAt);
 
     private static PositiveMoney RequiredAmount(FinancialOperationRecord record, Guid operationId) =>
         RequiredPositiveMoney(record.AmountAmount, record.AmountCurrencyCode, operationId);

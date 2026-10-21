@@ -7,7 +7,7 @@ namespace MiddiFranchi.UnitTests.Portfolio;
 
 public class InvestmentPositionCalculatorTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
+    private static readonly Currency Euro = Currency.Euro;
     private static readonly InvestmentPortfolio Portfolio = new(
         Guid.Parse("9a5f8b83-c3d4-4a01-9f9f-4c8a0d3f1e2d"), "Portafoglio principale", Euro);
     private static readonly InvestmentPortfolio OtherPortfolio = new(

@@ -29,7 +29,7 @@ public class ModelTests
         tables.ShouldContain("AccountPostings");
         tables.ShouldContain("InvestmentOperationFees");
         tables.ShouldContain("PriceObservations");
-        tables.ShouldContain("ExchangeRateObservations");
+        tables.ShouldContain("ManualBalances");
     }
 
     [Fact]
@@ -105,6 +105,49 @@ public class ModelTests
             index.IsUnique &&
             index.Properties.Any(property => property.Name == nameof(FeeComponentRecord.InvestmentOperationId)) &&
             index.Properties.Any(property => property.Name == nameof(FeeComponentRecord.Ordinal)));
+    }
+
+    [Fact]
+    public void Model_ShouldExposeTheOptionalInstrumentSymbol()
+    {
+        using var context = CreateContext();
+        var model = GetModel(context);
+        var instrument = model.FindEntityType(typeof(InstrumentRecord)).ShouldNotBeNull();
+        var symbol = instrument.FindProperty(nameof(InstrumentRecord.Symbol)).ShouldNotBeNull();
+
+        symbol.GetMaxLength().ShouldBe(32);
+        symbol.IsNullable.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Model_ShouldRepresentManualBalancesWithAccountCurrencyIntegrity()
+    {
+        using var context = CreateContext();
+        var model = GetModel(context);
+        var reading = model.FindEntityType(typeof(ManualBalanceRecord)).ShouldNotBeNull();
+
+        reading.FindProperty(nameof(ManualBalanceRecord.AmountAmount))!
+            .GetColumnType().ShouldBe("numeric");
+        reading.FindProperty(nameof(ManualBalanceRecord.ValidAt))!
+            .GetColumnType().ShouldBe("date");
+        reading.FindProperty(nameof(ManualBalanceRecord.RecordedAt))!
+            .GetColumnType().ShouldBe("timestamptz");
+
+        reading.GetForeignKeys().ShouldAllBe(key => key.DeleteBehavior == DeleteBehavior.Restrict);
+        var accountForeignKey = reading.GetForeignKeys().ShouldHaveSingleItem();
+        accountForeignKey.Properties.Select(property => property.Name)
+            .ShouldBe([nameof(ManualBalanceRecord.AccountId), nameof(ManualBalanceRecord.AmountCurrencyCode)]);
+        accountForeignKey.PrincipalKey.Properties.Select(property => property.Name)
+            .ShouldBe(["Id", "CurrencyCode"]);
+
+        reading.GetCheckConstraints().ShouldContain(constraint =>
+            constraint.Name == "CK_ManualBalances_CurrencyCode");
+        reading.GetIndexes().ShouldContain(
+            index => index.Properties.Select(property => property.Name)
+                .SequenceEqual(new[] { nameof(ManualBalanceRecord.AccountId), nameof(ManualBalanceRecord.ValidAt) }));
+        reading.GetIndexes().ShouldContain(
+            index => index.Properties.Select(property => property.Name)
+                .SequenceEqual(new[] { nameof(ManualBalanceRecord.AccountId), nameof(ManualBalanceRecord.RecordedAt) }));
     }
 
     private static IModel GetModel(MiddiFranchiDbContext context) =>

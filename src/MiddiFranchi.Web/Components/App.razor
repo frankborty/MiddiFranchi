@@ -1,21 +1,137 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <ResourcePreloader />
+    <link rel="icon" type="image/svg+xml" href="@Assets["favicon.svg"]" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Onest:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["MiddiFranchi.Web.styles.css"]" />
     <ImportMap />
     <HeadOutlet />
+    <script>
+        window.mfResolveTheme = function () {
+            var stored = null;
+            try { stored = localStorage.getItem("mf-theme"); } catch (e) { }
+            if (stored === "light" || stored === "dark") { return stored; }
+            return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        };
+        window.mfApplyTheme = function () {
+            document.documentElement.setAttribute("data-theme", window.mfResolveTheme());
+        };
+        window.mfApplyTheme();
+        /* La navigazione enhanced ricostruisce il layout: riapplichiamo tema e stato della sidebar. */
+        window.mfReapplyClientState = function () {
+            window.mfApplyTheme();
+            window.mfRestoreNavCollapsed();
+            window.dispatchEvent(new CustomEvent("mf-theme-changed", { detail: window.mfResolveTheme() }));
+        };
+        window.mfGetTheme = function () {
+            var theme = document.documentElement.getAttribute("data-theme");
+            return theme === "light" || theme === "dark" ? theme : window.mfResolveTheme();
+        };
+        window.mfThemeListeners = window.mfThemeListeners || [];
+        window.mfRegisterThemeListener = function (id, dotNetRef) {
+            var listener = function (e) {
+                dotNetRef.invokeMethodAsync("OnThemeChanged", e.detail);
+            };
+            window.mfThemeListeners.push({ id: id, listener: listener });
+            window.addEventListener("mf-theme-changed", listener);
+        };
+        window.mfUnregisterThemeListener = function (id) {
+            for (var i = window.mfThemeListeners.length - 1; i >= 0; i--) {
+                var item = window.mfThemeListeners[i];
+                if (item.id === id) {
+                    window.removeEventListener("mf-theme-changed", item.listener);
+                    window.mfThemeListeners.splice(i, 1);
+                }
+            }
+        };
+
+        /* Converte una data locale (senza fuso) nel timestamp usato dall'asse datetime. */
+        window.mfToTimestamp = function (iso) {
+            if (!iso) return null;
+            var date = new Date(iso);
+            return isNaN(date.getTime()) ? null : date.getTime();
+        };
+
+        /* Modalità etichette asse temporale: short dd MMM, hour HH:mm, month MMM yy, year. */
+        window.mfSetAxisLabelMode = function (mode) {
+            window.mfAxisLabelMode = mode === "hour" || mode === "month" || mode === "year" ? mode : "short";
+        };
+        window.mfSetAxisLabelMode("short");
+
+        /* Sidebar comprimibile (solo icone) con persistenza su localStorage. */
+        window.mfToggleNavCollapsed = function () {
+            var page = document.getElementById("mf-page");
+            if (!page) return;
+            var collapsed = page.classList.toggle("nav-collapsed");
+            try { localStorage.setItem("mf-sidebar-collapsed", collapsed ? "1" : "0"); } catch (e) { }
+        };
+        window.mfRestoreNavCollapsed = function () {
+            try {
+                if (localStorage.getItem("mf-sidebar-collapsed") === "0") {
+                    var page = document.getElementById("mf-page");
+                    if (page) page.classList.remove("nav-collapsed");
+                }
+            } catch (e) { }
+        };
+
+        /* Sidebar mobile + focus back button. */
+        window.mfToggleNav = function () {
+            var page = document.getElementById("mf-page");
+            if (!page) return;
+            var open = !page.classList.contains("nav-open");
+            page.classList.toggle("nav-open", open);
+            var trigger = document.querySelector(".menu-toggle");
+            if (trigger) {
+                trigger.setAttribute("aria-expanded", open ? "true" : "false");
+                trigger.setAttribute("aria-label", open ? "Chiudi il menu di navigazione" : "Apri il menu di navigazione");
+            }
+            if (open) {
+                var first = document.querySelector(".app-sidebar .sidebar-nav a");
+                if (first) first.focus({ preventScroll: true });
+            } else if (trigger) {
+                trigger.focus();
+            }
+        };
+        window.mfCloseNav = function () {
+            var page = document.getElementById("mf-page");
+            if (!page || !page.classList.contains("nav-open")) return;
+            page.classList.remove("nav-open");
+            var trigger = document.querySelector(".menu-toggle");
+            if (trigger) {
+                trigger.setAttribute("aria-expanded", "false");
+                trigger.setAttribute("aria-label", "Apri il menu di navigazione");
+                trigger.focus();
+            }
+        };
+        document.addEventListener("click", function (e) {
+            if (e.target.closest && e.target.closest(".app-sidebar a")) {
+                mfCloseNav();
+            }
+        });
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") mfCloseNav();
+        });
+    </script>
 </head>
 
 <body>
     <Routes />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script>
+        window.mfRestoreNavCollapsed();
+        if (window.Blazor && window.Blazor.addEventListener) {
+            window.Blazor.addEventListener("enhancedload", window.mfReapplyClientState);
+        }
+    </script>
 </body>
 
 </html>

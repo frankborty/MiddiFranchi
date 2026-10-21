@@ -6,7 +6,7 @@ namespace MiddiFranchi.UnitTests.Financial;
 
 public class ReversalOperationTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
+    private static readonly Currency Euro = Currency.Euro;
     private static readonly Guid OperationId = Guid.Parse("8a92bb63-c3d4-4a01-9f9f-4c8a0d3f1e2d");
     private static readonly Guid ReversalId = Guid.Parse("67839f70-137b-4e73-ad3c-743e6cba0eb6");
     private static readonly Guid AccountId = Guid.Parse("d2f104e2-26bd-46dc-9db3-b83c059fe0a4");
@@ -240,7 +240,6 @@ public class ReversalOperationTests
         destination,
         new PositiveMoney(new Money(amount, source.Currency)),
         new PositiveMoney(new Money(amount, destination.Currency)),
-        null,
         OriginalDate,
         OriginalRecordedAt);
 }

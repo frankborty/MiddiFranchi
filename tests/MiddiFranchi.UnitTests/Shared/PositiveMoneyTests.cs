@@ -5,7 +5,7 @@ namespace MiddiFranchi.UnitTests.Shared;
 
 public class PositiveMoneyTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
+    private static readonly Currency Euro = Currency.Euro;
 
     [Fact]
     public void Construction_ShouldAcceptPositiveAmountsOfAnyCurrency()

@@ -30,19 +30,47 @@ public sealed class PriceObservationRepository : IPriceObservationRepository
             .ThenByDescending(observation => observation.Id)
             .ToListAsync(cancellationToken);
 
+        return await MaterializeAsync(records, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PriceObservation>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        var records = await _context.PriceObservations
+            .AsNoTracking()
+            .OrderBy(observation => observation.ValidAt)
+            .ThenBy(observation => observation.ObservedAt)
+            .ThenBy(observation => observation.Source)
+            .ThenBy(observation => observation.Id)
+            .ToListAsync(cancellationToken);
+
+        return await MaterializeAsync(records, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<PriceObservation>> MaterializeAsync(
+        List<PriceObservationRecord> records,
+        CancellationToken cancellationToken)
+    {
         if (records.Count == 0)
         {
             return [];
         }
 
-        var instrumentRecord = await _context.Instruments
+        var instrumentIds = records.Select(record => record.InstrumentId).Distinct().ToArray();
+        var instruments = await _context.Instruments
             .AsNoTracking()
-            .SingleOrDefaultAsync(instrument => instrument.Id == instrumentId, cancellationToken)
-            ?? throw new InvalidOperationException(
-                $"Lo strumento {instrumentId} delle quotazioni non esiste.");
+            .Where(instrument => instrumentIds.Contains(instrument.Id))
+            .ToListAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Gli strumenti delle quotazioni non esistono.");
 
-        var instrument = PersistenceMapper.ToDomain(instrumentRecord);
-        return records.Select(record => PersistenceMapper.ToDomain(record, instrument)).ToArray();
+        if (instruments.Count != instrumentIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"Gli strumenti delle quotazioni richieste ({instrumentIds.Length}) non coincidono con quelli caricati ({instruments.Count}).");
+        }
+
+        var instrumentsById = instruments
+            .ToDictionary(instrumentRecord => instrumentRecord.Id, PersistenceMapper.ToDomain);
+        return records.Select(record => PersistenceMapper.ToDomain(record, instrumentsById[record.InstrumentId])).ToArray();
     }
 
     public async Task AddAsync(PriceObservation observation, CancellationToken cancellationToken = default)

@@ -1,0 +1,42 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Domain.Shared
+<span class="amount @ToneClass">@Text</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public Money? Value { get; set; }
+
+    /// <summary>Sovrascrive il tono automatico (positivo/zero/negativo).</summary>
+    [Parameter]
+    public string? Tone { get; set; }
+
+    /// <summary>Formato con segno esplicito per i positivi.</summary>
+    [Parameter]
+    public bool Signed { get; set; }
+
+    /// <summary>Testo alternativo quando il valore non è disponibile; mai zero per convenzione.</summary>
+    [Parameter]
+    public string UnavailableText { get; set; } = "Non disponibile";
+
+    private string ToneClass => Tone switch
+    {
+        "income" => "amount-income",
+        "expense" => "amount-expense",
+        "balance" => "amount-balance",
+        "neutral" => "amount-neutral",
+        _ => Value switch
+        {
+            null => "amount-neutral",
+            { Amount: > 0 } => "amount-income",
+            { Amount: < 0 } => "amount-expense",
+            _ => "amount-neutral",
+        },
+    };
+
+    private string Text =>
+        Value is null
+            ? UnavailableText
+            : Signed
+                ? Format.MoneySigned(Value.Value)
+                : Format.Money(Value.Value);
+}

@@ -6,8 +6,8 @@ namespace MiddiFranchi.UnitTests.Financial;
 
 public class FeeComponentTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
-    private static readonly Currency Usd = Currency.Parse("USD");
+    private static readonly Currency Euro = Currency.Euro;
+    private static readonly Currency Usd = Currency.Euro;
     private static readonly Account EuroAccount = new(
         Guid.Parse("d2f104e2-26bd-46dc-9db3-b83c059fe0a4"),
         "Conto corrente",
@@ -28,18 +28,6 @@ public class FeeComponentTests
         fee.DebitAccount.ShouldBe(EuroAccount);
     }
 
-    [Fact]
-    public void Construction_ShouldRejectAFeeInADifferentCurrencyThanTheDebitAccount()
-    {
-        var exception = Should.Throw<ArgumentException>(
-            () => new FeeComponent(
-                FeeKind.BuyFee,
-                new PositiveMoney(new Money(1.50m, Usd)),
-                EuroAccount));
-
-        exception.ParamName.ShouldBe("amount");
-        exception.Message.ShouldContain("diversa dalla valuta del conto di addebito");
-    }
 
     [Fact]
     public void Construction_ShouldRejectANullDebitAccount()

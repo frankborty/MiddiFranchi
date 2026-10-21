@@ -1,0 +1,219 @@
+@page "/accounts/{Id:guid}"
+@rendermode InteractiveServer
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject AccountOverviewService Overview
+@inject ManualBalanceService ManualBalances
+
+<PageTitle>@(_row?.Name ?? "Conto")</PageTitle>
+
+@if (_loading)
+{
+    <p class="page-status">Caricamento in corso…</p>
+}
+else if (_loadError is not null)
+{
+    <p class="alert alert-error" role="alert">@_loadError</p>
+    <p class="page-status"><a class="primary-link" href="accounts">Torna all'elenco dei conti</a></p>
+}
+else if (_row is null)
+{
+    <EmptyState Title="Il conto richiesto non esiste"
+                Hint="Il link può essere errato oppure il conto è stato creato in un altro ambiente."
+                Icon="wallet" Href="accounts" ActionLabel="Torna ai conti" />
+}
+else
+{
+    <nav class="balance-back" aria-label="Navigazione locale">
+        <a class="primary-link" href="accounts"><MfIcon Name="wallet" Size="16" /> Conti</a>
+    </nav>
+    <h1 class="account-detail-title">
+        <AccountAvatar Name="@_row.Name" Type="@(_row.Type)" /> @_row.Name
+    </h1>
+    <p class="page-intro">
+        @Format.AccountTypeLabel(_row.Type)
+        · <StatusBadge Tone="@(_row.Status == AccountStatus.Active ? "income" : "neutral")">@Format.AccountStatusLabel(_row.Status)</StatusBadge>
+    </p>
+
+    <div class="bento">
+        <div class="sp-8">
+            <section class="card balance-card">
+                <div class="balance-main">
+                    <span class="balance-label">Saldo attuale (rilevazione manuale)</span>
+                    <span class="balance-value">
+                        <AmountValue Value="@_row.ManualBalance" UnavailableText="Saldo non registrato" />
+                    </span>
+                    @if (_row.ManualReading is not null)
+                    {
+                        <span class="table-hint">rilevato al @Format.Date(_row.ManualReading.ValidAt)</span>
+                    }
+                </div>
+                <div class="balance-secondary">
+                    Saldo ricostruito dai movimenti (secondario, mai sommato al primo):
+                    <AmountValue Value="@_row.CalculatedBalance" Tone="neutral" />
+                </div>
+            </section>
+        </div>
+        <div class="sp-4">
+            <section class="card">
+                <h2>Nuova rilevazione del saldo</h2>
+                @if (_savedMessage is not null)
+                {
+                    <p class="alert alert-success" role="status">@_savedMessage</p>
+                }
+                @if (_saveError is not null)
+                {
+                    <p class="alert alert-error" role="alert">@_saveError</p>
+                }
+                <form class="form-grid" @onsubmit="RecordManualBalanceAsync">
+                    <label>
+                        <span>Importo in EUR *</span>
+                        <input type="number" step="any" required aria-required="true" aria-describedby="reading-hint" @bind="_amount" />
+                    </label>
+                    <label>
+                        <span>Data della rilevazione (ValidAt) *</span>
+                        <input type="date" required aria-required="true" @bind="_validAt" />
+                    </label>
+                    <div class="form-actions">
+                        <button type="submit" class="primary-button" disabled="@_saving">Registra rilevazione</button>
+                        @if (_saving)
+                        {
+                            <span class="page-status">Registrazione in corso…</span>
+                        }
+                    </div>
+                </form>
+                <p class="table-hint" id="reading-hint">
+                    L'importo sostituisce logicamente il saldo corrente: le rilevazioni precedenti restano nello storico.
+                </p>
+            </section>
+        </div>
+    </div>
+
+    <section class="card">
+        <h2>Storico delle rilevazioni</h2>
+        @if (_history.Count == 0)
+        {
+            <EmptyState Title="Nessuna rilevazione registrata"
+                        Hint="Registra la prima rilevazione col modulo qui sopra: definisce il saldo corrente del conto."
+                        Icon="clock" />
+        }
+        else
+        {
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table">
+                    <caption class="table-hint">Valida al = data economica della rilevazione; registrata il: istante in cui è stata inserita.</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Valida al (data economica)</th>
+                            <th scope="col">Registrata il</th>
+                            <th scope="col" class="num">Importo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var reading in _history)
+                        {
+                            <tr>
+                                <td>@Format.Date(reading.ValidAt)</td>
+                                <td>@Format.UtcTimestamp(reading.RecordedAt)</td>
+                                <td class="num"><AmountValue Value="@reading.Amount" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private AccountOverviewRow? _row;
+    private IReadOnlyList<ManualBalance> _history = [];
+    private bool _loading = true;
+    private string? _loadError;
+    private string _amount = "";
+    private DateOnly? _validAt;
+    private string? _saveError;
+    private string? _savedMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _row = await Overview.GetAsync(Id);
+            _history = _row is null ? [] : await ManualBalances.ListForAccountAsync(Id);
+            _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile contattare il database. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+    }
+
+    private async Task RecordManualBalanceAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saveError = null;
+        _savedMessage = null;
+
+        if (_row is null)
+        {
+            _saveError = "Il conto richiesto non esiste.";
+            return;
+        }
+
+        if (!decimal.TryParse(_amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount)
+            && !decimal.TryParse(_amount, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount))
+        {
+            _saveError = "L'importo è obbligatorio e deve essere un numero (per esempio: 123,45).";
+            return;
+        }
+
+        if (_validAt is null)
+        {
+            _saveError = "La data della rilevazione è obbligatoria.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var reading = await ManualBalances.RecordAsync(
+                new NewManualBalance(Id, new Money(amount, _row.Currency), _validAt.Value));
+            _savedMessage = $"Rilevazione registrata: saldo {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.";
+            _amount = "";
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _saveError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _saveError = exception.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

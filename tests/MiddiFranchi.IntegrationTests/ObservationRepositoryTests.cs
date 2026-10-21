@@ -22,28 +22,28 @@ public class ObservationRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             "ETF",
             InstrumentType.Etf,
-            Currency.Parse("EUR"),
+            Currency.Euro,
             PriceUnit.PerUnit);
         await new InstrumentRepository(Context).AddAsync(instrument);
 
         var older = PriceObservation.AtUnitPrice(
             Guid.NewGuid(),
             instrument,
-            new UnitPrice(new Money(123.456789012345678m, Currency.Parse("EUR"))),
+            new UnitPrice(new Money(123.456789012345678m, Currency.Euro)),
             new DateOnly(2026, 3, 10),
             new DateTimeOffset(2026, 3, 10, 18, 0, 0, TimeSpan.Zero),
             "Fonte A");
         var newer = PriceObservation.AtUnitPrice(
             Guid.NewGuid(),
             instrument,
-            new UnitPrice(new Money(130m, Currency.Parse("EUR"))),
+            new UnitPrice(new Money(130m, Currency.Euro)),
             new DateOnly(2026, 3, 12),
             new DateTimeOffset(2026, 3, 12, 18, 0, 0, TimeSpan.Zero),
             "Fonte B");
         var future = PriceObservation.AtUnitPrice(
             Guid.NewGuid(),
             instrument,
-            new UnitPrice(new Money(140m, Currency.Parse("EUR"))),
+            new UnitPrice(new Money(140m, Currency.Euro)),
             new DateOnly(2026, 3, 20),
             new DateTimeOffset(2026, 3, 20, 18, 0, 0, TimeSpan.Zero),
             "Fonte C");
@@ -58,7 +58,7 @@ public class ObservationRepositoryTests : PostgresTestBase
         var beforeNewerObservation = beforeNewer.ShouldHaveSingleItem();
         beforeNewerObservation.Id.ShouldBe(older.Id);
         beforeNewerObservation.Price.ShouldBe(123.456789012345678m);
-        beforeNewerObservation.PriceCurrency.ShouldBe(Currency.Parse("EUR"));
+        beforeNewerObservation.PriceCurrency.ShouldBe(Currency.Euro);
         beforeNewerObservation.ValidAt.ShouldBe(new DateOnly(2026, 3, 10));
         beforeNewerObservation.ObservedAt.ShouldBe(older.ObservedAt);
 
@@ -75,9 +75,9 @@ public class ObservationRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             "Obbligazione",
             InstrumentType.Bond,
-            Currency.Parse("EUR"),
+            Currency.Euro,
             PriceUnit.PercentOfNominal,
-            new Money(1000m, Currency.Parse("EUR")));
+            new Money(1000m, Currency.Euro));
         await new InstrumentRepository(Context).AddAsync(bond);
         var observation = PriceObservation.AsPercentOfNominal(
             Guid.NewGuid(),
@@ -96,37 +96,7 @@ public class ObservationRepositoryTests : PostgresTestBase
         loaded.Unit.ShouldBe(PriceUnit.PercentOfNominal);
         loaded.Price.ShouldBe(98.5m);
         loaded.PriceCurrency.ShouldBeNull();
-        loaded.Instrument.NotionalValue.ShouldBe(new Money(1000m, Currency.Parse("EUR")));
+        loaded.Instrument.NotionalValue.ShouldBe(new Money(1000m, Currency.Euro));
     }
 
-    [PostgresFact]
-    public async Task ExchangeRateObservations_ShouldRoundTripAndFilterByCurrencyAndDate()
-    {
-        var repository = new ExchangeRateObservationRepository(Context);
-        var usd = new ExchangeRateObservation(
-            Guid.NewGuid(),
-            new ExchangeRate(Currency.Parse("USD"), 1.123456789012345678m),
-            new DateOnly(2026, 3, 10),
-            new DateTimeOffset(2026, 3, 10, 18, 0, 0, TimeSpan.Zero),
-            "ECB");
-        var gbp = new ExchangeRateObservation(
-            Guid.NewGuid(),
-            new ExchangeRate(Currency.Parse("GBP"), 0.85m),
-            new DateOnly(2026, 3, 10),
-            new DateTimeOffset(2026, 3, 10, 18, 0, 0, TimeSpan.Zero),
-            "ECB");
-
-        await repository.AddAsync(usd);
-        await repository.AddAsync(gbp);
-        ClearTracker();
-
-        var loaded = await repository.ListForCurrencyAsync(Currency.Parse("USD"), new DateOnly(2026, 3, 10));
-
-        var observation = loaded.ShouldHaveSingleItem();
-        observation.Rate.Rate.ShouldBe(1.123456789012345678m);
-        observation.Rate.Currency.ShouldBe(Currency.Parse("USD"));
-        observation.ValidAt.ShouldBe(new DateOnly(2026, 3, 10));
-        observation.ObservedAt.ShouldBe(usd.ObservedAt);
-        observation.Source.ShouldBe("ECB");
-    }
 }

@@ -1,0 +1,321 @@
+@page "/accounts"
+@rendermode InteractiveServer
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject AccountOverviewService Overview
+@inject AccountService AccountsService
+@inject ManualBalanceService ManualBalanceSvc
+
+<PageTitle>Conti</PageTitle>
+<h1>Conti</h1>
+<p class="page-intro">
+    Il saldo manuale è la fonte autorevole di ogni conto; il saldo ricostruito dai movimenti è
+    mostrato come riferimento secondario e non si somma mai al primo.
+</p>
+
+@if (_loading)
+{
+    <p class="page-status">Caricamento in corso…</p>
+}
+else if (_loadError is not null)
+{
+    <p class="alert alert-error" role="alert">@_loadError</p>
+}
+else
+{
+    @if (_rows is null || _rows.Count == 0)
+    {
+        <EmptyState Title="Nessun conto registrato"
+                    Hint="Crea il primo conto con il modulo qui sotto: servirà per registrare rilevazioni dei saldi e operazioni."
+                    Icon="wallet" />
+    }
+    else
+    {
+        <section class="card" aria-labelledby="accounts-history-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="accounts-history-title"><MfIcon Name="chart" Size="18" /> Andamento dei saldi</h2>
+                    <p class="section-sub">Saldo manuale del conto selezionato, in EUR.</p>
+                </div>
+            </div>
+
+            <div class="chart-filter">
+                <label>
+                    <span>Conto da visualizzare</span>
+                    <select @bind="_selectedAccountId" @bind:after="LoadHistoryAsync">
+                        @foreach (var row in _rows)
+                        {
+                            <option value="@row.AccountId">@row.Name</option>
+                        }
+                    </select>
+                </label>
+            </div>
+
+            @if (_historyLoading)
+            {
+                <p class="page-status" role="status">Caricamento dello storico…</p>
+            }
+            else if (_historyError is not null)
+            {
+                <p class="alert alert-error" role="alert">@_historyError</p>
+            }
+            else if (_selectedRow is { } selected && _selectedSeries.Count > 0)
+            {
+                <ApexTimeSeriesChart Title="@($"Saldo manuale · {selected.Name}")"
+                                     Description="Rilevazioni manuali per data di validità; nessun valore interpolato."
+                                     Currency="@selected.Currency"
+                                     Series="@_selectedSeries" />
+                <p class="table-hint">
+                    Il saldo corrente nella tabella è l'ultima rilevazione registrata; il grafico usa la
+                    data di validità delle rilevazioni.
+                </p>
+            }
+            else
+            {
+                <EmptyState Title="Servono almeno due rilevazioni"
+                            Hint="Registra un'altra rilevazione del saldo per vedere l'andamento nel tempo."
+                            Icon="chart" />
+            }
+        </section>
+
+        <section class="card">
+            <h2>Elenco dei conti</h2>
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table">
+                    <caption class="table-hint">Saldo in EUR; "rilevato al" indica la data della rilevazione manuale corrente.</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Nome</th>
+                            <th scope="col">Tipo</th>
+                            <th scope="col">Stato</th>
+                            <th scope="col" class="num">Saldo manuale</th>
+                            <th scope="col" class="num">Saldo ricostruito (secondario)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _rows)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="primary-link" href="accounts/@row.AccountId">@row.Name</a>
+                                    @if (row.ManualReading is not null)
+                                    {
+                                        <div class="table-hint">rilevato al @Format.Date(row.ManualReading.ValidAt)</div>
+                                    }
+                                </td>
+                                <td>@Format.AccountTypeLabel(row.Type)</td>
+                                <td><StatusBadge Tone="@(row.Status == AccountStatus.Active ? "income" : "neutral")">@Format.AccountStatusLabel(row.Status)</StatusBadge></td>
+                                <td class="num">
+                                    <AmountValue Value="@row.ManualBalance" UnavailableText="Saldo non registrato" />
+                                </td>
+                                <td class="num">
+                                    <AmountValue Value="@row.CalculatedBalance" Tone="neutral" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    <section class="card">
+        <h2>Nuovo conto</h2>
+        @if (_createdMessage is not null)
+        {
+            <p class="alert alert-success" role="status">@_createdMessage</p>
+        }
+        @if (_createError is not null)
+        {
+            <p class="alert alert-error" role="alert">@_createError</p>
+        }
+        <form class="form-grid" @onsubmit="CreateAsync">
+            <label>
+                <span>Nome *</span>
+                <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
+            </label>
+            <label>
+                <span>Tipo *</span>
+                <select @bind="_type" required aria-required="true">
+                    @foreach (var type in Enum.GetValues<AccountType>())
+                    {
+                        <option value="@type">@Format.AccountTypeLabel(type)</option>
+                    }
+                </select>
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="primary-button"><MfIcon Name="plus" Size="18" /> Crea conto</button>
+            </div>
+        </form>
+        <p class="table-hint">I campi contrassegnati con * sono obbligatori. Le regole complete sono verificate dall'applicazione.</p>
+    </section>
+}
+
+@code {
+    private IReadOnlyList<AccountOverviewRow>? _rows;
+    private bool _loading = true;
+    private string? _loadError;
+    private string _name = "";
+    private string _type = nameof(AccountType.Checking);
+    private string? _createError;
+    private string? _createdMessage;
+    private string _selectedAccountId = "";
+    private AccountOverviewRow? _selectedRow;
+    private IReadOnlyList<TimeSeriesSeries> _selectedSeries = [];
+    private bool _historyLoading;
+    private string? _historyError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRowsAsync();
+        _loading = false;
+    }
+
+    private async Task LoadRowsAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _rows = await Overview.ListAsync();
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("CONNECTION", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            _loadError = $"Impossibile leggere i conti: {exception.Message}";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile contattare il database. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+
+        if (_loadError is not null)
+        {
+            return;
+        }
+
+        if (_rows is { Count: > 0 })
+        {
+            if (!Guid.TryParse(_selectedAccountId, out var selectedId) ||
+                _rows.All(row => row.AccountId != selectedId))
+            {
+                _selectedAccountId = _rows[0].AccountId.ToString();
+            }
+
+            await LoadHistoryAsync();
+        }
+        else
+        {
+            _selectedAccountId = "";
+            _selectedRow = null;
+            _selectedSeries = [];
+        }
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _historyError = null;
+        _selectedRow = null;
+        _selectedSeries = [];
+
+        if (!Guid.TryParse(_selectedAccountId, out var accountId) || _rows is null)
+        {
+            return;
+        }
+
+        _selectedRow = _rows.FirstOrDefault(row => row.AccountId == accountId);
+        if (_selectedRow is null)
+        {
+            return;
+        }
+
+        var requestedSelection = _selectedAccountId;
+        _historyLoading = true;
+        try
+        {
+            var readings = await ManualBalanceSvc.ListForAccountAsync(accountId);
+            if (!string.Equals(_selectedAccountId, requestedSelection, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _selectedSeries = BuildSeries(accountId, readings);
+        }
+        catch (Exception)
+        {
+            if (string.Equals(_selectedAccountId, requestedSelection, StringComparison.Ordinal))
+            {
+                _historyError = "Impossibile caricare lo storico del conto. Verificare che PostgreSQL sia raggiungibile.";
+            }
+        }
+        finally
+        {
+            if (string.Equals(_selectedAccountId, requestedSelection, StringComparison.Ordinal))
+            {
+                _historyLoading = false;
+            }
+        }
+    }
+
+    private static IReadOnlyList<TimeSeriesSeries> BuildSeries(
+        Guid accountId,
+        IReadOnlyList<ManualBalance> readings)
+    {
+        var dates = readings
+            .Select(reading => reading.ValidAt)
+            .Distinct()
+            .OrderBy(date => date)
+            .ToArray();
+
+        if (dates.Length < 2)
+        {
+            return [];
+        }
+
+        var points = dates
+            .Select(date =>
+            {
+                var effective = ManualBalances.LatestOnOrBefore(readings, accountId, date);
+                return new TimeSeriesPoint(date, effective?.Amount.Amount);
+            })
+            .ToArray();
+
+        return
+        [
+            new("Saldo manuale", points, Color: "#0ea5e9"),
+        ];
+    }
+
+    private async Task CreateAsync()
+    {
+        _createError = null;
+        _createdMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _createError = "Il nome del conto è obbligatorio.";
+            return;
+        }
+
+        try
+        {
+            var created = await AccountsService.CreateAsync(
+                new NewAccount(_name, Enum.Parse<AccountType>(_type)));
+            _createdMessage = $"Conto «{created.Name}» registrato.";
+            _name = "";
+            _type = nameof(AccountType.Checking);
+            await LoadRowsAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _createError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _createError = exception.Message;
+        }
+    }
+}

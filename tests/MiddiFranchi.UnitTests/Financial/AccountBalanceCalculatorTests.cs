@@ -6,8 +6,8 @@ namespace MiddiFranchi.UnitTests.Financial;
 
 public class AccountBalanceCalculatorTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
-    private static readonly Currency Usd = Currency.Parse("USD");
+    private static readonly Currency Euro = Currency.Euro;
+    private static readonly Currency Usd = Currency.Euro;
     private static readonly Guid AccountId = Guid.Parse("d2f104e2-26bd-46dc-9db3-b83c059fe0a4");
     private static readonly Guid OtherAccountId = Guid.Parse("2ff8522f-e1b9-4feb-a0a0-a3cff9603cbf");
     private static readonly Guid CategoryId = Guid.Parse("08b56884-1c9a-4785-b276-a26a97a5f668");
@@ -128,22 +128,6 @@ public class AccountBalanceCalculatorTests
             .ParamName.ShouldBe("postings");
     }
 
-    [Fact]
-    public void Balance_ShouldRejectPostingsInADifferentCurrencyThanTheAccount()
-    {
-        var operation = IncomeOn(2026, 3, 5, 10m);
-        var foreignPosting = new AccountPosting(
-            operation,
-            AccountId,
-            PostingKind.Income,
-            Usd,
-            10m);
-
-        var exception = Should.Throw<InvalidOperationException>(
-            () => AccountBalanceCalculator.Balance(CheckingAccount, [foreignPosting], AsOf));
-
-        exception.Message.ShouldContain("diversa dalla valuta del conto");
-    }
 
     private static IReadOnlyList<AccountPosting> PostingsFrom(params FinancialOperation[] operations) =>
         operations.SelectMany(operation => operation.GeneratePostings()).ToArray();

@@ -1,0 +1,438 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using ApexCharts
+@using MiddiFranchi.Domain.Shared
+@implements IDisposable
+@inject IJSRuntime JS
+
+<figure class="library-chart">
+    @if (ShowHeader)
+    {
+        <figcaption class="library-chart-header">
+            <div>
+                <h3 class="library-chart-title">@Title</h3>
+                @if (!string.IsNullOrWhiteSpace(Description))
+                {
+                    <p class="library-chart-description">@Description</p>
+                }
+            </div>
+            <StatusBadge Tone="neutral">@Currency.Code</StatusBadge>
+        </figcaption>
+    }
+
+    <div class="library-chart-canvas">
+        <ApexChart @key="AxisKey" @ref="_chart" TItem="ApexTimePoint" Options="_options">
+            @foreach (var series in Series)
+            {
+                <ApexPointSeries TItem="ApexTimePoint"
+                                 Items="@ToPoints(series)"
+                                 Name="@series.Label"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="@(point => point.Date)"
+                                 YValue="@(point => point.Value)"
+                                 Stroke="@StrokeFor(series)" />
+            }
+        </ApexChart>
+    </div>
+
+    @if (ShowFooter)
+    {
+        <p class="library-chart-note">
+            Grafico realizzato con <strong>Blazor-ApexCharts 7.0.0</strong> (MIT). I dati completi sono
+            nella tabella qui sotto.
+        </p>
+    }
+
+    @if (ShowDataTable)
+    {
+        <details class="library-chart-data">
+            <summary>Dati del grafico</summary>
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table">
+                    <caption class="table-hint">Valori alle date disponibili; nessuna interpolazione.</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Data</th>
+                            @foreach (var series in Series)
+                            {
+                                <th scope="col" class="num">@series.Label</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var date in _dates)
+                        {
+                            <tr>
+                                <td>@MiddiFranchi.Web.Components.Format.Date(date)</td>
+                                @foreach (var series in Series)
+                                {
+                                    <td class="num">
+                                        @if (ValueAt(series, date) is { } value)
+                                        {
+                                            @MiddiFranchi.Web.Components.Format.Money(new Money(value, Currency))
+                                        }
+                                        else
+                                        {
+                                            <span>Non disponibile</span>
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+</figure>
+
+@code {
+    private readonly string _listenerId = Guid.NewGuid().ToString("N");
+    private ApexChart<ApexTimePoint>? _chart;
+    private DotNetObjectReference<ApexTimeSeriesChart>? _reference;
+    private string _theme = "light";
+    private DateOnly[] _dates = [];
+    private ApexChartOptions<ApexTimePoint> _options = new();
+    private string? _seriesSignature;
+    private bool _resyncPending;
+    private string? _labelMode;
+    private string? _appliedAxisKey;
+
+    private string AxisKey => $"{_theme}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}";
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter, EditorRequired]
+    public Currency Currency { get; set; }
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<TimeSeriesSeries> Series { get; set; } = [];
+
+    /// <summary>Modalità etichette asse temporale: "short" (dd MMM), "hour" (HH:mm), "month" (MMM yy) o "year" (anno a gennaio, MMM yy altrimenti).</summary>
+    [Parameter]
+    public string XAxisLabelMode { get; set; } = "short";
+
+    /// <summary>Limite inferiore dell'asse X; null = ricavato dai dati.</summary>
+    [Parameter]
+    public DateTime? XAxisMin { get; set; }
+
+    /// <summary>Limite superiore dell'asse X; null = ricavato dai dati.</summary>
+    [Parameter]
+    public DateTime? XAxisMax { get; set; }
+
+    /// <summary>Intervalli dell'asse X; null = automatico.</summary>
+    [Parameter]
+    public int? XAxisTickAmount { get; set; }
+
+    [Parameter]
+    public bool ShowHeader { get; set; } = true;
+
+    [Parameter]
+    public bool ShowFooter { get; set; } = true;
+
+    [Parameter]
+    public bool ShowDataTable { get; set; } = true;
+
+    [Parameter]
+    public bool ShowMarkers { get; set; } = true;
+
+    [Parameter]
+    public bool SharedTooltip { get; set; } = true;
+
+    protected override void OnParametersSet()
+    {
+        _options = CreateOptions(_theme);
+        _dates = Series
+            .SelectMany(series => series.Points)
+            .Select(point => point.Date)
+            .Distinct()
+            .OrderBy(date => date)
+            .ToArray();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _reference = DotNetObjectReference.Create(this);
+
+            try
+            {
+                var theme = await JS.InvokeAsync<string>("mfGetTheme");
+                _theme = theme == "dark" ? "dark" : "light";
+                _options = CreateOptions(_theme);
+                await JS.InvokeVoidAsync("mfRegisterThemeListener", _listenerId, _reference);
+                StateHasChanged();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+
+            return;
+        }
+
+        try
+        {
+            await ApplyLabelModeAsync();
+            await ApplyAxisRangeAsync();
+
+            // Blazor-ApexCharts non sincronizza da solo serie rimosse o svuotate e,
+            // su dati appena svuotati o riagganciati, a volte applica l'update solo
+            // alla seconda chiamata (issue 373): risincronizziamo una volta in più.
+            var signature = SeriesSignature();
+            if (signature != _seriesSignature)
+            {
+                _seriesSignature = signature;
+                _resyncPending = true;
+                if (_chart is not null)
+                {
+                    await _chart.UpdateSeriesAsync();
+                    StateHasChanged();
+                }
+            }
+            else if (_resyncPending && _chart is not null)
+            {
+                _resyncPending = false;
+                await _chart.UpdateSeriesAsync();
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Apex datetime vuole timestamp numerici per min/max: converte le date locali lato browser
+    /// e aggiorna le opzioni del grafico solo quando il range cambia.
+    /// </summary>
+    private async Task ApplyAxisRangeAsync()
+    {
+        if (XAxisMin is null && XAxisMax is null)
+        {
+            _appliedAxisKey = null;
+            return;
+        }
+
+        // Il grafico interno viene ricreato al cambio di tema, range o modalità: riapplichiamo
+        // i limiti a ogni nuova istanza.
+        if (_appliedAxisKey == AxisKey)
+        {
+            return;
+        }
+
+        _appliedAxisKey = AxisKey;
+        _options.Xaxis.Min = XAxisMin is { } minValue
+            ? await JS.InvokeAsync<double?>("mfToTimestamp", minValue.ToString("s"))
+            : null;
+        _options.Xaxis.Max = XAxisMax is { } maxValue
+            ? await JS.InvokeAsync<double?>("mfToTimestamp", maxValue.ToString("s"))
+            : null;
+
+        if (_chart is not null)
+        {
+            await _chart.UpdateOptionsAsync(true, true, true);
+        }
+    }
+
+    private async Task ApplyLabelModeAsync()
+    {
+        if (_labelMode == XAxisLabelMode)
+        {
+            return;
+        }
+
+        _labelMode = XAxisLabelMode;
+        await JS.InvokeVoidAsync("mfSetAxisLabelMode", XAxisLabelMode);
+
+        if (_chart is not null)
+        {
+            await _chart.UpdateOptionsAsync(true, true, true);
+        }
+    }
+
+    [JSInvokable]
+    public void OnThemeChanged(string theme)
+    {
+        var normalized = theme == "dark" ? "dark" : "light";
+        if (normalized == _theme)
+        {
+            return;
+        }
+
+        _theme = normalized;
+        _options = CreateOptions(_theme);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        if (_reference is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = JS.InvokeVoidAsync("mfUnregisterThemeListener", _listenerId);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        _reference.Dispose();
+        _reference = null;
+    }
+
+    private List<ApexTimePoint> ToPoints(TimeSeriesSeries series) =>
+        series.Points
+            .OrderBy(point => point.Date)
+            .Select(point => new ApexTimePoint(
+                point.Date.ToDateTime(TimeOnly.MinValue),
+                point.Value))
+            .ToList();
+
+    // Lo stroke della serie è impostato per-serie con colore pieno: l'opacità
+    // globale del fill di ApexCharts altrimenti sbiadisce anche la linea.
+    private SeriesStroke StrokeFor(TimeSeriesSeries series) => new()
+    {
+        Color = series.Color ?? (_theme == "dark" ? "#2dd4bf" : "#0c8fa5"),
+        Width = 2,
+    };
+
+    private string SeriesSignature() => string.Join("|", Series.Select(series =>
+    {
+        var points = series.Points;
+        return points.Count == 0
+            ? $"{series.Label}:0"
+            : $"{series.Label}:{points.Count}:{points[0].Date}:{points[^1].Date}";
+    }));
+
+    private static decimal? ValueAt(TimeSeriesSeries series, DateOnly date) => series
+        .Points
+        .Where(point => point.Date == date)
+        .OrderBy(point => point.Date)
+        .Select(point => point.Value)
+        .LastOrDefault();
+
+    private ApexChartOptions<ApexTimePoint> CreateOptions(string theme)
+    {
+        var dark = theme == "dark";
+        var currencyCode = Currency.Code ?? "EUR";
+        var defaultColor = dark ? "#2dd4bf" : "#0c8fa5";
+        var colors = Series
+            .Select(series => series.Color ?? defaultColor)
+            .ToList();
+        var currencyFormatter =
+            $"function(val) {{ return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
+        var customTooltip =
+            $$"""
+            function (opts) {
+              var w = opts.w;
+              var chartSeries = w.config.series || [];
+              var colors = w.globals.colors || [];
+              var fmt = new Intl.NumberFormat('it-IT', { style: 'currency', currency: '{{currencyCode}}', maximumFractionDigits: 0, useGrouping: true });
+              var dateFmt = new Intl.DateTimeFormat('it-IT', { year: 'numeric', month: '2-digit', day: '2-digit' });
+              // Le x arrivano come stringa ISO o numerico: normalizziamo a millisecondi.
+              function ms(x) {
+                if (x === undefined || x === null) { return null; }
+                var n = Number(x);
+                if (!isNaN(n) && n > 100000000000) { return n; }
+                var d = new Date(x);
+                return isNaN(d.getTime()) ? null : d.getTime();
+              }
+
+              var idx = typeof opts.dataPointIndex === 'number' ? opts.dataPointIndex : -1;
+              var hoveredSeries = chartSeries[opts.seriesIndex];
+              var hoveredData = hoveredSeries && hoveredSeries.data ? hoveredSeries.data : [];
+              var hoveredItem = hoveredData[idx];
+              if (!hoveredItem) { return ''; }
+              var ts = ms(typeof hoveredItem === 'object' ? hoveredItem.x : hoveredItem);
+              if (ts === null) { return ''; }
+
+              var title = dateFmt.format(new Date(ts));
+
+              var rows = '';
+              chartSeries.forEach(function (s, i) {
+                var data = s && s.data ? s.data : [];
+                var item = null;
+                for (var j = 0; j < data.length; j++) {
+                  var candidate = data[j];
+                  var x = typeof candidate === 'object' ? candidate.x : candidate;
+                  if (ms(x) === ts) { item = candidate; break; }
+                }
+                if (!item) { return; }
+                var y = typeof item === 'object' ? item.y : item;
+                if (y === undefined || y === null) { return; }
+                rows += '<div class="mf-tooltip-row"><span class="mf-tooltip-dot" style="background:' + (colors[i] || '#999') + '"></span><span class="mf-tooltip-name">' + (s.name || '') + '</span><span class="mf-tooltip-value">' + fmt.format(y) + '</span></div>';
+              });
+              if (!rows) { return ''; }
+
+              return '<div class="apexcharts-tooltip-title">' + title + '</div>' + rows;
+            }
+            """;
+        // Etichette asse temporale lette al volo da window.mfAxisLabelMode ("short"/"hour"/"month"/"year").
+        const string axisDateFormatter =
+            "function(value, timestamp) { var date = timestamp ? new Date(timestamp) : new Date(value); if (isNaN(date.getTime())) return value || ''; var mode = window.mfAxisLabelMode || 'short'; if (mode === 'hour') { return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date); } if (mode === 'year') { return date.getMonth() === 0 ? String(date.getFullYear()) : new Intl.DateTimeFormat('it-IT', { month: 'short', year: '2-digit' }).format(date); } var options = mode === 'month' ? { month: 'short', year: '2-digit' } : { day: '2-digit', month: 'short' }; return new Intl.DateTimeFormat('it-IT', options).format(date); }";
+        return new ApexChartOptions<ApexTimePoint>
+        {
+            Debug = false,
+            Chart = new Chart
+            {
+                Height = 320,
+                Width = "100%",
+                Toolbar = new Toolbar { Show = false },
+                Zoom = new Zoom { Enabled = false },
+                Animations = new Animations
+                {
+                    Enabled = true,
+                    Speed = 450,
+                    Easing = Easing.Easeinout,
+                    DynamicAnimation = new DynamicAnimation { Enabled = true, Speed = 350 },
+                },
+                Background = "transparent",
+                ForeColor = dark ? "#b6b6bf" : "#45536e",
+            },
+            Colors = colors,
+            Fill = new Fill { Type = FillType.Solid, Opacity = 1 },
+            Stroke = new Stroke { Curve = Curve.Straight, Width = 2.5, LineCap = ApexCharts.LineCap.Round },
+            Legend = new Legend { Show = false },
+            Markers = new Markers
+            {
+                Size = ShowMarkers ? 3 : 0,
+                Hover = new MarkersHover { Size = ShowMarkers ? 5 : 0 },
+            },
+            DataLabels = new DataLabels { Enabled = false },
+            Xaxis = new XAxis
+            {
+                Type = XAxisType.Datetime,
+                TickAmount = XAxisTickAmount,
+                Labels = new XAxisLabels
+                {
+                    Format = "dd MMM",
+                    Formatter = axisDateFormatter,
+                },
+            },
+            Yaxis =
+            [
+                new YAxis
+                {
+                    Labels = new YAxisLabels { Formatter = currencyFormatter },
+                },
+            ],
+            Grid = new Grid { BorderColor = dark ? "#2a2a31" : "#dfe4ef" },
+            Tooltip = new Tooltip
+            {
+                Shared = SharedTooltip,
+                Intersect = false,
+                Custom = new CustomFunction(customTooltip),
+            },
+            Theme = new Theme { Mode = dark ? Mode.Dark : Mode.Light },
+        };
+    }
+
+    public sealed record ApexTimePoint(DateTime Date, decimal? Value);
+}

@@ -1,0 +1,27 @@
+@namespace MiddiFranchi.Web.Components.Shared
+<div class="distribution">
+    @foreach (var item in Items)
+    {
+        <div class="distribution-row">
+            <span>@item.Label</span>
+            <span class="distribution-track" aria-hidden="true">
+                <span class="distribution-fill @(item.Kind)" style="width: @(FillPercent(item.Share))%"></span>
+            </span>
+            <span class="amount amount-balance">@item.Value</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<MiniBarChartItem> Items { get; set; } = [];
+
+    private static int FillPercent(double share) =>
+        (int)Math.Clamp(Math.Round(share * 100d, MidpointRounding.AwayFromZero), 4, 100);
+
+    public sealed record MiniBarChartItem(
+        string Label,
+        string Value,
+        double Share,
+        string Kind = "");
+}

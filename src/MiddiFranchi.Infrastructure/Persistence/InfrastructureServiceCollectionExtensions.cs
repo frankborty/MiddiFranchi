@@ -33,7 +33,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IFinancialOperationRepository, FinancialOperationRepository>();
         services.AddScoped<IAccountPostingRepository, AccountPostingRepository>();
         services.AddScoped<IPriceObservationRepository, PriceObservationRepository>();
-        services.AddScoped<IExchangeRateObservationRepository, ExchangeRateObservationRepository>();
+        services.AddScoped<IManualBalanceRepository, ManualBalanceRepository>();
 
         return services;
     }

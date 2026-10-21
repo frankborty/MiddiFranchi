@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\MiddiFranchi.Domain\MiddiFranchi.Domain.csproj" />
     <ProjectReference Include="..\..\src\MiddiFranchi.Application\MiddiFranchi.Application.csproj" />
     <ProjectReference Include="..\..\src\MiddiFranchi.Infrastructure\MiddiFranchi.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\MiddiFranchi.Web\MiddiFranchi.Web.csproj" />
   </ItemGroup>
 
 </Project>

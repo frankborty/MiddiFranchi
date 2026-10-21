@@ -1,0 +1,54 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Domain.Financial
+
+<span class="account-avatar" aria-hidden="true">
+    @if (LogoPath(Name) is { } logo)
+    {
+        <img class="account-logo" src="@logo" alt="" loading="lazy" />
+    }
+    else
+    {
+        <MfIcon Name="@IconFor(Type)" Size="18" />
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = null!;
+
+    [Parameter]
+    public AccountType Type { get; set; }
+
+    // Loghi reali in wwwroot/logos, abbinati al nome del conto (case-insensitive, match su prefisso).
+    private static readonly (string Prefix, string Path)[] Logos =
+    [
+        ("postepay", "logos/postepay.png"),
+        ("paypal", "logos/paypal.png"),
+        ("ing", "logos/ing.png"),
+        ("bbva", "logos/bbva.png"),
+        ("directa", "logos/directa.png"),
+    ];
+
+    private static string? LogoPath(string name)
+    {
+        var normalized = (name ?? string.Empty).Trim();
+        foreach (var (prefix, path) in Logos)
+        {
+            if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
+
+    private static string IconFor(AccountType type) => type switch
+    {
+        AccountType.Checking => "bank",
+        AccountType.Card => "wallet",
+        AccountType.Cash => "coin",
+        AccountType.Liability => "alert",
+        _ => "wallet",
+    };
+}

@@ -6,7 +6,7 @@ namespace MiddiFranchi.UnitTests.Financial;
 
 public class AccountTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
+    private static readonly Currency Euro = Currency.Euro;
 
     [Fact]
     public void Construction_ShouldAcceptValidAccounts()

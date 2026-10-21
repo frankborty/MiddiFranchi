@@ -61,7 +61,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                     b.ToTable("AccountPostings", null, t =>
                         {
-                            t.HasCheckConstraint("CK_AccountPostings_CurrencyCode", "\"CurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_AccountPostings_CurrencyCode", "\"CurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_AccountPostings_Kind", "\"Kind\" IN ('Capital', 'Fee', 'Income', 'TransferLeg')");
 
@@ -99,7 +99,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Accounts", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Accounts_CurrencyCode", "\"CurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_Accounts_CurrencyCode", "\"CurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_Accounts_Status", "\"Status\" IN ('Active', 'Closed')");
 
@@ -129,43 +129,6 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.ToTable("Categories", null, t =>
                         {
                             t.HasCheckConstraint("CK_Categories_Type", "\"Type\" IN ('Income', 'Expense')");
-                        });
-                });
-
-            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.ExchangeRateObservationRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("ObservedAt")
-                        .HasColumnType("timestamptz");
-
-                    b.Property<decimal>("Rate")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("RateCurrencyCode")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateOnly>("ValidAt")
-                        .HasColumnType("date");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RateCurrencyCode", "ValidAt", "ObservedAt");
-
-                    b.ToTable("ExchangeRateObservations", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_ExchangeRateObservations_CurrencyCode", "\"RateCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
-
-                            t.HasCheckConstraint("CK_ExchangeRateObservations_NonEurCurrency", "\"RateCurrencyCode\" <> 'EUR'");
-
-                            t.HasCheckConstraint("CK_ExchangeRateObservations_Rate", "\"Rate\" > 0");
                         });
                 });
 
@@ -212,7 +175,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_InvestmentOperationFees_Amount", "\"AmountAmount\" > 0");
 
-                            t.HasCheckConstraint("CK_InvestmentOperationFees_CurrencyCode", "\"AmountCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_InvestmentOperationFees_CurrencyCode", "\"AmountCurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_InvestmentOperationFees_Kind", "\"Kind\" IN ('BuyFee', 'SellFee', 'Standalone', 'TaxWithheld', 'Other')");
 
@@ -234,13 +197,6 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.Property<string>("AmountCurrencyCode")
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
-
-                    b.Property<string>("AppliedRateCurrencyCode")
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<decimal?>("AppliedRateRate")
-                        .HasColumnType("numeric");
 
                     b.Property<Guid?>("CategoryId")
                         .HasColumnType("uuid");
@@ -342,17 +298,11 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_FinancialOperations_AmountByKind", "(\"Kind\" IN ('Income', 'Expense') AND \"AmountAmount\" IS NOT NULL AND \"AmountCurrencyCode\" IS NOT NULL) OR (\"Kind\" = 'Investment' AND \"InvestmentKind\" IN ('Dividend', 'Coupon') AND \"AmountAmount\" IS NOT NULL AND \"AmountCurrencyCode\" IS NOT NULL) OR (\"Kind\" IN ('Transfer', 'Reversal') AND \"AmountAmount\" IS NULL AND \"AmountCurrencyCode\" IS NULL) OR (\"Kind\" = 'Investment' AND \"InvestmentKind\" IN ('Buy', 'Sell', 'StandaloneFee') AND \"AmountAmount\" IS NULL AND \"AmountCurrencyCode\" IS NULL)");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_AmountCurrency", "\"AmountCurrencyCode\" IS NULL OR \"AmountCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_FinancialOperations_AmountCurrency", "\"AmountCurrencyCode\" IS NULL OR \"AmountCurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_FinancialOperations_AmountPair", "(\"AmountAmount\" IS NULL AND \"AmountCurrencyCode\" IS NULL) OR (\"AmountAmount\" IS NOT NULL AND \"AmountAmount\" > 0 AND \"AmountCurrencyCode\" IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_AppliedRateCurrency", "\"AppliedRateCurrencyCode\" IS NULL OR \"AppliedRateCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
-
-                            t.HasCheckConstraint("CK_FinancialOperations_AppliedRateNonEur", "\"AppliedRateCurrencyCode\" IS NULL OR \"AppliedRateCurrencyCode\" <> 'EUR'");
-
-                            t.HasCheckConstraint("CK_FinancialOperations_AppliedRatePair", "(\"AppliedRateRate\" IS NULL AND \"AppliedRateCurrencyCode\" IS NULL) OR (\"AppliedRateRate\" IS NOT NULL AND \"AppliedRateRate\" > 0 AND \"AppliedRateCurrencyCode\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_FinancialOperations_DestinationAmountCurrency", "\"DestinationAmountCurrencyCode\" IS NULL OR \"DestinationAmountCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_FinancialOperations_DestinationAmountCurrency", "\"DestinationAmountCurrencyCode\" IS NULL OR \"DestinationAmountCurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_FinancialOperations_DestinationAmountPair", "(\"DestinationAmountAmount\" IS NULL AND \"DestinationAmountCurrencyCode\" IS NULL) OR (\"DestinationAmountAmount\" IS NOT NULL AND \"DestinationAmountAmount\" > 0 AND \"DestinationAmountCurrencyCode\" IS NOT NULL)");
 
@@ -370,13 +320,13 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_FinancialOperations_NonOrdinaryFields", "\"Kind\" IN ('Income', 'Expense') OR (\"AccountId\" IS NULL AND \"CategoryId\" IS NULL)");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_NonTransferFields", "\"Kind\" = 'Transfer' OR (\"SourceAccountId\" IS NULL AND \"DestinationAccountId\" IS NULL AND \"SourceAmountAmount\" IS NULL AND \"SourceAmountCurrencyCode\" IS NULL AND \"DestinationAmountAmount\" IS NULL AND \"DestinationAmountCurrencyCode\" IS NULL AND \"AppliedRateRate\" IS NULL AND \"AppliedRateCurrencyCode\" IS NULL)");
+                            t.HasCheckConstraint("CK_FinancialOperations_NonTransferFields", "\"Kind\" = 'Transfer' OR (\"SourceAccountId\" IS NULL AND \"DestinationAccountId\" IS NULL AND \"SourceAmountAmount\" IS NULL AND \"SourceAmountCurrencyCode\" IS NULL AND \"DestinationAmountAmount\" IS NULL AND \"DestinationAmountCurrencyCode\" IS NULL)");
 
                             t.HasCheckConstraint("CK_FinancialOperations_OrdinaryFields", "\"Kind\" NOT IN ('Income', 'Expense') OR (\"AccountId\" IS NOT NULL AND \"CategoryId\" IS NOT NULL AND \"AmountAmount\" IS NOT NULL AND \"AmountCurrencyCode\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_FinancialOperations_Quantity", "\"QuantityValue\" IS NULL OR \"QuantityValue\" > 0");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_QuotedPriceCurrency", "\"QuotedPricePriceCurrencyCode\" IS NULL OR \"QuotedPricePriceCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_FinancialOperations_QuotedPriceCurrency", "\"QuotedPricePriceCurrencyCode\" IS NULL OR \"QuotedPricePriceCurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_FinancialOperations_QuotedPriceShape", "(\"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL) OR (\"QuotedPriceUnit\" = 'PerUnit' AND \"QuotedPricePriceAmount\" IS NOT NULL AND \"QuotedPricePriceAmount\" > 0 AND \"QuotedPricePriceCurrencyCode\" IS NOT NULL AND \"QuotedPricePercentOfNominal\" IS NULL) OR (\"QuotedPriceUnit\" = 'PercentOfNominal' AND \"QuotedPricePercentOfNominal\" IS NOT NULL AND \"QuotedPricePercentOfNominal\" > 0 AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL)");
 
@@ -384,13 +334,13 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_FinancialOperations_ReversalLink", "(\"Kind\" = 'Reversal' AND \"OriginalOperationId\" IS NOT NULL) OR (\"Kind\" <> 'Reversal' AND \"OriginalOperationId\" IS NULL)");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_SourceAmountCurrency", "\"SourceAmountCurrencyCode\" IS NULL OR \"SourceAmountCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_FinancialOperations_SourceAmountCurrency", "\"SourceAmountCurrencyCode\" IS NULL OR \"SourceAmountCurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_FinancialOperations_SourceAmountPair", "(\"SourceAmountAmount\" IS NULL AND \"SourceAmountCurrencyCode\" IS NULL) OR (\"SourceAmountAmount\" IS NOT NULL AND \"SourceAmountAmount\" > 0 AND \"SourceAmountCurrencyCode\" IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_TransferFields", "\"Kind\" <> 'Transfer' OR (\"SourceAccountId\" IS NOT NULL AND \"DestinationAccountId\" IS NOT NULL AND \"SourceAmountAmount\" IS NOT NULL AND \"SourceAmountCurrencyCode\" IS NOT NULL AND \"DestinationAmountAmount\" IS NOT NULL AND \"DestinationAmountCurrencyCode\" IS NOT NULL)");
+                            t.HasCheckConstraint("CK_FinancialOperations_TransferEurAmounts", "\"Kind\" <> 'Transfer' OR (\"SourceAmountCurrencyCode\" = 'EUR' AND \"DestinationAmountCurrencyCode\" = 'EUR' AND \"SourceAmountAmount\" = \"DestinationAmountAmount\")");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_TransferRateSemantics", "\"Kind\" <> 'Transfer' OR ((\"SourceAmountCurrencyCode\" = \"DestinationAmountCurrencyCode\" AND \"SourceAmountAmount\" = \"DestinationAmountAmount\" AND \"AppliedRateRate\" IS NULL AND \"AppliedRateCurrencyCode\" IS NULL) OR (\"SourceAmountCurrencyCode\" <> \"DestinationAmountCurrencyCode\" AND \"AppliedRateRate\" IS NOT NULL AND \"AppliedRateCurrencyCode\" IS NOT NULL AND ((\"SourceAmountCurrencyCode\" = 'EUR' AND \"AppliedRateCurrencyCode\" = \"DestinationAmountCurrencyCode\") OR (\"DestinationAmountCurrencyCode\" = 'EUR' AND \"AppliedRateCurrencyCode\" = \"SourceAmountCurrencyCode\"))))");
+                            t.HasCheckConstraint("CK_FinancialOperations_TransferFields", "\"Kind\" <> 'Transfer' OR (\"SourceAccountId\" IS NOT NULL AND \"DestinationAccountId\" IS NOT NULL AND \"SourceAmountAmount\" IS NOT NULL AND \"SourceAmountCurrencyCode\" IS NOT NULL AND \"DestinationAmountAmount\" IS NOT NULL AND \"DestinationAmountCurrencyCode\" IS NOT NULL)");
                         });
                 });
 
@@ -420,6 +370,10 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<string>("Symbol")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -429,7 +383,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Instruments", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Instruments_NotionalValue", "(\"NotionalValueAmount\" IS NULL AND \"NotionalValueCurrencyCode\" IS NULL) OR (\"NotionalValueAmount\" IS NOT NULL AND \"NotionalValueAmount\" > 0 AND \"NotionalValueCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY'))");
+                            t.HasCheckConstraint("CK_Instruments_NotionalValue", "(\"NotionalValueAmount\" IS NULL AND \"NotionalValueCurrencyCode\" IS NULL) OR (\"NotionalValueAmount\" IS NOT NULL AND \"NotionalValueAmount\" > 0 AND \"NotionalValueCurrencyCode\" IN ('EUR'))");
 
                             t.HasCheckConstraint("CK_Instruments_NotionalValueCurrencyMatchesQuote", "\"NotionalValueCurrencyCode\" IS NULL OR \"NotionalValueCurrencyCode\" = \"QuoteCurrencyCode\"");
 
@@ -437,7 +391,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_Instruments_PriceUnitNotional", "(\"PriceUnit\" = 'PercentOfNominal' AND \"NotionalValueAmount\" IS NOT NULL AND \"NotionalValueAmount\" > 0 AND \"NotionalValueCurrencyCode\" IS NOT NULL) OR (\"PriceUnit\" = 'PerUnit' AND \"NotionalValueAmount\" IS NULL AND \"NotionalValueCurrencyCode\" IS NULL)");
 
-                            t.HasCheckConstraint("CK_Instruments_QuoteCurrencyCode", "\"QuoteCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_Instruments_QuoteCurrencyCode", "\"QuoteCurrencyCode\" IN ('EUR')");
                         });
                 });
 
@@ -459,7 +413,43 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                     b.ToTable("InvestmentPortfolios", null, t =>
                         {
-                            t.HasCheckConstraint("CK_InvestmentPortfolios_ReferenceCurrencyCode", "\"ReferenceCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')");
+                            t.HasCheckConstraint("CK_InvestmentPortfolios_ReferenceCurrencyCode", "\"ReferenceCurrencyCode\" IN ('EUR')");
+                        });
+                });
+
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.ManualBalanceRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AmountAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("AmountCurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.Property<DateOnly>("ValidAt")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "AmountCurrencyCode");
+
+                    b.HasIndex("AccountId", "RecordedAt");
+
+                    b.HasIndex("AccountId", "ValidAt");
+
+                    b.ToTable("ManualBalances", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ManualBalances_CurrencyCode", "\"AmountCurrencyCode\" IN ('EUR')");
                         });
                 });
 
@@ -501,7 +491,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_PriceObservations_Price", "\"Price\" > 0");
 
-                            t.HasCheckConstraint("CK_PriceObservations_PriceCurrency", "(\"Unit\" = 'PerUnit' AND \"PriceCurrencyCode\" IS NOT NULL AND \"PriceCurrencyCode\" IN ('EUR', 'USD', 'GBP', 'JPY')) OR (\"Unit\" = 'PercentOfNominal' AND \"PriceCurrencyCode\" IS NULL)");
+                            t.HasCheckConstraint("CK_PriceObservations_PriceCurrency", "(\"Unit\" = 'PerUnit' AND \"PriceCurrencyCode\" IS NOT NULL AND \"PriceCurrencyCode\" IN ('EUR')) OR (\"Unit\" = 'PercentOfNominal' AND \"PriceCurrencyCode\" IS NULL)");
 
                             t.HasCheckConstraint("CK_PriceObservations_Unit", "\"Unit\" IN ('PerUnit', 'PercentOfNominal')");
                         });
@@ -601,6 +591,18 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.Navigation("SettlementAccount");
 
                     b.Navigation("SourceAccount");
+                });
+
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.ManualBalanceRecord", b =>
+                {
+                    b.HasOne("MiddiFranchi.Infrastructure.Persistence.Entities.AccountRecord", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId", "AmountCurrencyCode")
+                        .HasPrincipalKey("Id", "CurrencyCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.PriceObservationRecord", b =>

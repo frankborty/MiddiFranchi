@@ -1,7 +1,403 @@
 ﻿@page "/"
+@rendermode InteractiveServer
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject FinancialDashboardService DashboardService
+@inject DashboardOverviewService OverviewService
 
-<PageTitle>Home</PageTitle>
+<PageTitle>MiddiFranchi — Panoramica finanziaria</PageTitle>
 
-<h1>Hello, world!</h1>
+@if (_loading)
+{
+    <section class="card dashboard-loading" aria-live="polite">
+        <p class="page-status" role="status">Caricamento della dashboard…</p>
+    </section>
+}
+else if (_loadError is not null)
+{
+    <section class="card">
+        <p class="alert alert-error" role="alert">@_loadError</p>
+        <p class="table-hint">Nessun dato è stato mostrato per evitare valori non affidabili.</p>
+        <div class="form-actions">
+            <button type="button" class="primary-button" @onclick="LoadAsync">Riprova</button>
+        </div>
+    </section>
+}
+else if (_dashboard is { } dashboard)
+{
+    @if (_overview is { } overview)
+    {
+        <DashboardOverviewPanel Data="@overview" />
+    }
 
-Welcome to your new app.
+    <div class="bento">
+        <div class="sp-12">
+            <section class="card dashboard-movements-card" aria-labelledby="movements-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="movements-title"><MfIcon Name="swap" Size="18" /> Movimenti</h2>
+                        <p class="section-sub">@Format.MonthPeriod(dashboard.Month.PeriodStart, dashboard.Month.PeriodEnd)</p>
+                    </div>
+                    <a class="section-link" href="movements">Tutti i movimenti <MfIcon Name="arrow-right" Size="16" /></a>
+                </div>
+
+                <div class="movements-summary">
+                    @if (!dashboard.Month.HasIncomeExpense)
+                    {
+                        @if (dashboard.Month.HasMovements)
+                        {
+                            <EmptyState Title="Nessuna entrata o uscita nel mese"
+                                        Hint="@($"{dashboard.Month.OtherOperationCount} trasferimenti o operazioni d'investimento non sono conteggiati nei totali economici.")"
+                                        Icon="swap" />
+                        }
+                        else
+                        {
+                            <EmptyState Title="Nessun movimento nel mese"
+                                        Hint="Registra un'entrata o un'uscita per popolare il riepilogo del periodo."
+                                        Icon="swap" />
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var flow in dashboard.Month.Flows)
+                        {
+                            <div class="month-flow">
+                                <div class="month-metrics">
+                                    <div class="month-metric">
+                                        <span class="month-metric-label">Saldo del periodo</span>
+                                        <AmountValue Value="@(new Money(flow.Net, flow.Currency))" Signed="true" />
+                                    </div>
+                                    <div class="month-metric">
+                                        <span class="month-metric-label">Entrate</span>
+                                        <AmountValue Value="@(new Money(flow.Income, flow.Currency))" Tone="income" />
+                                    </div>
+                                    <div class="month-metric">
+                                        <span class="month-metric-label">Uscite</span>
+                                        <AmountValue Value="@(new Money(flow.Expense, flow.Currency))" Tone="expense" />
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="movements-recent">
+                    <div class="movements-subhead">
+                        <h3>Ultimi movimenti</h3>
+                        <StatusBadge Tone="brand">@dashboard.Month.MovementCount movimenti nel mese</StatusBadge>
+                    </div>
+
+                    @if (dashboard.RecentMovements.Count == 0)
+                    {
+                        <EmptyState Title="Nessun movimento registrato"
+                                    Hint="Le operazioni registrate compaiono qui e nella pagina Movimenti."
+                                    Icon="list" Href="movements" ActionLabel="Vai ai movimenti" />
+                    }
+                    else
+                    {
+                        <ul class="activity-list" aria-label="Ultime operazioni registrate">
+                            @foreach (var movement in dashboard.RecentMovements)
+                            {
+                                <li class="activity-row">
+                                    <span class="activity-icon @ActivityTone(movement.OperationKind)" aria-hidden="true">
+                                        <MfIcon Name="@ActivityIcon(movement.OperationKind)" Size="18" />
+                                    </span>
+                                    <div class="activity-main">
+                                        <span class="activity-title">@MovementTitle(movement)</span>
+                                        <span class="activity-meta">
+                                            @Format.Date(movement.Date)
+                                            <span aria-hidden="true">·</span>
+                                            @movement.AccountLabel
+                                        </span>
+                                    </div>
+                                    <div class="activity-amounts">
+                                        <AmountValue Value="@movement.Amount" Signed="true" />
+                                        @if (movement.CounterAmount is { } counterAmount)
+                                        {
+                                            <span class="activity-counter">
+                                                <MfIcon Name="arrow-right" Size="16" />
+                                                <AmountValue Value="@counterAmount" Signed="true" />
+                                            </span>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="bento bento-even">
+        <div class="sp-6">
+            <section class="card dashboard-investments" aria-labelledby="investments-title">
+                <div class="section-head">
+                    <h2 id="investments-title"><MfIcon Name="pie" Size="18" /> Investimenti</h2>
+                    <a class="section-link" href="investments">Vedi gli investimenti <MfIcon Name="arrow-right" Size="16" /></a>
+                </div>
+
+                @if (!dashboard.Investments.HasPortfolios)
+                {
+                    <EmptyState Title="Nessun portafoglio registrato"
+                                Hint="I portafogli e le posizioni valorizzate compaiono qui quando presenti."
+                                Icon="chart" Href="investments" ActionLabel="Vai agli investimenti" />
+                }
+                else if (!dashboard.Investments.HasPositions)
+                {
+                    <EmptyState Title="Nessuna posizione aperta"
+                                Hint="Le posizioni si costruiscono dalle operazioni d'investimento registrate."
+                                Icon="coin" Href="investments" ActionLabel="Vai agli investimenti" />
+                }
+                else
+                {
+                    <div class="investment-summary">
+                        <div class="investment-total">
+                            <span class="investment-total-label">Valore investimenti</span>
+                            @if (dashboard.Investments.Total is { } investmentsTotal)
+                            {
+                                <strong>@Format.Money(investmentsTotal)</strong>
+                            }
+                            else
+                            {
+                                <strong class="investment-total-unavailable">Non calcolabile</strong>
+                                <span class="table-hint">
+                                    Mancano quotazioni per una o più posizioni: nessun valore è stimato.
+                                </span>
+                            }
+
+                            @if (_overview is { } overviewData)
+                            {
+                                <span class="investment-performance-line">
+                                    Rendimento
+                                    @if (overviewData.Investments.CurrentChange is { } change)
+                                    {
+                                        <span class="investment-summary-performance @Tone(change)">@Format.MoneySigned(change)</span>
+                                        @if (overviewData.Investments.CurrentChangePercent is { } percent)
+                                        {
+                                            <span class="investment-summary-performance @Tone(change)">@Format.SignedPercent(percent)</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="investment-summary-performance neutral">Non calcolabile</span>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="table-scroll investment-assets">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Ticker</th>
+                                    <th scope="col" class="num">Valore attuale</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var asset in InvestmentAssets)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="investment-asset-ticker @(string.IsNullOrWhiteSpace(asset.Symbol) ? "missing" : null)"
+                                                  title="@asset.InstrumentName">
+                                                @Ticker(asset)
+                                            </span>
+                                        </td>
+                                        <td class="num">
+                                            @if (asset.Value is { } value)
+                                            {
+                                                <AmountValue Value="@value" />
+                                            }
+                                            else
+                                            {
+                                                <span class="investment-asset-unavailable" title="@asset.IncompletenessReason">Non disponibile</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        </div>
+
+        <div class="sp-6">
+            <section class="card dashboard-accounts" aria-labelledby="accounts-title">
+                <div class="section-head">
+                    <h2 id="accounts-title"><MfIcon Name="wallet" Size="18" /> Conti</h2>
+                    <a class="section-link" href="accounts">Tutti i conti <MfIcon Name="arrow-right" Size="16" /></a>
+                </div>
+
+                @if (dashboard.Accounts.Count == 0)
+                {
+                    <EmptyState Title="Nessun conto registrato"
+                                Hint="Crea il primo conto per registrare rilevazioni manuali e operazioni."
+                                Icon="wallet" Href="accounts" ActionLabel="Vai ai conti" />
+                }
+                else
+                {
+                    <div class="accounts-total">
+                        <span class="accounts-total-label">Totale conti</span>
+                        @if (_overview is { } accountsOverview && accountsOverview.Accounts.CurrentValue is { } accountsTotal)
+                        {
+                            <span class="accounts-total-value-row">
+                                <strong class="accounts-total-value">@Format.Money(accountsTotal)</strong>
+                                @if (!accountsOverview.Accounts.IsComplete)
+                                {
+                                    <StatusBadge Tone="warning">Parziale</StatusBadge>
+                                }
+                            </span>
+                        }
+                        else
+                        {
+                            <strong class="accounts-total-value unavailable">Non calcolabile</strong>
+                        }
+                    </div>
+
+                    <ul class="account-summary-list">
+                        @foreach (var account in VisibleAccounts)
+                        {
+                            <li class="account-summary-row">
+                                <AccountAvatar Name="@account.Name" Type="@account.Type" />
+                                <div class="account-summary-main">
+                                    <a class="account-summary-name" href="accounts/@account.AccountId" title="@account.Name">
+                                        @account.Name
+                                    </a>
+                                    <span class="account-summary-meta">
+                                        @Format.AccountTypeLabel(account.Type)
+                                        @if (account.Status == AccountStatus.Closed)
+                                        {
+                                            <StatusBadge Tone="neutral">@Format.AccountStatusLabel(account.Status)</StatusBadge>
+                                        }
+                                    </span>
+                                </div>
+                                <div class="account-summary-balance">
+                                    @if (account.ManualBalance is null)
+                                    {
+                                        <span class="account-balance-missing">
+                                            <MfIcon Name="alert" Size="14" /> Saldo non registrato
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <AmountValue Value="@account.ManualBalance" />
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+
+                    @if (dashboard.Accounts.Count > VisibleAccounts.Count)
+                    {
+                        <p class="table-hint">
+                            Mostrati @VisibleAccounts.Count di @dashboard.Accounts.Count conti.
+                            <a href="accounts">Vedi tutti i conti</a>.
+                        </p>
+                    }
+                    @if (AccountsWithoutBalanceCount > 0)
+                    {
+                        <p class="account-note">
+                            <MfIcon Name="alert" Size="14" />
+                            @AccountsWithoutBalanceCount conti senza saldo manuale: esclusi dal patrimonio
+                            e mai trattati come zero.
+                        </p>
+                    }
+                }
+            </section>
+        </div>
+    </div>
+
+}
+
+@code {
+    private const int MaxVisibleAccounts = 5;
+
+    private FinancialDashboard? _dashboard;
+    private DashboardOverview? _overview;
+    private bool _loading = true;
+    private string? _loadError;
+
+    private IReadOnlyList<AccountOverviewRow> VisibleAccounts =>
+        _dashboard?.Accounts.Take(MaxVisibleAccounts).ToArray() ?? [];
+
+    private int AccountsWithoutBalanceCount =>
+        _dashboard?.Accounts.Count(account => account.ManualBalance is null) ?? 0;
+
+    private IReadOnlyList<DashboardInvestmentPosition> InvestmentAssets =>
+        _dashboard?.Investments.Portfolios
+            .SelectMany(portfolio => portfolio.Positions)
+            .ToArray() ?? [];
+
+    private static string Ticker(DashboardInvestmentPosition asset) =>
+        string.IsNullOrWhiteSpace(asset.Symbol) ? "Sigla non disponibile" : asset.Symbol;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        _dashboard = null;
+        _overview = null;
+
+        try
+        {
+            _dashboard = await DashboardService.LoadAsync();
+            _overview = await OverviewService.LoadAsync();
+        }
+        catch (InvalidOperationException exception)
+            when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile caricare la dashboard. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string ActivityIcon(OperationKind kind) => kind switch
+    {
+        OperationKind.Income => "trend",
+        OperationKind.Expense => "trend-down",
+        OperationKind.Transfer => "swap",
+        OperationKind.Investment => "chart",
+        _ => "list",
+    };
+
+    private static string ActivityTone(OperationKind kind) => kind switch
+    {
+        OperationKind.Income => "income",
+        OperationKind.Expense => "expense",
+        OperationKind.Transfer => "transfer",
+        OperationKind.Investment => "brand",
+        _ => "neutral",
+    };
+
+    private static string MovementTitle(DashboardMovement movement)
+    {
+        if (!string.IsNullOrWhiteSpace(movement.Description))
+        {
+            return movement.Description;
+        }
+
+        return string.IsNullOrWhiteSpace(movement.Category)
+            ? "Movimento"
+            : movement.Category;
+    }
+
+    private static string Tone(Money? value) => value switch
+    {
+        { Amount: > 0m } => "positive",
+        { Amount: < 0m } => "negative",
+        _ => "neutral",
+    };
+}

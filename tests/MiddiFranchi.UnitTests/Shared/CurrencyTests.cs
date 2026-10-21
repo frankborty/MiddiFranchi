@@ -7,37 +7,24 @@ public class CurrencyTests
 {
     [Theory]
     [InlineData("EUR")]
+    [InlineData("eur")]
+    [InlineData(" Eur ")]
+    public void Parse_ShouldAcceptOnlyEuro(string code)
+    {
+        Currency.Parse(code).ShouldBe(Currency.Euro);
+        Currency.Parse(code).Code.ShouldBe("EUR");
+    }
+
+    [Theory]
     [InlineData("USD")]
     [InlineData("GBP")]
     [InlineData("JPY")]
-    public void Parse_ShouldAcceptSupportedUppercaseCodes(string code)
-    {
-        Currency.Parse(code).Code.ShouldBe(code);
-    }
-
-    [Theory]
-    [InlineData("eur")]
-    [InlineData("usd")]
-    [InlineData("gbp")]
-    [InlineData("jpy")]
-    public void Parse_ShouldNormalizeLowercaseCodesToUppercase(string code)
-    {
-        var expected = code.ToUpperInvariant();
-
-        Currency.Parse(code).Code.ShouldBe(expected);
-        Currency.Parse(code).ShouldBe(Currency.Parse(expected));
-    }
-
-    [Theory]
     [InlineData("XXX")]
-    [InlineData("XTS")]
     [InlineData("CHF")]
     [InlineData("EURO")]
     [InlineData("EU2")]
     [InlineData("")]
-    [InlineData("   EUR")]
-    [InlineData("eur ")]
-    public void Parse_ShouldRejectUnsupportedCodes(string code)
+    public void Parse_ShouldRejectEveryOtherCode(string code)
     {
         var exception = Should.Throw<ArgumentException>(() => Currency.Parse(code));
 
@@ -45,11 +32,12 @@ public class CurrencyTests
     }
 
     [Theory]
-    [InlineData("XXX")]
-    [InlineData("CHF")]
+    [InlineData("USD")]
+    [InlineData("GBP")]
+    [InlineData("JPY")]
     [InlineData("")]
     [InlineData(null)]
-    public void TryParse_ShouldReturnFalseForUnsupportedCodes(string? code)
+    public void TryParse_ShouldReturnFalseForEveryOtherCode(string? code)
     {
         var parsed = Currency.TryParse(code, out var currency);
 
@@ -58,15 +46,14 @@ public class CurrencyTests
     }
 
     [Fact]
-    public void Equality_ShouldBeCaseInsensitiveByCode()
+    public void SupportedCodes_ShouldContainOnlyEuro()
     {
-        Currency.Parse("EUR").ShouldBe(Currency.Parse("eur"));
-        Currency.Parse("EUR").ShouldNotBe(Currency.Parse("USD"));
+        Currency.SupportedCodes.ShouldBe(["EUR"]);
     }
 
     [Fact]
-    public void ToString_ShouldReturnTheCurrencyCode()
+    public void ToString_ShouldReturnEuro()
     {
-        Currency.Parse("GBP").ToString().ShouldBe("GBP");
+        Currency.Euro.ToString().ShouldBe("EUR");
     }
 }

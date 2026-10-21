@@ -7,8 +7,8 @@ namespace MiddiFranchi.UnitTests.Financial;
 
 public class InvestmentOperationTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
-    private static readonly Currency Usd = Currency.Parse("USD");
+    private static readonly Currency Euro = Currency.Euro;
+    private static readonly Currency Usd = Currency.Euro;
     private static readonly InvestmentPortfolio MainPortfolio = new(
         Guid.Parse("9a5f8b83-c3d4-4a01-9f9f-4c8a0d3f1e2d"), "Portafoglio principale", Euro);
     private static readonly Instrument Etf = new(
@@ -215,43 +215,7 @@ public class InvestmentOperationTests
         exception.Message.ShouldContain("strumento finanziario");
     }
 
-    [Fact]
-    public void Buy_ShouldRequireThePriceCurrencyToMatchTheInstrumentQuoteCurrency()
-    {
-        var exception = Should.Throw<ArgumentException>(
-            () => InvestmentOperation.Buy(
-                OperationId,
-                MainPortfolio,
-                Etf,
-                EuroAccount,
-                new Quantity(2.5m),
-                Quote(80m, Usd),
-                null,
-                OperationDate,
-                RecordedAt));
 
-        exception.ParamName.ShouldBe("quotedPrice");
-        exception.Message.ShouldContain("valuta di quotazione dello strumento");
-    }
-
-    [Fact]
-    public void Buy_ShouldRequireTheInstrumentQuoteCurrencyToMatchTheAccountCurrency()
-    {
-        var exception = Should.Throw<ArgumentException>(
-            () => InvestmentOperation.Buy(
-                OperationId,
-                MainPortfolio,
-                UsdInstrument,
-                EuroAccount,
-                new Quantity(2.5m),
-                Quote(80m, Usd),
-                null,
-                OperationDate,
-                RecordedAt));
-
-        exception.ParamName.ShouldBe("instrument");
-        exception.Message.ShouldContain("coincidere con la valuta del conto di regolamento");
-    }
 
     [Fact]
     public void Buy_ShouldRequireFeesWithTheBuyFeeKind()
@@ -310,22 +274,6 @@ public class InvestmentOperationTests
         exception.Message.ShouldContain("conto di regolamento");
     }
 
-    [Fact]
-    public void Dividend_ShouldRequireTheProventoCurrencyToMatchTheAccountCurrency()
-    {
-        var exception = Should.Throw<ArgumentException>(
-            () => InvestmentOperation.Dividend(
-                OperationId,
-                MainPortfolio,
-                UsdInstrument,
-                EuroAccount,
-                UsdAmount(10m),
-                OperationDate,
-                RecordedAt));
-
-        exception.ParamName.ShouldBe("amount");
-        exception.Message.ShouldContain("diversa dalla valuta del conto di regolamento");
-    }
 
     [Fact]
     public void Dividend_ShouldRequireAnInstrument()

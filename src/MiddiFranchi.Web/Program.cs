@@ -1,3 +1,4 @@
+using MiddiFranchi.Application.Financial;
 using MiddiFranchi.Infrastructure.Persistence;
 using MiddiFranchi.Web.Components;
 
@@ -9,6 +10,19 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddMiddiFranchiInfrastructure();
 
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<CategoryService>();
+builder.Services.AddScoped<OperationRegistrationService>();
+builder.Services.AddScoped<ReversalService>();
+builder.Services.AddScoped<OperationHistoryService>();
+builder.Services.AddScoped<MovementService>();
+builder.Services.AddScoped<ManualBalanceService>();
+builder.Services.AddScoped<AccountOverviewService>();
+builder.Services.AddScoped<NetWorthOverviewService>();
+builder.Services.AddScoped<FinancialDashboardService>();
+builder.Services.AddScoped<InvestmentOverviewService>();
+builder.Services.AddScoped<DashboardOverviewService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -19,7 +33,6 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 
 app.UseAntiforgery();
 

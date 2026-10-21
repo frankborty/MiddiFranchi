@@ -4,32 +4,33 @@ using MiddiFranchi.Domain.Shared;
 
 namespace MiddiFranchi.Domain.Financial;
 
+/// <summary>
+/// Calcola il patrimonio netto in EUR. Tutti gli importi dell'applicazione sono in EUR:
+/// non esistono conversioni di valuta. Le collezioni di conti e portafogli definiscono il
+/// perimetro richiesto: il Domain non possiede un aggregate root del perimetro completo.
+/// La modalità è una scelta esplicita del chiamante: passare le rilevazioni manuali seleziona
+/// i saldi manuali come fonte autorevole dei conti — un conto senza rilevazione valida alla
+/// data è incompleto e non diventa zero — mentre ometterle seleziona la modalità posting.
+/// </summary>
 public static class NetWorthCalculator
 {
-    private static readonly Currency ReportingCurrency = Currency.Parse("EUR");
+    private static readonly Currency Euro = Currency.Euro;
 
-    /// <summary>
-    /// Calcola il patrimonio netto in EUR. Le collezioni di conti e portafogli definiscono il perimetro
-    /// richiesto: il Domain non possiede un aggregate root del perimetro completo e non può rilevare
-    /// entità omesse dal chiamante. Allo stesso modo, i posting devono essere l'insieme canonico del
-    /// registro: eventuali duplicati o omissioni non sono distinguibili da movimenti legittimi.
-    /// </summary>
     public static NetWorthSummary Summarize(
         IReadOnlyCollection<Account> accounts,
         IEnumerable<AccountPosting> postings,
         IEnumerable<InvestmentPortfolio> portfolios,
         IEnumerable<InvestmentOperation> operations,
         IEnumerable<PriceObservation> priceObservations,
-        IEnumerable<ExchangeRateObservation> exchangeRateObservations,
         DateOnly valuationDate,
-        ValuationPolicy? valuationPolicy = null)
+        ValuationPolicy? valuationPolicy = null,
+        IReadOnlyList<ManualBalance>? manualBalances = null)
     {
         if (accounts is null) throw new ArgumentNullException(nameof(accounts));
         if (postings is null) throw new ArgumentNullException(nameof(postings));
         if (portfolios is null) throw new ArgumentNullException(nameof(portfolios));
         if (operations is null) throw new ArgumentNullException(nameof(operations));
         if (priceObservations is null) throw new ArgumentNullException(nameof(priceObservations));
-        if (exchangeRateObservations is null) throw new ArgumentNullException(nameof(exchangeRateObservations));
 
         var accountList = accounts.ToArray();
         EnsureDistinctAccountIds(accountList);
@@ -40,129 +41,75 @@ public static class NetWorthCalculator
 
         var operationList = operations.ToArray();
         var priceList = priceObservations as IReadOnlyCollection<PriceObservation> ?? priceObservations.ToArray();
-        var exchangeRateList = exchangeRateObservations as IReadOnlyCollection<ExchangeRateObservation>
-            ?? exchangeRateObservations.ToArray();
         var policy = valuationPolicy ?? ValuationPolicy.Unbounded;
         var incompletenessReasons = new List<string>();
 
         var accountEntries = new List<AccountBalanceEntry>();
         foreach (var account in accountList)
         {
-            var balance = AccountBalanceCalculator.Balance(account, postingList, valuationDate);
-
-            Money? converted = balance;
-            ExchangeRateObservation? exchangeRateObservation = null;
-            string? reason = null;
-
-            if (account.Currency != ReportingCurrency)
+            Money? balance;
+            if (manualBalances is not null)
             {
-                exchangeRateObservation = ExchangeRateObservations
-                    .MostRecentOnOrBefore(exchangeRateList, account.Currency, valuationDate);
+                var reading = ManualBalances.LatestOnOrBefore(manualBalances, account.Id, valuationDate);
+                if (reading is null)
+                {
+                    incompletenessReasons.Add(
+                        $"Il conto {account.Name} non ha una rilevazione manuale valida alla data {FormatDate(valuationDate)}: il saldo corrente non è disponibile.");
+                    accountEntries.Add(new AccountBalanceEntry(
+                        account,
+                        null,
+                        "Rilevazione manuale del saldo assente alla data richiesta."));
+                    continue;
+                }
 
-                if (exchangeRateObservation is null)
-                {
-                    reason = $"Il conto {account.Name} ({account.Currency.Code}) richiede un cambio con valuta estera {account.Currency.Code}, ma nessuna osservazione valida è disponibile alla data richiesta.";
-                    converted = null;
-                }
-                else if (policy.IsExchangeRateStale(exchangeRateObservation, valuationDate))
-                {
-                    reason = $"Il conto {account.Name} ({account.Currency.Code}) richiede un cambio obsoleto: ValidAt {FormatDate(exchangeRateObservation.ValidAt)}, età {AgeInDays(exchangeRateObservation.ValidAt, valuationDate)} giorni, soglia {policy.MaximumExchangeRateAgeDays} giorni.";
-                    converted = null;
-                }
-                else
-                {
-                    converted = exchangeRateObservation.Rate.Convert(balance, ReportingCurrency);
-                }
+                balance = reading.Amount;
+            }
+            else
+            {
+                balance = AccountBalanceCalculator.Balance(account, postingList, valuationDate);
             }
 
-            if (reason is not null)
-            {
-                incompletenessReasons.Add(reason);
-            }
-
-            accountEntries.Add(new AccountBalanceEntry(account, balance, converted, exchangeRateObservation, reason));
+            accountEntries.Add(new AccountBalanceEntry(account, balance, null));
         }
 
         var accountsSubtotal = accountEntries.All(entry => entry.IsComplete)
-            ? new Money(accountEntries.Sum(entry => entry.ConvertedBalance!.Value.Amount), ReportingCurrency)
+            ? new Money(accountEntries.Sum(entry => entry.Balance!.Value.Amount), Euro)
             : (Money?)null;
 
         var portfolioValuations = portfolioList
-            .Select(portfolio => PortfolioValuationCalculator
-                .Valuate(portfolio, operationList, priceList, exchangeRateList, valuationDate, policy))
+            .Select(portfolio => PortfolioValuationCalculator.Valuate(
+                portfolio, operationList, priceList, valuationDate, policy))
             .ToList();
 
-        var investmentsSubtotal = SumInvestments(
-            portfolioValuations, exchangeRateList, valuationDate, policy, incompletenessReasons);
+        foreach (var valuation in portfolioValuations.Where(valuation => valuation.IsIncomplete))
+        {
+            foreach (var position in valuation.Positions.Where(position => position.IsIncomplete))
+            {
+                incompletenessReasons.Add(
+                    $"Portafoglio {valuation.Portfolio.Name}: {position.IncompletenessReason}");
+            }
+        }
+
+        var investmentsSubtotal = portfolioValuations.All(valuation => valuation.IsComplete)
+            ? new Money(
+                portfolioValuations.Sum(valuation =>
+                    valuation.Positions.Sum(position => position.Value!.Value.Amount)),
+                Euro)
+            : (Money?)null;
 
         var totalValue = accountsSubtotal is not null && investmentsSubtotal is not null
-            ? new Money(accountsSubtotal.Value.Amount + investmentsSubtotal.Value.Amount, ReportingCurrency)
+            ? new Money(accountsSubtotal.Value.Amount + investmentsSubtotal.Value.Amount, Euro)
             : (Money?)null;
 
         return new NetWorthSummary(
             valuationDate,
-            ReportingCurrency,
+            Euro,
             accountEntries,
             portfolioValuations,
             accountsSubtotal,
             investmentsSubtotal,
             totalValue,
             incompletenessReasons);
-    }
-
-    private static Money? SumInvestments(
-        IReadOnlyList<PortfolioValuation> portfolioValuations,
-        IReadOnlyCollection<ExchangeRateObservation> exchangeRateObservations,
-        DateOnly valuationDate,
-        ValuationPolicy policy,
-        List<string> incompletenessReasons)
-    {
-        var contributions = new List<Money>();
-        foreach (var valuation in portfolioValuations)
-        {
-            if (!valuation.IsComplete)
-            {
-                foreach (var position in valuation.Positions.Where(position => position.IsIncomplete))
-                {
-                    incompletenessReasons.Add($"Portafoglio {valuation.Portfolio.Name}: {position.IncompletenessReason}");
-                }
-
-                continue;
-            }
-
-            // Ogni posizione valutata è espressa nella valuta di riferimento del portafoglio (docs §7.3/7.4).
-            var portfolioTotal = new Money(
-                valuation.Positions.Sum(position => position.Value!.Value.Amount),
-                valuation.Portfolio.ReferenceCurrency);
-
-            if (portfolioTotal.Currency == ReportingCurrency)
-            {
-                contributions.Add(portfolioTotal);
-                continue;
-            }
-
-            var exchangeRateObservation = ExchangeRateObservations
-                .MostRecentOnOrBefore(exchangeRateObservations, portfolioTotal.Currency, valuationDate);
-            if (exchangeRateObservation is null)
-            {
-                incompletenessReasons.Add(
-                    $"Portafoglio {valuation.Portfolio.Name} ({portfolioTotal.Currency.Code}): nessuna osservazione di cambio valida alla data richiesta.");
-                continue;
-            }
-
-            if (policy.IsExchangeRateStale(exchangeRateObservation, valuationDate))
-            {
-                incompletenessReasons.Add(
-                    $"Portafoglio {valuation.Portfolio.Name} ({portfolioTotal.Currency.Code}): cambio obsoleto, ValidAt {FormatDate(exchangeRateObservation.ValidAt)}, età {AgeInDays(exchangeRateObservation.ValidAt, valuationDate)} giorni, soglia {policy.MaximumExchangeRateAgeDays} giorni.");
-                continue;
-            }
-
-            contributions.Add(exchangeRateObservation.Rate.Convert(portfolioTotal, ReportingCurrency));
-        }
-
-        return contributions.Count == portfolioValuations.Count
-            ? new Money(contributions.Sum(part => part.Amount), ReportingCurrency)
-            : null;
     }
 
     private static void EnsureDistinctAccountIds(IReadOnlyList<Account> accounts)
@@ -202,9 +149,6 @@ public static class NetWorthCalculator
             }
         }
     }
-
-    private static int AgeInDays(DateOnly validAt, DateOnly valuationDate) =>
-        valuationDate.DayNumber - validAt.DayNumber;
 
     private static string FormatDate(DateOnly date) =>
         date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

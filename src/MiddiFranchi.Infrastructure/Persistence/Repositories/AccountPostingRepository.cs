@@ -14,19 +14,40 @@ public sealed class AccountPostingRepository : IAccountPostingRepository
         _context = context;
     }
 
-    public async Task<IReadOnlyList<AccountPosting>> ListForAccountAsync(
+    public Task<IReadOnlyList<AccountPosting>> ListForAccountAsync(
         Guid accountId,
         DateOnly asOfDate,
+        CancellationToken cancellationToken = default) =>
+        ListAsync(accountId, fromDate: null, toDate: asOfDate, cancellationToken);
+
+    public async Task<IReadOnlyList<AccountPosting>> ListAsync(
+        Guid? accountId,
+        DateOnly? fromDate,
+        DateOnly? toDate,
         CancellationToken cancellationToken = default)
     {
-        var postingRecords = await _context.AccountPostings
+        var postings = _context.AccountPostings
             .AsNoTracking()
-            .Where(posting =>
-                posting.AccountId == accountId &&
-                posting.Operation.OperationDate <= asOfDate &&
-                !_context.FinancialOperations.Any(reversal =>
-                    reversal.Kind == OperationKind.Reversal &&
-                    reversal.OriginalOperationId == posting.FinancialOperationId))
+            .Where(posting => !_context.FinancialOperations.Any(reversal =>
+                reversal.Kind == OperationKind.Reversal &&
+                reversal.OriginalOperationId == posting.FinancialOperationId));
+
+        if (accountId is not null)
+        {
+            postings = postings.Where(posting => posting.AccountId == accountId);
+        }
+
+        if (fromDate is not null)
+        {
+            postings = postings.Where(posting => posting.Operation.OperationDate >= fromDate);
+        }
+
+        if (toDate is not null)
+        {
+            postings = postings.Where(posting => posting.Operation.OperationDate <= toDate);
+        }
+
+        var postingRecords = await postings
             .OrderBy(posting => posting.Operation.OperationDate)
             .ThenBy(posting => posting.FinancialOperationId)
             .ThenBy(posting => posting.Id)

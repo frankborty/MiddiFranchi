@@ -8,14 +8,12 @@ public sealed record InvestmentPositionValuation
         InvestmentPosition position,
         DateOnly valuationDate,
         PriceObservation? priceObservation,
-        ExchangeRateObservation? exchangeRateObservation,
         Money? value,
         string? incompletenessReason)
     {
         Position = position;
         ValuationDate = valuationDate;
         PriceObservation = priceObservation;
-        ExchangeRateObservation = exchangeRateObservation;
         Value = value;
         IncompletenessReason = incompletenessReason;
     }
@@ -25,8 +23,6 @@ public sealed record InvestmentPositionValuation
     public DateOnly ValuationDate { get; }
 
     public PriceObservation? PriceObservation { get; }
-
-    public ExchangeRateObservation? ExchangeRateObservation { get; }
 
     public Money? Value { get; }
 
@@ -40,15 +36,13 @@ public sealed record InvestmentPositionValuation
         InvestmentPosition position,
         DateOnly valuationDate,
         PriceObservation priceObservation,
-        ExchangeRateObservation? exchangeRateObservation,
         Money value) =>
-        new(position, valuationDate, priceObservation, exchangeRateObservation, value, null);
+        new(position, valuationDate, priceObservation, value, null);
 
     internal static InvestmentPositionValuation Incomplete(
         InvestmentPosition position,
         DateOnly valuationDate,
         PriceObservation? priceObservation,
-        ExchangeRateObservation? exchangeRateObservation,
         string incompletenessReason) =>
-        new(position, valuationDate, priceObservation, exchangeRateObservation, null, incompletenessReason);
+        new(position, valuationDate, priceObservation, null, incompletenessReason);
 }

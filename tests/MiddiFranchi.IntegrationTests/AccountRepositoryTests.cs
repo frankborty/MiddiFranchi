@@ -23,7 +23,7 @@ public class AccountRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             "Conto principale",
             AccountType.Checking,
-            Currency.Parse("USD"),
+            Currency.Euro,
             AccountStatus.Active);
         var repository = new AccountRepository(Context);
 
@@ -44,8 +44,8 @@ public class AccountRepositoryTests : PostgresTestBase
     public async Task List_ShouldReturnAccountsInDeterministicOrder()
     {
         var repository = new AccountRepository(Context);
-        var first = new Account(Guid.NewGuid(), "Alfa", AccountType.Cash, Currency.Parse("EUR"), AccountStatus.Active);
-        var second = new Account(Guid.NewGuid(), "Beta", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
+        var first = new Account(Guid.NewGuid(), "Alfa", AccountType.Cash, Currency.Euro, AccountStatus.Active);
+        var second = new Account(Guid.NewGuid(), "Beta", AccountType.Checking, Currency.Euro, AccountStatus.Active);
 
         await repository.AddAsync(second);
         await repository.AddAsync(first);
@@ -68,12 +68,12 @@ public class AccountRepositoryTests : PostgresTestBase
     public async Task AddDuplicateId_ShouldBeRejectedByTheDatabase()
     {
         var repository = new AccountRepository(Context);
-        var account = new Account(Guid.NewGuid(), "Conto", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
+        var account = new Account(Guid.NewGuid(), "Conto", AccountType.Checking, Currency.Euro, AccountStatus.Active);
 
         await repository.AddAsync(account);
         ClearTracker();
 
-        var duplicate = new Account(account.Id, "Duplicato", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
+        var duplicate = new Account(account.Id, "Duplicato", AccountType.Checking, Currency.Euro, AccountStatus.Active);
 
         await Should.ThrowAsync<DbUpdateException>(() => repository.AddAsync(duplicate));
     }

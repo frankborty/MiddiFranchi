@@ -1,0 +1,539 @@
+@page "/operations"
+@rendermode InteractiveServer
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject AccountService AccountsService
+@inject CategoryService CategoriesService
+@inject MovementService MovementsService
+@inject OperationRegistrationService Registrations
+@inject ReversalService Reversals
+@inject OperationHistoryService History
+
+<PageTitle>Operazioni</PageTitle>
+<h1>Operazioni</h1>
+<p class="page-intro">
+    Registrazione di entrate, uscite e trasferimenti, con storia operativa e vista economica
+    corrente dei movimenti.
+</p>
+
+@if (_loadError is not null)
+{
+    <p class="alert alert-error" role="alert">@_loadError</p>
+}
+else
+{
+    <div class="bento">
+        <div class="sp-5">
+            <section class="card">
+                <h2><MfIcon Name="swap" Size="18" /> Registra operazione</h2>
+                @if (_savedMessage is not null)
+                {
+                    <p class="alert alert-success" role="status">@_savedMessage</p>
+                }
+                @if (_saveError is not null)
+                {
+                    <p class="alert alert-error" role="alert">@_saveError</p>
+                }
+
+                <form class="form-grid" @onsubmit="RegisterAsync">
+                    <label>
+                        <span>Tipo di operazione *</span>
+                        <select @bind="_kind" @bind:after="OnKindChanged" required aria-required="true">
+                            <option value="@nameof(OperationFormKind.Income)">Entrata</option>
+                            <option value="@nameof(OperationFormKind.Expense)">Uscita</option>
+                            <option value="@nameof(OperationFormKind.Transfer)">Trasferimento</option>
+                        </select>
+                    </label>
+
+                    @if (IsTransfer)
+                    {
+                        <label>
+                            <span>Conto di origine *</span>
+                            <select @bind="_sourceAccountId" required aria-required="true">
+                                <option value="">Seleziona…</option>
+                                @foreach (var account in _accounts)
+                                {
+                                    if (account.Id != ParseOptionalGuid(_destinationAccountId))
+                                    {
+                                        <option value="@account.Id">@account.Name</option>
+                                    }
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            <span>Conto di destinazione *</span>
+                            <select @bind="_destinationAccountId" required aria-required="true">
+                                <option value="">Seleziona…</option>
+                                @foreach (var account in _accounts)
+                                {
+                                    if (account.Id != ParseOptionalGuid(_sourceAccountId))
+                                    {
+                                        <option value="@account.Id">@account.Name</option>
+                                    }
+                                }
+                            </select>
+                        </label>
+                    }
+                    else
+                    {
+                        <label>
+                            <span>@(IsIncome ? "Conto destinatario *" : "Conto di addebito *")</span>
+                            <select @bind="_accountId" required aria-required="true">
+                                <option value="">Seleziona…</option>
+                                @foreach (var account in _accounts)
+                                {
+                                    <option value="@account.Id">@account.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            <span>Categoria (@(IsIncome ? "entrate" : "uscite")) *</span>
+                            <select @bind="_categoryId" required aria-required="true">
+                                <option value="">Seleziona…</option>
+                                @foreach (var category in _categoryChoices)
+                                {
+                                    <option value="@category.Id">@category.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+
+                    <label>
+                        <span>Importo *</span>
+                        <input type="number" step="any" min="0" required aria-required="true" @bind="_sourceAmountText" />
+                    </label>
+
+                    <label>
+                        <span>Data economica (ValidAt) *</span>
+                        <input type="date" required aria-required="true" @bind="_validAt" />
+                    </label>
+                    <label>
+                        <span>Descrizione</span>
+                        <input type="text" maxlength="200" @bind="_description" />
+                    </label>
+                    <label>
+                        <span>Note</span>
+                        <input type="text" maxlength="200" @bind="_notes" />
+                    </label>
+
+                    <div class="form-actions">
+                        <button type="submit" class="primary-button" disabled="@_saving"><MfIcon Name="plus" Size="18" /> Registra @KindLabel</button>
+                        @if (_saving)
+                        {
+                            <span class="page-status">Registrazione in corso…</span>
+                        }
+                    </div>
+                </form>
+
+                @if (_missingAccountsWarning is not null)
+                {
+                    <p class="alert alert-warning" role="status">@_missingAccountsWarning</p>
+                }
+                @if (_missingCategoriesWarning is not null)
+                {
+                    <p class="alert alert-warning" role="status">@_missingCategoriesWarning <a class="primary-link" href="categories">Crea una categoria nella pagina Categorie.</a></p>
+                }
+            </section>
+        </div>
+
+        <div class="sp-7">
+            <section class="card">
+                <h2><MfIcon Name="clock" Size="18" /> Operazioni registrate</h2>
+                <p class="table-hint">Eliminare un'operazione non porta ripercussioni retroattive: l'operazione non sarà più visibile e i suoi effetti (posting) saranno annullati una sola volta.</p>
+
+                @if (_historyError is not null)
+                {
+                    <p class="alert alert-error" role="alert">@_historyError</p>
+                }
+                else if (_visibleRows.Count == 0)
+                {
+                    <EmptyState Title="Nessuna operazione registrata"
+                                Hint="Registra la prima operazione col modulo accanto."
+                                Icon="doc" />
+                }
+                else
+                {
+                    @if (_pendingReversalRow is not null)
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            <div>
+                                Eliminare l'operazione «@_pendingReversalRow.Description» (@HistoryKindLabel(_pendingReversalRow.Kind) del @Format.Date(_pendingReversalRow.OperationDate))?
+                                Non sarà più visibile né riutilizzabile: il saldo ricostruito tornerà come se non fosse mai esistita e il saldo manuale non cambia.
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="secondary-button" disabled="@_saving" @onclick="ConfirmReversalAsync">Elimina</button>
+                                <button type="button" class="secondary-button" disabled="@_saving" @onclick="CancelReversal">Annulla</button>
+                            </div>
+                        </div>
+                    }
+                    @if (_reversalError is not null)
+                    {
+                        <p class="alert alert-error" role="alert">@_reversalError</p>
+                    }
+                    <div class="table-scroll history-list" tabindex="0">
+                        <table class="data-table">
+                            <caption class="table-hint">Le operazioni eliminate restano nella storia: sono mostrate con stato "Eliminata".</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Data</th>
+                                    <th scope="col">Tipo</th>
+                                    <th scope="col">Descrizione</th>
+                                    <th scope="col">Stato</th>
+                                    <th scope="col">Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _visibleRows)
+                                {
+                                    <tr>
+                                        <td>@Format.Date(row.OperationDate)</td>
+                                        <td>@HistoryKindLabel(row.Kind)</td>
+                                        <td>@(row.Description ?? "-")</td>
+                                        <td>
+                                            <StatusBadge Tone="@(row.IsReversed ? "expense" : "neutral")">
+                                                @(row.IsReversed ? "Eliminata" : "Attiva")
+                                            </StatusBadge>
+                                        </td>
+                                        <td>
+                                            @if (row.IsReversible)
+                                            {
+                                                <button type="button" class="secondary-button" aria-label="@($"Elimina l'operazione del {Format.Date(row.OperationDate)}")" disabled="@(_saving || _pendingReversalRow is not null)" @onclick="() => StartReversal(row)">Elimina</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        </div>
+    </div>
+
+    <section class="card">
+        <h2><MfIcon Name="list" Size="18" /> Movimenti della vista economica corrente</h2>
+        <p class="table-hint">
+            Le operazioni eliminate sono escluse. Ordine deterministico: data, operazione, posting.
+            @if (_movements.Count > 10)
+            {
+                <text>Mostrate le ultime 10 voci di @_movements.Count. </text>
+                <a class="primary-link" href="movements">Vedi tutti i movimenti</a>
+            }
+        </p>
+        @if (_movementError is not null)
+        {
+            <p class="alert alert-error" role="alert">@_movementError</p>
+        }
+        else if (_movements.Count == 0)
+        {
+            <EmptyState Title="Nessun movimento registrato"
+                        Hint="Le operazioni registrate qui alimentano la vista economica dei movimenti."
+                        Icon="list" />
+        }
+        else
+        {
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Data</th>
+                            <th scope="col">Conto</th>
+                            <th scope="col">Tipo</th>
+                            <th scope="col">Descrizione</th>
+                            <th scope="col" class="num">Importo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in RecentMovements)
+                        {
+                            <tr>
+                                <td>@Format.Date(row.Posting.OperationDate)</td>
+                                <td>@row.AccountLabel</td>
+                                <td>@Format.PostingKindLabel(row.Posting.Kind)</td>
+                                <td>@(row.Posting.Operation.Description ?? "-")</td>
+                                <td class="num">
+                                    <AmountValue Value="@(new Money(row.Posting.SignedAmount, row.Posting.Currency))" Signed="true" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private sealed record MovementRow(AccountPosting Posting, string AccountLabel);
+
+    private IReadOnlyList<Account> _accounts = [];
+    private IReadOnlyList<Category> _categories = [];
+    private List<MovementRow> _movements = [];
+    private IReadOnlyList<OperationHistoryRow> _history = [];
+    private IReadOnlyList<OperationHistoryRow> _visibleRows => _history
+        .Where(row => !row.IsReversal)
+        .ToArray();
+    private IReadOnlyList<MovementRow> RecentMovements => _movements.Count <= 10
+        ? _movements
+        : _movements.Skip(_movements.Count - 10).ToArray();
+    private OperationHistoryRow? _pendingReversalRow;
+    private string? _historyError;
+    private string? _reversalError;
+    private string? _loadError;
+    private string? _saveError;
+    private string? _savedMessage;
+    private string? _movementError;
+    private string? _missingAccountsWarning;
+    private string? _missingCategoriesWarning;
+    private bool _saving;
+    private bool _loaded;
+
+    private string _kind = nameof(OperationFormKind.Income);
+    private string _accountId = "";
+    private string _categoryId = "";
+    private string _sourceAccountId = "";
+    private string _destinationAccountId = "";
+    private string _sourceAmountText = "";
+    private DateOnly? _validAt;
+    private string? _description;
+    private string? _notes;
+
+    private OperationFormKind Kind => Enum.Parse<OperationFormKind>(_kind);
+    private bool IsIncome => Kind == OperationFormKind.Income;
+    private bool IsExpense => Kind == OperationFormKind.Expense;
+    private bool IsTransfer => Kind == OperationFormKind.Transfer;
+    private string KindLabel => IsIncome ? "entrata" : IsExpense ? "uscita" : "trasferimento";
+    private IReadOnlyList<Category> _categoryChoices => OperationForm.CategoriesFor(Kind, _categories);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+        try
+        {
+            _loadError = null;
+            _accounts = await AccountsService.ListAsync();
+            _categories = await CategoriesService.ListAsync();
+            await LoadMovementsAsync();
+            await LoadHistoryAsync();
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile contattare il database. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+
+        _loaded = true;
+        if (_accounts.Count == 0)
+        {
+            _missingAccountsWarning = "Non ci sono conti: crea prima un conto dalla pagina Conti.";
+        }
+        else if (IsTransfer && _accounts.Count < 2)
+        {
+            _missingAccountsWarning = "Per un trasferimento servono almeno due conti.";
+        }
+
+        if (_categoryChoices.Count == 0)
+        {
+            _missingCategoriesWarning = IsIncome
+                ? "Non ci sono categorie di tipo Entrate: la registrazione di un'entrata ne richiede una."
+                : "Non ci sono categorie di tipo Uscite: la registrazione di un'uscita ne richiede una.";
+        }
+    }
+
+    private void OnKindChanged()
+    {
+        _saveError = null;
+        _savedMessage = null;
+        _missingCategoriesWarning = _categoryChoices.Count == 0
+            ? $"Non ci sono categorie compatibili col tipo scelto ({KindLabel})."
+            : null;
+    }
+
+    private async Task RegisterAsync()
+    {
+        if (!_loaded || _saving)
+        {
+            return;
+        }
+
+        if (_accounts.Count == 0)
+        {
+            _saveError = "Non ci sono conti: crea prima un conto dalla pagina Conti.";
+            return;
+        }
+
+        _saving = true;
+        _saveError = null;
+        _savedMessage = null;
+        StateHasChanged();
+        try
+        {
+            var dispatcher = new OperationFormDispatcher(Registrations);
+            var accountsById = _accounts.ToDictionary(account => account.Id);
+            var model = CurrentModel();
+            var result = await dispatcher.SubmitAsync(model, accountsById);
+            if (result.Succeeded)
+            {
+                _savedMessage = result.SuccessMessage;
+                ResetForm();
+                await LoadMovementsAsync();
+                await LoadHistoryAsync();
+            }
+            else
+            {
+                _saveError = result.Error;
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        try
+        {
+            _historyError = null;
+            _history = await History.ListAsync();
+        }
+        catch (Exception)
+        {
+            _historyError = "Impossibile leggere la cronologia delle operazioni.";
+        }
+    }
+
+    private void StartReversal(OperationHistoryRow row)
+    {
+        _reversalError = null;
+        _pendingReversalRow = row;
+    }
+
+    private void CancelReversal()
+    {
+        _pendingReversalRow = null;
+        _reversalError = null;
+    }
+
+    private async Task ConfirmReversalAsync()
+    {
+        if (_pendingReversalRow is null || _saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        _reversalError = null;
+        StateHasChanged();
+        try
+        {
+            await Reversals.ReverseAsync(_pendingReversalRow.Id);
+            _pendingReversalRow = null;
+            _savedMessage = "Operazione eliminata: i suoi effetti sono stati annullati e le righe dei movimenti non la mostrano più.";
+            await LoadHistoryAsync();
+            await LoadMovementsAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _reversalError = FriendlyDeleteError(exception.Message);
+        }
+        catch (ArgumentException exception)
+        {
+            _reversalError = FriendlyDeleteError(exception.Message);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            _reversalError = "Non è stato possibile eliminare l'operazione: risulta già eliminata.";
+        }
+        catch (Exception)
+        {
+            _reversalError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+            if (_reversalError is not null)
+            {
+                _pendingReversalRow = null;
+            }
+        }
+    }
+
+    /// <summary>Traduce i messaggi di servizio che parlano di "storno" in linguaggio di eliminazione per la UI.</summary>
+    private static string FriendlyDeleteError(string serviceMessage) =>
+        serviceMessage.Contains("stornat", StringComparison.OrdinalIgnoreCase)
+            ? "L'operazione risulta già eliminata."
+            : serviceMessage;
+
+    private static string HistoryKindLabel(OperationKind kind) => kind switch
+    {
+        OperationKind.Income => "Entrata",
+        OperationKind.Expense => "Uscita",
+        OperationKind.Transfer => "Trasferimento",
+        _ => kind.ToString(),
+    };
+
+    private OperationFormModel CurrentModel() =>
+        new()
+        {
+            Kind = Kind,
+            AccountId = ParseOptionalGuid(_accountId),
+            CategoryId = ParseOptionalGuid(_categoryId),
+            SourceAccountId = ParseOptionalGuid(_sourceAccountId),
+            DestinationAccountId = ParseOptionalGuid(_destinationAccountId),
+            SourceAmountText = _sourceAmountText,
+            ValidAt = _validAt,
+            Description = string.IsNullOrWhiteSpace(_description) ? null : _description,
+            Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes,
+        };
+
+    private void ResetForm()
+    {
+        _sourceAmountText = "";
+        _description = null;
+        _notes = null;
+        _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+    }
+
+    private async Task LoadMovementsAsync()
+    {
+        try
+        {
+            _movementError = null;
+            var postings = await MovementsService.ListAsync(null, null, null);
+            _movements = postings
+                .Select(posting => new MovementRow(
+                    posting,
+                    AccountLabelOf(posting.AccountId)))
+                .ToList();
+        }
+        catch (Exception exception)
+        {
+            _movementError = $"Impossibile leggere i movimenti: {exception.Message}";
+        }
+    }
+
+    private string AccountLabelOf(Guid accountId) =>
+        _accounts.FirstOrDefault(account => account.Id == accountId)?.Name
+            ?? "Conto " + accountId;
+
+    private static Guid? ParseOptionalGuid(string value) =>
+        Guid.TryParse(value, out var parsed) ? parsed : null;
+
+    private static bool TryParseAmount(string? text, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
+            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
+    }
+}

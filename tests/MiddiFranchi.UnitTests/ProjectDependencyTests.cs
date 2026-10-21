@@ -40,11 +40,12 @@ public class ProjectDependencyTests
     }
 
     [Fact]
-    public void IntegrationTests_ShouldReferenceDomainApplicationAndInfrastructure()
+    public void IntegrationTests_ShouldReferenceDomainApplicationInfrastructureAndWeb()
     {
+        // Web è incluso per testare i coordinatori della UI (senza framework di rendering).
         GetProjectReferences("tests/MiddiFranchi.IntegrationTests/MiddiFranchi.IntegrationTests.csproj")
             .ShouldBe(
-                ["MiddiFranchi.Domain", "MiddiFranchi.Application", "MiddiFranchi.Infrastructure"],
+                ["MiddiFranchi.Domain", "MiddiFranchi.Application", "MiddiFranchi.Infrastructure", "MiddiFranchi.Web"],
                 ignoreOrder: true);
     }
 

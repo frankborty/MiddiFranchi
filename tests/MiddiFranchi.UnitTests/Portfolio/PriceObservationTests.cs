@@ -6,8 +6,8 @@ namespace MiddiFranchi.UnitTests.Portfolio;
 
 public class PriceObservationTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
-    private static readonly Currency Usd = Currency.Parse("USD");
+    private static readonly Currency Euro = Currency.Euro;
+    private static readonly Currency Usd = Currency.Euro;
     private static readonly Guid ObservationId = Guid.Parse("5291e3fb-b4fc-463a-84c4-08a07a1c3be8");
     private static readonly Guid EtfId = Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b");
     private static readonly Guid BondId = Guid.Parse("8f31fbe7-4f8f-4b1f-a187-6c4e6f3c7c42");
@@ -61,15 +61,6 @@ public class PriceObservationTests
             .Message.ShouldContain("percentuale del nominale");
     }
 
-    [Fact]
-    public void Construction_ShouldRequireThePriceCurrencyToMatchTheQuoteCurrency()
-    {
-        var exception = Should.Throw<ArgumentException>(
-            () => PriceObservation.AtUnitPrice(
-                ObservationId, Etf, new UnitPrice(new Money(80m, Usd)), ValidAt, ObservedAt, "Manuale"));
-
-        exception.Message.ShouldContain("coincidere con la valuta di quotazione");
-    }
 
     [Fact]
     public void Construction_ShouldRejectNonPositivePercentPrices()

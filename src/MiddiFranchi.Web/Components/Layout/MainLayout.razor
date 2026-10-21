@@ -1,9 +1,55 @@
 ﻿@inherits LayoutComponentBase
+@using MiddiFranchi.Web.Components.Shared
 
-@Body
+<div class="page nav-collapsed" id="mf-page">
+    <aside class="app-sidebar" id="mf-sidebar">
+        <div class="sidebar-top">
+            <a class="brand-mark" href="" title="MiddiFranchi" aria-label="MiddiFranchi, vai alla dashboard">
+                <MfIcon Name="coin" Size="20" />
+            </a>
+            <span class="brand-name nav-label">MiddiFranchi</span>
+            <button type="button" class="sidebar-collapse" onclick="mfToggleNavCollapsed()"
+                    title="Espandi o comprimi il menu" aria-label="Espandi o comprimi il menu di navigazione">
+                <MfIcon Name="arrow-right" Size="15" />
+            </button>
+            <button type="button" class="sidebar-close" onclick="mfCloseNav()" aria-label="Chiudi il menu di navigazione">
+                <MfIcon Name="close" Size="18" />
+            </button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Navigazione principale">
+            <div class="sidebar-group">
+                <NavLink href="investments" class="nav-investments" Match="NavLinkMatch.All" title="Investimenti" aria-label="Investimenti"><MfIcon Name="pie" Size="20" /><span class="nav-label">Investimenti</span></NavLink>
+                <NavLink href="net-worth" class="nav-networth" Match="NavLinkMatch.All" title="Patrimonio netto" aria-label="Patrimonio netto"><MfIcon Name="trend" Size="20" /><span class="nav-label">Patrimonio netto</span></NavLink>
+            </div>
+            <div class="sidebar-group">
+                <NavLink href="" class="nav-home" Match="NavLinkMatch.All" title="Dashboard" aria-label="Dashboard"><MfIcon Name="chart" Size="20" /><span class="nav-label">Dashboard</span></NavLink>
+                <NavLink href="accounts" class="nav-accounts" Match="NavLinkMatch.Prefix" title="Conti" aria-label="Conti"><MfIcon Name="wallet" Size="20" /><span class="nav-label">Conti</span></NavLink>
+                <NavLink href="operations" class="nav-operations" Match="NavLinkMatch.All" title="Operazioni" aria-label="Operazioni"><MfIcon Name="swap" Size="20" /><span class="nav-label">Operazioni</span></NavLink>
+                <NavLink href="movements" class="nav-movements" Match="NavLinkMatch.All" title="Movimenti" aria-label="Movimenti"><MfIcon Name="list" Size="20" /><span class="nav-label">Movimenti</span></NavLink>
+            </div>
+            <div class="sidebar-group sidebar-group-bottom">
+                <NavLink href="categories" class="nav-categories" Match="NavLinkMatch.All" title="Categorie" aria-label="Categorie"><MfIcon Name="tag" Size="20" /><span class="nav-label">Categorie</span></NavLink>
+            </div>
+        </nav>
+    </aside>
+    <button type="button" class="sidebar-backdrop" onclick="mfCloseNav()" aria-label="Chiudi il menu di navigazione"></button>
+    <div class="app-main">
+        <button type="button" class="icon-button menu-toggle" onclick="mfToggleNav()"
+                aria-label="Apri il menu di navigazione" aria-expanded="false" aria-controls="mf-sidebar">
+            <MfIcon Name="menu" Size="20" />
+        </button>
+        <main class="page-body">
+            @Body
+        </main>
+        <a class="fab-add" href="operations" aria-label="Nuova operazione">
+            <MfIcon Name="plus" Size="24" />
+        </a>
+    </div>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    Si è verificato un errore imprevisto.
+    <a href="." class="reload">Ricarica</a>
+    <span class="dismiss" role="button" tabindex="0" aria-label="Nascondi il messaggio di errore">🗙</span>
 </div>
+

@@ -22,7 +22,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     {
         var (account, category) = await AddOrdinaryContextAsync(CategoryType.Income);
         var repository = new FinancialOperationRepository(Context);
-        var amount = new PositiveMoney(new Money(123.456789012345678m, Currency.Parse("EUR")));
+        var amount = new PositiveMoney(new Money(123.456789012345678m, Currency.Euro));
         var date = new DateOnly(2026, 3, 10);
         var recordedAt = new DateTimeOffset(2026, 3, 10, 12, 30, 45, TimeSpan.Zero);
         var income = new Income(
@@ -59,7 +59,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     {
         var (account, category) = await AddOrdinaryContextAsync(CategoryType.Expense);
         var repository = new FinancialOperationRepository(Context);
-        var amount = new PositiveMoney(new Money(42.50m, Currency.Parse("EUR")));
+        var amount = new PositiveMoney(new Money(42.50m, Currency.Euro));
         var date = new DateOnly(2026, 3, 11);
         var expense = new Expense(
             Guid.NewGuid(),
@@ -85,9 +85,9 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     public async Task Transfer_ShouldRoundTripAndPersistBothLegs()
     {
         var source = new Account(
-            Guid.NewGuid(), "Conto EUR", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
+            Guid.NewGuid(), "Conto EUR", AccountType.Checking, Currency.Euro, AccountStatus.Active);
         var destination = new Account(
-            Guid.NewGuid(), "Conto USD", AccountType.Checking, Currency.Parse("USD"), AccountStatus.Active);
+            Guid.NewGuid(), "Conto USD", AccountType.Checking, Currency.Euro, AccountStatus.Active);
         var accountRepository = new AccountRepository(Context);
         await accountRepository.AddAsync(source);
         await accountRepository.AddAsync(destination);
@@ -98,9 +98,8 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             source,
             destination,
-            new PositiveMoney(new Money(100m, Currency.Parse("EUR"))),
-            new PositiveMoney(new Money(108m, Currency.Parse("USD"))),
-            new ExchangeRate(Currency.Parse("USD"), 1.08m),
+            new PositiveMoney(new Money(100m, Currency.Euro)),
+            new PositiveMoney(new Money(100m, Currency.Euro)),
             date,
             new DateTimeOffset(2026, 3, 12, 15, 45, 0, TimeSpan.Zero));
 
@@ -110,11 +109,8 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         var loaded = (await repository.GetByIdAsync(transfer.Id)).ShouldBeOfType<Transfer>();
         loaded.SourceAccount.Id.ShouldBe(source.Id);
         loaded.DestinationAccount.Id.ShouldBe(destination.Id);
-        loaded.SourceAmount.Value.ShouldBe(new Money(100m, Currency.Parse("EUR")));
-        loaded.DestinationAmount.Value.ShouldBe(new Money(108m, Currency.Parse("USD")));
-        loaded.AppliedRate.ShouldNotBeNull();
-        loaded.AppliedRate.Value.Rate.ShouldBe(1.08m);
-        loaded.AppliedRate.Value.Currency.ShouldBe(Currency.Parse("USD"));
+        loaded.SourceAmount.Value.ShouldBe(new Money(100m, Currency.Euro));
+        loaded.DestinationAmount.Value.ShouldBe(new Money(100m, Currency.Euro));
 
         var postingRepository = new AccountPostingRepository(Context);
         var sourcePostings = await postingRepository.ListForAccountAsync(source.Id, date);
@@ -122,35 +118,35 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
 
         var sourcePosting = sourcePostings.ShouldHaveSingleItem();
         sourcePosting.SignedAmount.ShouldBe(-100m);
-        sourcePosting.Currency.ShouldBe(Currency.Parse("EUR"));
+        sourcePosting.Currency.ShouldBe(Currency.Euro);
         sourcePosting.Operation.Id.ShouldBe(transfer.Id);
         sourcePosting.Kind.ShouldBe(PostingKind.TransferLeg);
 
         var destinationPosting = destinationPostings.ShouldHaveSingleItem();
-        destinationPosting.SignedAmount.ShouldBe(108m);
-        destinationPosting.Currency.ShouldBe(Currency.Parse("USD"));
+        destinationPosting.SignedAmount.ShouldBe(100m);
+        destinationPosting.Currency.ShouldBe(Currency.Euro);
         destinationPosting.Operation.Id.ShouldBe(transfer.Id);
         destinationPosting.Kind.ShouldBe(PostingKind.TransferLeg);
 
         AccountBalanceCalculator.Balance(source, sourcePostings, date)
-            .ShouldBe(new Money(-100m, Currency.Parse("EUR")));
+            .ShouldBe(new Money(-100m, Currency.Euro));
         AccountBalanceCalculator.Balance(destination, destinationPostings, date)
-            .ShouldBe(new Money(108m, Currency.Parse("USD")));
+            .ShouldBe(new Money(100m, Currency.Euro));
     }
 
     [PostgresFact]
     public async Task InvestmentBuy_ShouldRoundTripWithFeesAndPostings()
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Parse("EUR"));
+            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
             Guid.NewGuid(),
             "Obbligazione",
             InstrumentType.Bond,
-            Currency.Parse("EUR"),
+            Currency.Euro,
             PriceUnit.PercentOfNominal,
-            new Money(1000m, Currency.Parse("EUR")));
+            new Money(1000m, Currency.Euro));
         var accountRepository = new AccountRepository(Context);
         var portfolioRepository = new InvestmentPortfolioRepository(Context);
         var instrumentRepository = new InstrumentRepository(Context);
@@ -162,7 +158,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         var date = new DateOnly(2026, 3, 18);
         var fee = new FeeComponent(
             FeeKind.BuyFee,
-            new PositiveMoney(new Money(2m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(2m, Currency.Euro)),
             account);
         var operation = InvestmentOperation.Buy(
             Guid.NewGuid(),
@@ -183,17 +179,17 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         loaded.Portfolio.Id.ShouldBe(portfolio.Id);
         loaded.Instrument.ShouldNotBeNull();
         loaded.Instrument.Id.ShouldBe(instrument.Id);
-        loaded.Instrument.NotionalValue.ShouldBe(new Money(1000m, Currency.Parse("EUR")));
+        loaded.Instrument.NotionalValue.ShouldBe(new Money(1000m, Currency.Euro));
         loaded.SettlementAccount.Id.ShouldBe(account.Id);
         loaded.Quantity.ShouldNotBeNull();
         loaded.Quantity.Value.Value.ShouldBe(3m);
         loaded.QuotedPrice.ShouldNotBeNull();
         loaded.QuotedPrice.Value.PercentOfNominal.ShouldBe(98.5m);
         loaded.UnitPrice.ShouldNotBeNull();
-        loaded.UnitPrice.Value.Price.ShouldBe(new Money(985m, Currency.Parse("EUR")));
+        loaded.UnitPrice.Value.Price.ShouldBe(new Money(985m, Currency.Euro));
         loaded.Fees.Count.ShouldBe(1);
         loaded.Fees[0].Kind.ShouldBe(FeeKind.BuyFee);
-        loaded.Fees[0].Amount.Value.ShouldBe(new Money(2m, Currency.Parse("EUR")));
+        loaded.Fees[0].Amount.Value.ShouldBe(new Money(2m, Currency.Euro));
         loaded.Fees[0].DebitAccount.Id.ShouldBe(account.Id);
 
         var postings = await new AccountPostingRepository(Context).ListForAccountAsync(account.Id, date);
@@ -201,17 +197,17 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         postings.Single(posting => posting.Kind == PostingKind.Capital).SignedAmount.ShouldBe(-2955m);
         postings.Single(posting => posting.Kind == PostingKind.Fee).SignedAmount.ShouldBe(-2m);
         AccountBalanceCalculator.Balance(account, postings, date)
-            .ShouldBe(new Money(-2957m, Currency.Parse("EUR")));
+            .ShouldBe(new Money(-2957m, Currency.Euro));
     }
 
     [PostgresFact]
     public async Task InvestmentFees_ShouldPreserveAmountsCurrenciesAndOrder()
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Parse("EUR"));
+            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Parse("EUR"), PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
         await new AccountRepository(Context).AddAsync(account);
         await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
         await new InstrumentRepository(Context).AddAsync(instrument);
@@ -220,11 +216,11 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         var date = new DateOnly(2026, 3, 30);
         var firstFee = new FeeComponent(
             FeeKind.BuyFee,
-            new PositiveMoney(new Money(2m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(2m, Currency.Euro)),
             account);
         var secondFee = new FeeComponent(
             FeeKind.BuyFee,
-            new PositiveMoney(new Money(1m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(1m, Currency.Euro)),
             account);
         var operation = InvestmentOperation.Buy(
             Guid.NewGuid(),
@@ -232,7 +228,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             instrument,
             account,
             new Quantity(1m),
-            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(80m, Currency.Parse("EUR")))),
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(80m, Currency.Euro))),
             [firstFee, secondFee],
             date,
             new DateTimeOffset(2026, 3, 30, 8, 0, 0, TimeSpan.Zero));
@@ -243,7 +239,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         var loaded = (await repository.GetByIdAsync(operation.Id)).ShouldBeOfType<InvestmentOperation>();
         loaded.Fees.Count.ShouldBe(2);
         loaded.Fees.Select(fee => fee.Amount.Value.Amount).ShouldBe([2m, 1m]);
-        loaded.Fees.ShouldAllBe(fee => fee.Amount.Value.Currency == Currency.Parse("EUR"));
+        loaded.Fees.ShouldAllBe(fee => fee.Amount.Value.Currency == Currency.Euro);
 
         var postings = await new AccountPostingRepository(Context).ListForAccountAsync(account.Id, date);
         postings.Count.ShouldBe(3);
@@ -252,7 +248,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             .OrderBy(amount => amount)
             .ShouldBe([-2m, -1m]);
         AccountBalanceCalculator.Balance(account, postings, date)
-            .ShouldBe(new Money(-83m, Currency.Parse("EUR")));
+            .ShouldBe(new Money(-83m, Currency.Euro));
     }
 
     [PostgresFact]
@@ -265,7 +261,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             account,
             category,
-            new PositiveMoney(new Money(100m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(100m, Currency.Euro)),
             date,
             new DateTimeOffset(2026, 3, 12, 8, 0, 0, TimeSpan.Zero));
         await repository.AddAsync(income);
@@ -292,7 +288,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             .ListForAccountAsync(account.Id, date.AddDays(1));
         postings.ShouldBeEmpty();
         AccountBalanceCalculator.Balance(account, postings, date.AddDays(1))
-            .ShouldBe(new Money(0m, Currency.Parse("EUR")));
+            .ShouldBe(new Money(0m, Currency.Euro));
 
         (await Context.AccountPostings.CountAsync(posting => posting.FinancialOperationId == income.Id))
             .ShouldBe(1);
@@ -301,7 +297,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             income.Id,
             account,
             category,
-            new PositiveMoney(new Money(100m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(100m, Currency.Euro)),
             date,
             new DateTimeOffset(2026, 3, 12, 8, 0, 0, TimeSpan.Zero));
         var duplicateReversal = new ReversalOperation(
@@ -317,10 +313,10 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     public async Task Dividend_ShouldRoundTripAndGenerateItsIncomePosting()
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Parse("EUR"));
+            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Parse("EUR"), PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
         await new AccountRepository(Context).AddAsync(account);
         await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
         await new InstrumentRepository(Context).AddAsync(instrument);
@@ -332,7 +328,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             portfolio,
             instrument,
             account,
-            new PositiveMoney(new Money(12.5m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(12.5m, Currency.Euro)),
             date,
             new DateTimeOffset(2026, 3, 19, 10, 0, 0, TimeSpan.Zero));
 
@@ -342,7 +338,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         var loaded = (await repository.GetByIdAsync(operation.Id)).ShouldBeOfType<InvestmentOperation>();
         loaded.InvestmentKind.ShouldBe(InvestmentOperationKind.Dividend);
         loaded.Amount.ShouldNotBeNull();
-        loaded.Amount.Value.Value.ShouldBe(new Money(12.5m, Currency.Parse("EUR")));
+        loaded.Amount.Value.Value.ShouldBe(new Money(12.5m, Currency.Euro));
         loaded.Instrument!.Id.ShouldBe(instrument.Id);
 
         var postings = await new AccountPostingRepository(Context).ListForAccountAsync(account.Id, date);
@@ -354,8 +350,8 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     public async Task StandaloneFee_ShouldRoundTripWithItsFeeComponent()
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Parse("EUR"));
+            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         await new AccountRepository(Context).AddAsync(account);
         await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
 
@@ -365,7 +361,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             portfolio,
             account,
-            new PositiveMoney(new Money(0.5m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(0.5m, Currency.Euro)),
             date,
             new DateTimeOffset(2026, 3, 21, 10, 0, 0, TimeSpan.Zero));
 
@@ -376,7 +372,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         loaded.InvestmentKind.ShouldBe(InvestmentOperationKind.StandaloneFee);
         loaded.Instrument.ShouldBeNull();
         loaded.Fees.ShouldHaveSingleItem().Kind.ShouldBe(FeeKind.Standalone);
-        loaded.Fees[0].Amount.Value.ShouldBe(new Money(0.5m, Currency.Parse("EUR")));
+        loaded.Fees[0].Amount.Value.ShouldBe(new Money(0.5m, Currency.Euro));
 
         var postings = await new AccountPostingRepository(Context).ListForAccountAsync(account.Id, date);
         postings.ShouldHaveSingleItem().SignedAmount.ShouldBe(-0.5m);
@@ -392,14 +388,14 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             account,
             category,
-            new PositiveMoney(new Money(10m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(10m, Currency.Euro)),
             new DateOnly(2026, 3, 10),
             new DateTimeOffset(2026, 3, 10, 8, 0, 0, TimeSpan.Zero));
         var second = new Income(
             Guid.NewGuid(),
             account,
             category,
-            new PositiveMoney(new Money(4m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(4m, Currency.Euro)),
             new DateOnly(2026, 3, 11),
             new DateTimeOffset(2026, 3, 11, 8, 0, 0, TimeSpan.Zero));
         await repository.AddAsync(first);
@@ -424,10 +420,10 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     public async Task ListInvestmentsByPortfolio_ShouldFilterByDateAndReversalStatus()
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Parse("EUR"));
+            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Parse("EUR"), PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
         await new AccountRepository(Context).AddAsync(account);
         await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
         await new InstrumentRepository(Context).AddAsync(instrument);
@@ -439,7 +435,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             instrument,
             account,
             new Quantity(1m),
-            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(80m, Currency.Parse("EUR")))),
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(80m, Currency.Euro))),
             null,
             new DateOnly(2026, 3, 10),
             new DateTimeOffset(2026, 3, 10, 8, 0, 0, TimeSpan.Zero));
@@ -449,7 +445,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             instrument,
             account,
             new Quantity(2m),
-            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(90m, Currency.Parse("EUR")))),
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(90m, Currency.Euro))),
             null,
             new DateOnly(2026, 3, 20),
             new DateTimeOffset(2026, 3, 20, 8, 0, 0, TimeSpan.Zero));
@@ -491,7 +487,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             operationId,
             account,
             category,
-            new PositiveMoney(new Money(10m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(10m, Currency.Euro)),
             date,
             recordedAt);
         await repository.AddAsync(first);
@@ -503,7 +499,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             operationId,
             account,
             category,
-            new PositiveMoney(new Money(20m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(20m, Currency.Euro)),
             date,
             recordedAt);
 
@@ -529,7 +525,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             Guid.NewGuid(),
             account,
             category,
-            new PositiveMoney(new Money(1m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(1m, Currency.Euro)),
             new DateOnly(2026, 3, 23),
             recordedAt);
 
@@ -546,7 +542,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     private async Task<(Account Account, Category Category)> AddOrdinaryContextAsync(CategoryType type)
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
+            Guid.NewGuid(), "Conto", AccountType.Checking, Currency.Euro, AccountStatus.Active);
         var category = new Category(Guid.NewGuid(), "Categoria", type);
         await new AccountRepository(Context).AddAsync(account);
         await new CategoryRepository(Context).AddAsync(category);

@@ -24,7 +24,7 @@ public sealed class MiddiFranchiDbContext : DbContext
 
     public DbSet<PriceObservationRecord> PriceObservations => Set<PriceObservationRecord>();
 
-    public DbSet<ExchangeRateObservationRecord> ExchangeRateObservations => Set<ExchangeRateObservationRecord>();
+    public DbSet<ManualBalanceRecord> ManualBalances => Set<ManualBalanceRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

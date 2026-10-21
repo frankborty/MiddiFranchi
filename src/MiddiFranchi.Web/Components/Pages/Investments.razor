@@ -1,0 +1,338 @@
+@page "/investments"
+@rendermode InteractiveServer
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Portfolio
+@using MiddiFranchi.Domain.Shared
+@inject InvestmentOverviewService InvestmentService
+
+<PageTitle>Investimenti</PageTitle>
+
+<header class="dashboard-header">
+    <div>
+        <h1>Investimenti</h1>
+        <p class="page-intro">
+            Capitale investito, valore attuale e rendimento delle posizioni. Il rendimento è
+            calcolato sul costo residuo e non include dividendi o cedole.
+        </p>
+    </div>
+    @if (_overview is not null)
+    {
+        <div class="dashboard-header-meta">
+            <StatusBadge Tone="investments">
+                <MfIcon Name="calendar" Size="14" /> Dati al @Format.Date(_overview.ValuationDate)
+            </StatusBadge>
+            <span class="table-hint">@_overview.Portfolios.Count portafogli · @_overview.AssetCount asset</span>
+        </div>
+    }
+</header>
+
+@if (_loading)
+{
+    <section class="card dashboard-loading" aria-live="polite">
+        <p class="page-status" role="status">Caricamento degli investimenti…</p>
+    </section>
+}
+else if (_loadError is not null)
+{
+    <section class="card">
+        <p class="alert alert-error" role="alert">@_loadError</p>
+        <p class="table-hint">Nessun dato è stato mostrato per evitare valori non affidabili.</p>
+        <div class="form-actions">
+            <button type="button" class="primary-button" @onclick="LoadAsync">Riprova</button>
+        </div>
+    </section>
+}
+else if (_overview is { } overview)
+{
+    @if (!overview.HasPortfolios)
+    {
+        <EmptyState Title="Nessun portafoglio registrato"
+                    Hint="I portafogli e le posizioni d'investimento compaiono qui quando presenti."
+                    Icon="chart" />
+    }
+    else
+    {
+        @if (overview.HasAssets)
+        {
+            <section class="card investment-summary-card" aria-labelledby="investment-summary-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="investment-summary-title"><MfIcon Name="chart" Size="18" /> Riepilogo complessivo</h2>
+                        <p class="section-sub">Capitale investito e valore attuale in EUR.</p>
+                    </div>
+                    <StatusBadge Tone="@(overview.IsComplete ? "income" : "warning")">
+                        @(overview.IsComplete ? "Dati completi" : "Dati incompleti")
+                    </StatusBadge>
+                </div>
+
+                @if (overview.History.Points.Count >= 2)
+                {
+                    <ApexTimeSeriesChart Title="Valore nel tempo"
+                                         Description="Valore attuale alle date con quotazioni o operazioni disponibili."
+                                         Currency="@overview.History.Currency"
+                                         Series="@BuildHistorySeries(overview.History)" />
+                }
+                else
+                {
+                    <p class="page-status">
+                        Non ci sono ancora almeno due date storiche per disegnare l'andamento.
+                    </p>
+                }
+
+                @if (overview.IsComplete &&
+                     overview.InvestedCapital is { } invested &&
+                     overview.Performance is { } performance &&
+                     overview.PerformancePercent is { } performancePercent)
+                {
+                    <p class="investment-summary-meta">
+                        Capitale investito <strong>@Format.Money(invested)</strong> ·
+                        Rendimento
+                        <span class="investment-summary-performance @PerformanceClass(performance)">
+                            @Format.MoneySigned(performance) @Format.SignedPercent(performancePercent)
+                        </span>
+                        · @overview.Portfolios.Count portafogli · @overview.AssetCount asset
+                    </p>
+                }
+                else if (!overview.IsComplete)
+                {
+                    <div class="alert alert-warning" role="status">
+                        Il valore corrente non è calcolabile: mancano dati necessari. Nessun valore
+                        è stato stimato o sostituito con zero.
+                    </div>
+                    @if (overview.IncompletenessReasons.Count > 0)
+                    {
+                        <ul class="investment-reasons" aria-label="Motivi dell'incompletezza del riepilogo investimenti">
+                            @foreach (var reason in overview.IncompletenessReasons)
+                            {
+                                <li>@reason</li>
+                            }
+                        </ul>
+                    }
+                }
+
+                @if (!overview.History.IsComplete && overview.History.IncompletenessReasons.Count > 0)
+                {
+                    <details class="investment-details">
+                        <summary>Dettagli sui punti storici non calcolabili</summary>
+                        <ul class="investment-reasons">
+                            @foreach (var reason in overview.History.IncompletenessReasons)
+                            {
+                                <li>@reason</li>
+                            }
+                        </ul>
+                    </details>
+                }
+            </section>
+        }
+        else
+        {
+            <section class="card">
+                <EmptyState Title="Nessuna posizione aperta"
+                            Hint="Le posizioni si costruiscono dalle operazioni d'investimento registrate."
+                            Icon="coin" />
+            </section>
+        }
+
+        @foreach (var portfolio in overview.Portfolios)
+        {
+            <section class="card investment-portfolio" aria-labelledby="portfolio-@portfolio.PortfolioId">
+                <div class="section-head">
+                    <div>
+                        <h2 id="portfolio-@portfolio.PortfolioId">
+                            <MfIcon Name="pie" Size="18" /> @portfolio.Name
+                        </h2>
+                        <p class="section-sub">
+                            @portfolio.Assets.Count asset
+                        </p>
+                    </div>
+                    <StatusBadge Tone="@(portfolio.IsComplete ? "income" : "warning")">
+                        @(portfolio.IsComplete ? "Dati completi" : "Dati incompleti")
+                    </StatusBadge>
+                </div>
+
+                @if (portfolio.HasAssets)
+                {
+                    <dl class="portfolio-summary">
+                        <div class="portfolio-summary-item">
+                            <dt>Capitale investito</dt>
+                            <dd><AmountValue Value="@portfolio.InvestedCapital" UnavailableText="Non disponibile" Tone="neutral" /></dd>
+                        </div>
+                        <div class="portfolio-summary-item">
+                            <dt>Valore attuale</dt>
+                            <dd><AmountValue Value="@portfolio.CurrentValue" UnavailableText="Non disponibile" Tone="balance" /></dd>
+                        </div>
+                        <div class="portfolio-summary-item">
+                            <dt>Rendimento</dt>
+                            <dd>
+                                @if (portfolio.Performance is { } portfolioPerformance)
+                                {
+                                    <span class="portfolio-performance @PerformanceClass(portfolioPerformance)">
+                                        <AmountValue Value="@portfolioPerformance" Signed="true" />
+                                        @if (portfolio.PerformancePercent is { } portfolioPercent)
+                                        {
+                                            <span class="portfolio-performance-percent">@Format.SignedPercent(portfolioPercent)</span>
+                                        }
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="amount amount-neutral">Non calcolabile</span>
+                                }
+                            </dd>
+                        </div>
+                    </dl>
+
+                    <div class="asset-grid">
+                        @foreach (var asset in portfolio.Assets)
+                        {
+                            <article class="asset-card" aria-labelledby="asset-@asset.InstrumentId">
+                                <div class="asset-card-head">
+                                    <div>
+                                        <h3 id="asset-@asset.InstrumentId">@asset.Name</h3>
+                                        <div class="asset-meta">
+                                            <StatusBadge Tone="@(asset.Symbol is null ? "warning" : "investments")">
+                                                @(asset.Symbol ?? "Sigla non disponibile")
+                                            </StatusBadge>
+                                            <span>@Format.InstrumentTypeLabel(asset.Type)</span>
+                                            <span aria-hidden="true">·</span>
+                                            <span>@Format.Quantity(asset.Quantity)</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="asset-value">
+                                    <span class="asset-value-label">Valore attuale</span>
+                                    @if (asset.CurrentValue is { } currentValue)
+                                    {
+                                        <strong>@Format.Money(currentValue)</strong>
+                                    }
+                                    else
+                                    {
+                                        <strong class="asset-value-missing">Non valorizzato</strong>
+                                    }
+                                </div>
+
+                                <dl class="asset-stats">
+                                    <div>
+                                        <dt>Capitale investito</dt>
+                                        <dd><AmountValue Value="@asset.InvestedCapital" UnavailableText="Non disponibile" Tone="neutral" /></dd>
+                                    </div>
+                                    <div>
+                                        <dt>Rendimento</dt>
+                                        <dd>
+                                            @if (asset.Performance is { } assetPerformance)
+                                            {
+                                                <span class="asset-performance @PerformanceClass(assetPerformance)">
+                                                    <AmountValue Value="@assetPerformance" Signed="true" />
+                                                    @if (asset.PerformancePercent is { } assetPercent)
+                                                    {
+                                                        <span class="asset-performance-percent">@Format.SignedPercent(assetPercent)</span>
+                                                    }
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="amount amount-neutral">Non calcolabile</span>
+                                            }
+                                        </dd>
+                                    </div>
+                                </dl>
+
+                                @if (asset.IncompletenessReason is not null)
+                                {
+                                    <p class="asset-reason">
+                                        <MfIcon Name="alert" Size="14" /> @asset.IncompletenessReason
+                                    </p>
+                                }
+                            </article>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <EmptyState Title="Nessuna posizione aperta"
+                                Hint="Le posizioni si costruiscono dalle operazioni d'acquisto e vendita fino alla data corrente."
+                                Icon="coin" />
+                }
+
+                @if (!portfolio.IsComplete && portfolio.IncompletenessReasons.Count > 0)
+                {
+                    <details class="investment-details">
+                        <summary>Dettagli sui dati mancanti del portafoglio</summary>
+                        <ul class="investment-reasons">
+                            @foreach (var reason in portfolio.IncompletenessReasons)
+                            {
+                                <li>@reason</li>
+                            }
+                        </ul>
+                    </details>
+                }
+            </section>
+        }
+
+        <section class="dashboard-note" aria-label="Note sui rendimenti">
+            <MfIcon Name="info" Size="18" />
+            <p>
+                <strong>Come è calcolato il rendimento.</strong> Il capitale investito è il costo
+                residuo medio ponderato, commissioni d'acquisto incluse. Il rendimento è la differenza
+                tra valore attuale e capitale investito; dividendi, cedole e commissioni autonome non
+                sono inclusi. Le posizioni non valorizzate o senza costo storico non vengono trattate
+                come zero. Il grafico usa le date con quotazioni o operazioni disponibili e non
+                interpola i valori mancanti. La sigla è quella registrata nello strumento; se assente
+                viene mostrato “Sigla non disponibile”.
+            </p>
+        </section>
+    }
+}
+
+@code {
+    private InvestmentOverview? _overview;
+    private bool _loading = true;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        _overview = null;
+
+        try
+        {
+            _overview = await InvestmentService.LoadAsync();
+        }
+        catch (InvalidOperationException exception)
+            when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile caricare gli investimenti. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string PerformanceClass(Money? performance) => performance switch
+    {
+        { Amount: > 0m } => "positive",
+        { Amount: < 0m } => "negative",
+        _ => "neutral",
+    };
+
+    private static IReadOnlyList<TimeSeriesSeries> BuildHistorySeries(InvestmentHistory history) =>
+    [
+        new(
+            "Valore attuale",
+            history.Points
+                .Select(point => new TimeSeriesPoint(
+                    point.Date,
+                    point.CurrentValue?.Amount))
+                .ToArray(),
+            Color: "#f97316"),
+    ];
+}

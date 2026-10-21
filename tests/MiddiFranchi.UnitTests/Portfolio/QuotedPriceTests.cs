@@ -6,8 +6,8 @@ namespace MiddiFranchi.UnitTests.Portfolio;
 
 public class QuotedPriceTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
-    private static readonly Currency Usd = Currency.Parse("USD");
+    private static readonly Currency Euro = Currency.Euro;
+    private static readonly Currency Usd = Currency.Euro;
     private static readonly Instrument Etf = new(
         Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
     private static readonly Instrument Bond = new(
@@ -79,11 +79,4 @@ public class QuotedPriceTests
             .ParamName.ShouldBe("instrument");
     }
 
-    [Fact]
-    public void EffectiveUnitPrice_ShouldRequireTheUnitPriceCurrencyToMatchTheQuoteCurrency()
-    {
-        Should.Throw<ArgumentException>(
-                () => QuotedPrice.AtUnitPrice(new UnitPrice(new Money(80m, Usd))).EffectiveUnitPrice(Etf))
-            .ParamName.ShouldBe("instrument");
-    }
 }

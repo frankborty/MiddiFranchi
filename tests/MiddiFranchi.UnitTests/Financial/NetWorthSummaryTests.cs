@@ -6,7 +6,7 @@ namespace MiddiFranchi.UnitTests.Financial;
 
 public class NetWorthSummaryTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
+    private static readonly Currency Euro = Currency.Euro;
     private static readonly DateOnly ValuationDate = new(2026, 3, 31);
 
     [Fact]

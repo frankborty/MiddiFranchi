@@ -5,7 +5,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Configurations;
 
 internal static class PersistenceConfigurationHelpers
 {
-    public const string SupportedCurrenciesSql = "'EUR', 'USD', 'GBP', 'JPY'";
+    public const string SupportedCurrenciesSql = "'EUR'";
 
     public static PropertyBuilder<string> IsRequiredText(this PropertyBuilder<string> property) =>
         property.HasColumnType("text").IsRequired();

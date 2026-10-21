@@ -6,7 +6,7 @@ namespace MiddiFranchi.UnitTests.Financial;
 
 public class AccountPostingTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
+    private static readonly Currency Euro = Currency.Euro;
     private static readonly Guid OperationId = Guid.Parse("67839f70-137b-4e73-ad3c-743e6cba0eb6");
     private static readonly Guid AccountId = Guid.Parse("d2f104e2-26bd-46dc-9db3-b83c059fe0a4");
     private static readonly DateOnly OperationDate = new(2026, 3, 10);

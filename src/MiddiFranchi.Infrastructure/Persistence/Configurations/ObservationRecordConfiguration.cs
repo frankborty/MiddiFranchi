@@ -42,31 +42,3 @@ internal sealed class PriceObservationRecordConfiguration : IEntityTypeConfigura
     }
 }
 
-internal sealed class ExchangeRateObservationRecordConfiguration : IEntityTypeConfiguration<ExchangeRateObservationRecord>
-{
-    public void Configure(EntityTypeBuilder<ExchangeRateObservationRecord> builder)
-    {
-        builder.ToTable("ExchangeRateObservations", table =>
-        {
-            table.HasCheckConstraint(
-                "CK_ExchangeRateObservations_Rate",
-                "\"Rate\" > 0");
-            table.HasCheckConstraint(
-                "CK_ExchangeRateObservations_CurrencyCode",
-                $"\"RateCurrencyCode\" IN ({PersistenceConfigurationHelpers.SupportedCurrenciesSql})");
-            table.HasCheckConstraint(
-                "CK_ExchangeRateObservations_NonEurCurrency",
-                "\"RateCurrencyCode\" <> 'EUR'");
-        });
-
-        builder.HasKey(observation => observation.Id);
-        builder.Property(observation => observation.Id).ValueGeneratedNever();
-        builder.Property(observation => observation.RateCurrencyCode).IsCurrencyCode();
-        builder.Property(observation => observation.Rate).IsNumeric();
-        builder.Property(observation => observation.ValidAt).HasColumnType("date").IsRequired();
-        builder.Property(observation => observation.ObservedAt).HasColumnType("timestamptz").IsRequired();
-        builder.Property(observation => observation.Source).IsRequiredText();
-
-        builder.HasIndex(observation => new { observation.RateCurrencyCode, observation.ValidAt, observation.ObservedAt });
-    }
-}

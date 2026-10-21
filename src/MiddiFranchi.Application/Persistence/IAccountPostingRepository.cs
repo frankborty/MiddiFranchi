@@ -8,4 +8,10 @@ public interface IAccountPostingRepository
         Guid accountId,
         DateOnly asOfDate,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AccountPosting>> ListAsync(
+        Guid? accountId,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        CancellationToken cancellationToken = default);
 }

@@ -42,6 +42,8 @@ public sealed class InstrumentRecord
 
     public string Name { get; set; } = null!;
 
+    public string? Symbol { get; set; }
+
     public InstrumentType Type { get; set; }
 
     public string QuoteCurrencyCode { get; set; } = null!;
@@ -96,10 +98,6 @@ public sealed class FinancialOperationRecord
     public decimal? DestinationAmountAmount { get; set; }
 
     public string? DestinationAmountCurrencyCode { get; set; }
-
-    public decimal? AppliedRateRate { get; set; }
-
-    public string? AppliedRateCurrencyCode { get; set; }
 
     public InvestmentOperationKind? InvestmentKind { get; set; }
 
@@ -191,17 +189,20 @@ public sealed class PriceObservationRecord
     public string Source { get; set; } = null!;
 }
 
-public sealed class ExchangeRateObservationRecord
+public sealed class ManualBalanceRecord
 {
     public Guid Id { get; set; }
 
-    public string RateCurrencyCode { get; set; } = null!;
+    public Guid AccountId { get; set; }
 
-    public decimal Rate { get; set; }
+    public AccountRecord Account { get; set; } = null!;
+
+    public decimal AmountAmount { get; set; }
+
+    public string AmountCurrencyCode { get; set; } = null!;
 
     public DateOnly ValidAt { get; set; }
 
-    public DateTimeOffset ObservedAt { get; set; }
-
-    public string Source { get; set; } = null!;
+    public DateTimeOffset RecordedAt { get; set; }
 }
+

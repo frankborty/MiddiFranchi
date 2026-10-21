@@ -28,25 +28,20 @@ public class MigrationAndConstraintTests : PostgresTestBase
     }
 
     [PostgresFact]
-    public async Task Database_ShouldAcceptAllCurrenciesSupportedByTheDomain()
+    public async Task Database_ShouldAcceptOnlyEur()
     {
-        var codes = new[] { "EUR", "USD", "GBP", "JPY" };
-
-        foreach (var code in codes)
+        Context.Accounts.Add(new AccountRecord
         {
-            Context.Accounts.Add(new AccountRecord
-            {
-                Id = Guid.NewGuid(),
-                Name = "Conto " + code,
-                Type = AccountType.Checking,
-                CurrencyCode = code,
-                Status = AccountStatus.Active,
-            });
-        }
+            Id = Guid.NewGuid(),
+            Name = "Conto EUR",
+            Type = AccountType.Checking,
+            CurrencyCode = "EUR",
+            Status = AccountStatus.Active,
+        });
 
         await Context.SaveChangesAsync();
 
-        (await Context.Accounts.CountAsync()).ShouldBe(codes.Length);
+        (await Context.Accounts.CountAsync()).ShouldBe(1);
     }
 
     [PostgresFact]
@@ -138,10 +133,10 @@ public class MigrationAndConstraintTests : PostgresTestBase
     public async Task Database_ShouldRejectFeesAttachedToDividendOperations()
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Parse("EUR"));
+            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Parse("EUR"), PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
         await new AccountRepository(Context).AddAsync(account);
         await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
         await new InstrumentRepository(Context).AddAsync(instrument);
@@ -151,7 +146,7 @@ public class MigrationAndConstraintTests : PostgresTestBase
             portfolio,
             instrument,
             account,
-            new PositiveMoney(new Money(12.5m, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(12.5m, Currency.Euro)),
             new DateOnly(2026, 3, 25),
             new DateTimeOffset(2026, 3, 25, 8, 0, 0, TimeSpan.Zero));
         await new FinancialOperationRepository(Context).AddAsync(dividend);
@@ -222,23 +217,7 @@ public class MigrationAndConstraintTests : PostgresTestBase
     }
 
     [PostgresFact]
-    public async Task Database_ShouldRejectEurExchangeRateObservation()
-    {
-        Context.ExchangeRateObservations.Add(new ExchangeRateObservationRecord
-        {
-            Id = Guid.NewGuid(),
-            RateCurrencyCode = "EUR",
-            Rate = 1m,
-            ValidAt = new DateOnly(2026, 3, 27),
-            ObservedAt = new DateTimeOffset(2026, 3, 27, 8, 0, 0, TimeSpan.Zero),
-            Source = "test",
-        });
-
-        await Should.ThrowAsync<DbUpdateException>(() => Context.SaveChangesAsync());
-    }
-
-    [PostgresFact]
-    public async Task Database_ShouldRejectTransferWithoutRateAcrossCurrencies()
+    public async Task Database_ShouldRejectUnbalancedTransfer()
     {
         var source = new AccountRecord
         {
@@ -251,9 +230,9 @@ public class MigrationAndConstraintTests : PostgresTestBase
         var destination = new AccountRecord
         {
             Id = Guid.NewGuid(),
-            Name = "Destinazione USD",
+            Name = "Destinazione EUR",
             Type = AccountType.Checking,
-            CurrencyCode = "USD",
+            CurrencyCode = "EUR",
             Status = AccountStatus.Active,
         };
         Context.Accounts.AddRange(source, destination);
@@ -269,7 +248,7 @@ public class MigrationAndConstraintTests : PostgresTestBase
             SourceAmountAmount = 100m,
             SourceAmountCurrencyCode = "EUR",
             DestinationAmountAmount = 108m,
-            DestinationAmountCurrencyCode = "USD",
+            DestinationAmountCurrencyCode = "EUR",
         });
 
         await Should.ThrowAsync<DbUpdateException>(() => Context.SaveChangesAsync());
@@ -305,29 +284,10 @@ public class MigrationAndConstraintTests : PostgresTestBase
         await Should.ThrowAsync<DbUpdateException>(() => Context.SaveChangesAsync());
     }
 
-    [PostgresFact]
-    public async Task Database_ShouldRejectPostingCurrencyDifferentFromTheAccount()
-    {
-        var (account, category) = await AddOrdinaryContextAsync();
-        var income = await AddIncomeAsync(account, category);
-        ClearTracker();
-
-        Context.AccountPostings.Add(new AccountPostingRecord
-        {
-            FinancialOperationId = income.Id,
-            AccountId = account.Id,
-            Kind = PostingKind.Income,
-            CurrencyCode = "USD",
-            SignedAmount = 10m,
-        });
-
-        await Should.ThrowAsync<DbUpdateException>(() => Context.SaveChangesAsync());
-    }
-
     private async Task<(Account Account, Category Category)> AddOrdinaryContextAsync()
     {
         var account = new Account(
-            Guid.NewGuid(), "Conto", AccountType.Checking, Currency.Parse("EUR"), AccountStatus.Active);
+            Guid.NewGuid(), "Conto", AccountType.Checking, Currency.Euro, AccountStatus.Active);
         var category = new Category(Guid.NewGuid(), "Categoria", CategoryType.Income);
         await new AccountRepository(Context).AddAsync(account);
         await new CategoryRepository(Context).AddAsync(category);
@@ -343,7 +303,7 @@ public class MigrationAndConstraintTests : PostgresTestBase
             Guid.NewGuid(),
             account,
             category,
-            new PositiveMoney(new Money(amount, Currency.Parse("EUR"))),
+            new PositiveMoney(new Money(amount, Currency.Euro)),
             new DateOnly(2026, 3, 24),
             new DateTimeOffset(2026, 3, 24, 8, 0, 0, TimeSpan.Zero));
         await new FinancialOperationRepository(Context).AddAsync(income);

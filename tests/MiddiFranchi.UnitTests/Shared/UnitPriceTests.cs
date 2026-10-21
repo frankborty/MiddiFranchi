@@ -5,8 +5,7 @@ namespace MiddiFranchi.UnitTests.Shared;
 
 public class UnitPriceTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
-    private static readonly Currency Usd = Currency.Parse("USD");
+    private static readonly Currency Euro = Currency.Euro;
     private static readonly Quantity OneUnit = new(1m);
 
     [Fact]
@@ -37,7 +36,6 @@ public class UnitPriceTests
     public void Equality_ShouldBeByPrice()
     {
         new UnitPrice(new Money(80m, Euro)).ShouldBe(new UnitPrice(new Money(80m, Euro)));
-        new UnitPrice(new Money(80m, Euro)).ShouldNotBe(new UnitPrice(new Money(80m, Usd)));
         new UnitPrice(new Money(80m, Euro)).ShouldNotBe(new UnitPrice(new Money(81m, Euro)));
     }
 
@@ -55,10 +53,10 @@ public class UnitPriceTests
     [Fact]
     public void Multiplication_ShouldNotRoundPartialProducts()
     {
-        var unitPrice = new UnitPrice(new Money(0.335m, Usd));
+        var unitPrice = new UnitPrice(new Money(0.335m, Euro));
         var quantity = new Quantity(3m);
 
-        (unitPrice * quantity).ShouldBe(new Money(1.005m, Usd));
+        (unitPrice * quantity).ShouldBe(new Money(1.005m, Euro));
     }
 
     [Fact]

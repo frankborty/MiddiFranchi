@@ -34,10 +34,6 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
                 "\"DestinationAmountCurrencyCode\" IS NULL OR " +
                 $"\"DestinationAmountCurrencyCode\" IN ({PersistenceConfigurationHelpers.SupportedCurrenciesSql})");
             table.HasCheckConstraint(
-                "CK_FinancialOperations_AppliedRateCurrency",
-                "\"AppliedRateCurrencyCode\" IS NULL OR " +
-                $"\"AppliedRateCurrencyCode\" IN ({PersistenceConfigurationHelpers.SupportedCurrenciesSql})");
-            table.HasCheckConstraint(
                 "CK_FinancialOperations_QuotedPriceCurrency",
                 "\"QuotedPricePriceCurrencyCode\" IS NULL OR " +
                 $"\"QuotedPricePriceCurrencyCode\" IN ({PersistenceConfigurationHelpers.SupportedCurrenciesSql})");
@@ -53,10 +49,6 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
                 "CK_FinancialOperations_DestinationAmountPair",
                 "(\"DestinationAmountAmount\" IS NULL AND \"DestinationAmountCurrencyCode\" IS NULL) OR " +
                 "(\"DestinationAmountAmount\" IS NOT NULL AND \"DestinationAmountAmount\" > 0 AND \"DestinationAmountCurrencyCode\" IS NOT NULL)");
-            table.HasCheckConstraint(
-                "CK_FinancialOperations_AppliedRatePair",
-                "(\"AppliedRateRate\" IS NULL AND \"AppliedRateCurrencyCode\" IS NULL) OR " +
-                "(\"AppliedRateRate\" IS NOT NULL AND \"AppliedRateRate\" > 0 AND \"AppliedRateCurrencyCode\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_FinancialOperations_Quantity",
                 "\"QuantityValue\" IS NULL OR \"QuantityValue\" > 0");
@@ -100,8 +92,7 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
                 "\"Kind\" = 'Transfer' OR (\"SourceAccountId\" IS NULL AND " +
                 "\"DestinationAccountId\" IS NULL AND \"SourceAmountAmount\" IS NULL AND " +
                 "\"SourceAmountCurrencyCode\" IS NULL AND \"DestinationAmountAmount\" IS NULL AND " +
-                "\"DestinationAmountCurrencyCode\" IS NULL AND \"AppliedRateRate\" IS NULL AND " +
-                "\"AppliedRateCurrencyCode\" IS NULL)");
+                "\"DestinationAmountCurrencyCode\" IS NULL)");
             table.HasCheckConstraint(
                 "CK_FinancialOperations_NonOrdinaryFields",
                 "\"Kind\" IN ('Income', 'Expense') OR (\"AccountId\" IS NULL AND \"CategoryId\" IS NULL)");
@@ -132,20 +123,10 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
                 "CK_FinancialOperations_DistinctTransferAccounts",
                 "\"Kind\" <> 'Transfer' OR \"SourceAccountId\" <> \"DestinationAccountId\"");
             table.HasCheckConstraint(
-                "CK_FinancialOperations_AppliedRateNonEur",
-                "\"AppliedRateCurrencyCode\" IS NULL OR \"AppliedRateCurrencyCode\" <> 'EUR'");
-            table.HasCheckConstraint(
-                "CK_FinancialOperations_TransferRateSemantics",
-                "\"Kind\" <> 'Transfer' OR " +
-                "((\"SourceAmountCurrencyCode\" = \"DestinationAmountCurrencyCode\" AND " +
-                "\"SourceAmountAmount\" = \"DestinationAmountAmount\" AND " +
-                "\"AppliedRateRate\" IS NULL AND \"AppliedRateCurrencyCode\" IS NULL) OR " +
-                "(\"SourceAmountCurrencyCode\" <> \"DestinationAmountCurrencyCode\" AND " +
-                "\"AppliedRateRate\" IS NOT NULL AND \"AppliedRateCurrencyCode\" IS NOT NULL AND " +
-                "((\"SourceAmountCurrencyCode\" = 'EUR' AND " +
-                "\"AppliedRateCurrencyCode\" = \"DestinationAmountCurrencyCode\") OR " +
-                "(\"DestinationAmountCurrencyCode\" = 'EUR' AND " +
-                "\"AppliedRateCurrencyCode\" = \"SourceAmountCurrencyCode\"))))");
+                "CK_FinancialOperations_TransferEurAmounts",
+                "\"Kind\" <> 'Transfer' OR (\"SourceAmountCurrencyCode\" = 'EUR' AND " +
+                "\"DestinationAmountCurrencyCode\" = 'EUR' AND " +
+                "\"SourceAmountAmount\" = \"DestinationAmountAmount\")");
         });
 
         builder.HasKey(operation => operation.Id);
@@ -162,8 +143,6 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
         builder.Property(operation => operation.SourceAmountCurrencyCode).IsOptionalCurrencyCode();
         builder.Property(operation => operation.DestinationAmountAmount).IsOptionalNumeric();
         builder.Property(operation => operation.DestinationAmountCurrencyCode).IsOptionalCurrencyCode();
-        builder.Property(operation => operation.AppliedRateRate).IsOptionalNumeric();
-        builder.Property(operation => operation.AppliedRateCurrencyCode).IsOptionalCurrencyCode();
         builder.Property(operation => operation.InvestmentKind).IsOptionalEnumString();
         builder.Property(operation => operation.QuantityValue).IsOptionalNumeric();
         builder.Property(operation => operation.QuotedPriceUnit).IsOptionalEnumString();

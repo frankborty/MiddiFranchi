@@ -6,8 +6,8 @@ namespace MiddiFranchi.UnitTests.Portfolio;
 
 public class InstrumentTests
 {
-    private static readonly Currency Euro = Currency.Parse("EUR");
-    private static readonly Currency Usd = Currency.Parse("USD");
+    private static readonly Currency Euro = Currency.Euro;
+    private static readonly Currency Usd = Currency.Euro;
 
     [Fact]
     public void Construction_ShouldAcceptAnEtfQuotedPerUnit()
@@ -62,21 +62,6 @@ public class InstrumentTests
         exception.Message.ShouldContain("percentuale del nominale");
     }
 
-    [Fact]
-    public void Construction_ShouldRejectNotionalValueInADifferentCurrency()
-    {
-        var exception = Should.Throw<ArgumentException>(
-            () => new Instrument(
-                Guid.NewGuid(),
-                "Obbligazione società",
-                InstrumentType.Bond,
-                Euro,
-                PriceUnit.PercentOfNominal,
-                new Money(1000m, Usd)));
-
-        exception.ParamName.ShouldBe("notionalValue");
-        exception.Message.ShouldContain("coincidere");
-    }
 
     [Theory]
     [InlineData(0)]
@@ -95,6 +80,50 @@ public class InstrumentTests
                 new Money(amount, Euro)));
 
         exception.Message.ShouldContain("positivo");
+    }
+
+    [Fact]
+    public void Construction_ShouldNormalizeAndKeepTheOptionalSymbol()
+    {
+        var instrument = new Instrument(
+            Guid.NewGuid(),
+            "ETF globale",
+            InstrumentType.Etf,
+            Euro,
+            PriceUnit.PerUnit,
+            symbol: "  V3MA  ");
+
+        instrument.Symbol.ShouldBe("V3MA");
+    }
+
+    [Fact]
+    public void Construction_ShouldTreatABlankSymbolAsAbsent()
+    {
+        var instrument = new Instrument(
+            Guid.NewGuid(),
+            "ETF globale",
+            InstrumentType.Etf,
+            Euro,
+            PriceUnit.PerUnit,
+            symbol: "   ");
+
+        instrument.Symbol.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Construction_ShouldRejectASymbolLongerThanTheSupportedLength()
+    {
+        var exception = Should.Throw<ArgumentException>(
+            () => new Instrument(
+                Guid.NewGuid(),
+                "ETF globale",
+                InstrumentType.Etf,
+                Euro,
+                PriceUnit.PerUnit,
+                symbol: new string('A', 33)));
+
+        exception.ParamName.ShouldBe("symbol");
+        exception.Message.ShouldContain("32");
     }
 
     [Fact]

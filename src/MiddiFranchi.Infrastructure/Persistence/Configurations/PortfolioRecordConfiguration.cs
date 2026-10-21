@@ -54,6 +54,7 @@ internal sealed class InstrumentRecordConfiguration : IEntityTypeConfiguration<I
         builder.HasKey(instrument => instrument.Id);
         builder.Property(instrument => instrument.Id).ValueGeneratedNever();
         builder.Property(instrument => instrument.Name).IsRequiredText();
+        builder.Property(instrument => instrument.Symbol).HasMaxLength(32);
         builder.Property(instrument => instrument.Type).IsEnumString();
         builder.Property(instrument => instrument.QuoteCurrencyCode).IsCurrencyCode();
         builder.Property(instrument => instrument.PriceUnit).IsEnumString();

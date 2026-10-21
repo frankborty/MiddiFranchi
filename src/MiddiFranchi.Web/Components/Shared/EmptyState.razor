@@ -1,0 +1,28 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Web.Components.Shared
+<div class="empty-state">
+    <MfIcon Name="@Icon" Size="28" />
+    <p class="empty-title">@Title</p>
+    <p class="empty-hint">@Hint</p>
+    @if (!string.IsNullOrWhiteSpace(Href) && !string.IsNullOrWhiteSpace(ActionLabel))
+    {
+        <a class="primary-link" href="@Href">@ActionLabel</a>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Hint { get; set; }
+
+    [Parameter]
+    public string Icon { get; set; } = "doc";
+
+    [Parameter]
+    public string? Href { get; set; }
+
+    [Parameter]
+    public string? ActionLabel { get; set; }
+}

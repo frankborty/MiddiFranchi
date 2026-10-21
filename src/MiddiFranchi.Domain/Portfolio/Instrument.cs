@@ -10,7 +10,8 @@ public sealed class Instrument
         InstrumentType type,
         Currency quoteCurrency,
         PriceUnit priceUnit,
-        Money? notionalValue = null)
+        Money? notionalValue = null,
+        string? symbol = null)
     {
         if (id == Guid.Empty)
         {
@@ -38,12 +39,21 @@ public sealed class Instrument
                 nameof(notionalValue));
         }
 
+        var normalizedSymbol = string.IsNullOrWhiteSpace(symbol) ? null : symbol.Trim();
+        if (normalizedSymbol is { Length: > 32 })
+        {
+            throw new ArgumentException(
+                "La sigla dello strumento non può superare 32 caratteri.",
+                nameof(symbol));
+        }
+
         Id = id;
         Name = name;
         Type = type;
         QuoteCurrency = quoteCurrency;
         PriceUnit = priceUnit;
         NotionalValue = notionalValue;
+        Symbol = normalizedSymbol;
     }
 
     public Guid Id { get; }
@@ -57,6 +67,9 @@ public sealed class Instrument
     public PriceUnit PriceUnit { get; }
 
     public Money? NotionalValue { get; }
+
+    /// <summary>Sigla di mercato opzionale (per esempio un ticker); assente se non registrata.</summary>
+    public string? Symbol { get; }
 
     private static void ValidateNotionalValue(Money? notionalValue, Currency quoteCurrency)
     {
