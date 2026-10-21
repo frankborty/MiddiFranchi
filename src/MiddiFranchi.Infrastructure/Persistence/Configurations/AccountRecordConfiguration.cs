@@ -50,5 +50,6 @@ internal sealed class CategoryRecordConfiguration : IEntityTypeConfiguration<Cat
         builder.Property(category => category.Name).IsRequiredText();
         builder.Property(category => category.Type).IsEnumString();
         builder.Property(category => category.Description).IsOptionalText();
+        builder.Property(category => category.Subcategory).IsOptionalText();
     }
 }

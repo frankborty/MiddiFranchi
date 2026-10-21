@@ -11,7 +11,6 @@
             <div class="section-head">
                 <div>
                     <h2 id="account-settings-dialog-title">Impostazioni conto</h2>
-                    <p class="section-sub">Nome, tipo, stato, colore e icona.</p>
                 </div>
                 <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
                     <MfIcon Name="close" Size="18" />
@@ -25,20 +24,11 @@
 
             <form class="form-grid" @onsubmit="SaveAsync">
                 <label>
-                    <span>Nome *</span>
+                    <span>Nome</span>
                     <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
                 </label>
                 <label>
-                    <span>Tipo *</span>
-                    <select @bind="_type" required aria-required="true">
-                        @foreach (var type in Enum.GetValues<AccountType>())
-                        {
-                            <option value="@type">@Format.AccountTypeLabel(type)</option>
-                        }
-                    </select>
-                </label>
-                <label>
-                    <span>Stato *</span>
+                    <span>Stato</span>
                     <select @bind="_status" required aria-required="true">
                         @foreach (var status in Enum.GetValues<AccountStatus>())
                         {
@@ -61,7 +51,7 @@
                 <div class="icon-upload">
                     <span class="dialog-label">Icona</span>
                     <div class="icon-upload-preview">
-                        <AccountAvatar Name="@_name" Type="@_type" IconDataUrl="@_iconDataUrl" />
+                        <AccountAvatar Name="@_name" Type="@Type" IconDataUrl="@_iconDataUrl" />
                         <div class="icon-upload-actions">
                             <InputFile OnChange="OnIconSelected" accept="image/png,image/jpeg,image/webp" />
                             @if (!string.IsNullOrWhiteSpace(_iconDataUrl))
@@ -78,6 +68,38 @@
                     <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
                 </div>
             </form>
+
+            <div class="settings-danger-zone">
+                @if (_deleteError is not null)
+                {
+                    <p class="alert alert-error" role="alert">@_deleteError</p>
+                }
+                @if (!CanDelete)
+                {
+                    <p class="table-hint">Conto speciale: non eliminabile.</p>
+                }
+                else if (_confirmingDelete)
+                {
+                    <div class="alert alert-warning" role="alert">
+                        <div>
+                            Eliminare definitivamente il conto «@_name»? Le rilevazioni manuali saranno eliminate.
+                            I conti con operazioni registrate non possono essere eliminati.
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="danger-button" disabled="@_deleting" @onclick="DeleteAsync">
+                                <MfIcon Name="trash" Size="16" /> Elimina definitivamente
+                            </button>
+                            <button type="button" class="secondary-button" disabled="@_deleting" @onclick="CancelDelete">Annulla</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <button type="button" class="danger-button" disabled="@_saving" @onclick="StartDelete">
+                        <MfIcon Name="trash" Size="16" /> Elimina conto
+                    </button>
+                }
+            </div>
         </div>
     </div>
 }
@@ -97,18 +119,24 @@
 
     [Parameter] public string? IconDataUrl { get; set; }
 
+    [Parameter] public bool CanDelete { get; set; } = true;
+
     [Parameter] public EventCallback OnClose { get; set; }
 
     [Parameter] public EventCallback<Account> OnSaved { get; set; }
+
+    [Parameter] public EventCallback OnDeleted { get; set; }
 
     private const long MaxIconBytes = 512 * 1024;
     private const string DefaultColor = "#0ea5e9";
 
     private bool _wasOpen;
     private bool _saving;
+    private bool _deleting;
+    private bool _confirmingDelete;
     private string? _error;
+    private string? _deleteError;
     private string _name = "";
-    private AccountType _type;
     private AccountStatus _status;
     private string _colorHex = DefaultColor;
     private bool _useAutomaticColor = true;
@@ -129,9 +157,11 @@
 
         _wasOpen = true;
         _saving = false;
+        _deleting = false;
+        _confirmingDelete = false;
         _error = null;
+        _deleteError = null;
         _name = Name;
-        _type = Type;
         _status = Status;
         _colorHex = string.IsNullOrWhiteSpace(ColorHex) ? DefaultColor : ColorHex;
         _useAutomaticColor = string.IsNullOrWhiteSpace(ColorHex);
@@ -140,12 +170,53 @@
 
     private async Task CloseAsync()
     {
-        if (_saving)
+        if (_saving || _deleting)
         {
             return;
         }
 
         await OnClose.InvokeAsync();
+    }
+
+    private void StartDelete()
+    {
+        _deleteError = null;
+        _confirmingDelete = true;
+    }
+
+    private void CancelDelete()
+    {
+        _confirmingDelete = false;
+        _deleteError = null;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!_confirmingDelete || _deleting)
+        {
+            return;
+        }
+
+        _deleting = true;
+        _deleteError = null;
+        try
+        {
+            await AccountsService.DeleteAsync(AccountId);
+            await OnDeleted.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _deleteError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _deleteError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _deleting = false;
+        }
     }
 
     private async Task OnIconSelected(InputFileChangeEventArgs args)
@@ -206,7 +277,7 @@
             var updated = await AccountsService.UpdateAsync(new UpdateAccountRequest(
                 AccountId,
                 _name.Trim(),
-                _type,
+                Type,
                 _status,
                 _useAutomaticColor ? null : _colorHex,
                 _iconDataUrl));

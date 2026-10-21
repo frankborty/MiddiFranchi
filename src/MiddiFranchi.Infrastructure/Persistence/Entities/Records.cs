@@ -29,6 +29,8 @@ public sealed class CategoryRecord
     public CategoryType Type { get; set; }
 
     public string? Description { get; set; }
+
+    public string? Subcategory { get; set; }
 }
 
 public sealed class InvestmentPortfolioRecord

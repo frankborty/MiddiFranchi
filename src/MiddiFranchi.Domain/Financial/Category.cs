@@ -2,7 +2,7 @@ namespace MiddiFranchi.Domain.Financial;
 
 public sealed class Category
 {
-    public Category(Guid id, string name, CategoryType type, string? description = null)
+    public Category(Guid id, string name, CategoryType type, string? description = null, string? subcategory = null)
     {
         if (id == Guid.Empty)
         {
@@ -18,6 +18,7 @@ public sealed class Category
         Name = name;
         Type = type;
         Description = description;
+        Subcategory = string.IsNullOrWhiteSpace(subcategory) ? null : subcategory.Trim();
     }
 
     public Guid Id { get; }
@@ -27,4 +28,6 @@ public sealed class Category
     public CategoryType Type { get; }
 
     public string? Description { get; }
+
+    public string? Subcategory { get; }
 }

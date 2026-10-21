@@ -35,11 +35,6 @@ else
                 {
                     <p class="alert alert-success" role="status">@_createdMessage</p>
                 }
-                @if (_deleteError is not null)
-                {
-                    <p class="alert alert-error" role="alert">@_deleteError</p>
-                }
-
                 @if (_rows.Count == 0)
                 {
                     <EmptyState Title="Nessun conto registrato"
@@ -53,10 +48,7 @@ else
                             <thead>
                                 <tr>
                                     <th scope="col">Conto</th>
-                                    <th scope="col">Tipo</th>
                                     <th scope="col">Stato</th>
-                                    <th scope="col" class="num">Saldo manuale</th>
-                                    <th scope="col">Azioni</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -64,48 +56,23 @@ else
                                 {
                                     <tr>
                                         <td>
-                                            <div class="settings-account-name">
+                                            <button type="button"
+                                                    class="settings-account-link"
+                                                    aria-label="@($"Impostazioni di {row.Name}")"
+                                                    title="Apri impostazioni conto"
+                                                    @onclick="() => OpenSettings(row)">
                                                 <AccountAvatar Name="@row.Name" Type="@row.Type" IconDataUrl="@row.IconDataUrl" />
-                                                <span>@row.Name</span>
+                                                <span class="settings-account-name-text">@row.Name</span>
                                                 @if (IsSpecialAccount(row.AccountId))
                                                 {
                                                     <StatusBadge Tone="brand">Speciale</StatusBadge>
                                                 }
-                                            </div>
+                                            </button>
                                         </td>
-                                        <td>@Format.AccountTypeLabel(row.Type)</td>
                                         <td>
                                             <StatusBadge Tone="@(row.Status == AccountStatus.Active ? "income" : "neutral")">
                                                 @Format.AccountStatusLabel(row.Status)
                                             </StatusBadge>
-                                        </td>
-                                        <td class="num">
-                                            <AmountValue Value="@row.ManualBalance" UnavailableText="Non disponibile" />
-                                        </td>
-                                        <td>
-                                            <div class="settings-actions">
-                                                @if (_pendingDeleteId == row.AccountId)
-                                                {
-                                                    <button type="button" class="danger-button" disabled="@_deleting" @onclick="ConfirmDeleteAsync">Elimina</button>
-                                                    <button type="button" class="secondary-button" disabled="@_deleting" @onclick="CancelDelete">Annulla</button>
-                                                }
-                                                else
-                                                {
-                                                    <button type="button" class="icon-button"
-                                                            aria-label="@($"Impostazioni di {row.Name}")" title="Impostazioni conto"
-                                                            @onclick="() => OpenSettings(row)">
-                                                        <MfIcon Name="settings" Size="18" />
-                                                    </button>
-                                                    @if (!IsSpecialAccount(row.AccountId))
-                                                    {
-                                                        <button type="button" class="icon-button"
-                                                                aria-label="@($"Elimina il conto {row.Name}")" title="Elimina conto"
-                                                                @onclick="() => StartDelete(row)">
-                                                            <MfIcon Name="trash" Size="18" />
-                                                        </button>
-                                                    }
-                                                }
-                                            </div>
                                         </td>
                                     </tr>
                                 }
@@ -203,8 +170,10 @@ else
                                Status="@selected.Status"
                                ColorHex="@selected.ColorHex"
                                IconDataUrl="@selected.IconDataUrl"
+                               CanDelete="@(!IsSpecialAccount(selected.AccountId))"
                                OnClose="CloseSettings"
-                               OnSaved="OnAccountSettingsSaved" />
+                               OnSaved="OnAccountSettingsSaved"
+                               OnDeleted="OnAccountDeleted" />
     }
 }
 
@@ -231,9 +200,6 @@ else
     private bool _creating;
     private string? _createError;
     private string? _createdMessage;
-    private bool _deleting;
-    private Guid? _pendingDeleteId;
-    private string? _deleteError;
     private AccountOverviewRow? _settingsRow;
     private bool _settingsOpen;
 
@@ -331,47 +297,10 @@ else
         }
     }
 
-    private void StartDelete(AccountOverviewRow row)
+    private async Task OnAccountDeleted()
     {
-        _deleteError = null;
-        _createdMessage = null;
-        _pendingDeleteId = row.AccountId;
-    }
-
-    private void CancelDelete()
-    {
-        _pendingDeleteId = null;
-        _deleteError = null;
-    }
-
-    private async Task ConfirmDeleteAsync()
-    {
-        if (_pendingDeleteId is not { } accountId || _deleting)
-        {
-            return;
-        }
-
-        _deleting = true;
-        _deleteError = null;
-        try
-        {
-            await AccountsService.DeleteAsync(accountId);
-            _pendingDeleteId = null;
-            _createdMessage = "Conto eliminato.";
-            await LoadAccountsAsync();
-        }
-        catch (InvalidOperationException exception)
-        {
-            _deleteError = exception.Message;
-        }
-        catch (Exception)
-        {
-            _deleteError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
-        }
-        finally
-        {
-            _deleting = false;
-        }
+        _createdMessage = "Conto eliminato.";
+        await LoadAccountsAsync();
     }
 
     private void OpenSettings(AccountOverviewRow row)

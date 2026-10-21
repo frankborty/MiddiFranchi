@@ -180,10 +180,8 @@ else
                                         @row.Name
                                     </a>
                                     <span class="account-summary-meta">
-                                        @Format.AccountTypeLabel(row.Type)
                                         @if (row.ManualReading is not null)
                                         {
-                                            <span aria-hidden="true">·</span>
                                             <span>@Format.Date(row.ManualReading.ValidAt)</span>
                                         }
                                         @if (row.Status == AccountStatus.Closed)

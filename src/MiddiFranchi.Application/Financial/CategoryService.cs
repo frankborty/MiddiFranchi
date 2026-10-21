@@ -18,9 +18,25 @@ public sealed class CategoryService
             Guid.NewGuid(),
             request.Name,
             request.Type,
-            request.Description);
+            request.Description,
+            request.Subcategory);
         await _categories.AddAsync(category, cancellationToken);
         return category;
+    }
+
+    public async Task<Category> UpdateAsync(Guid categoryId, NewCategory request, CancellationToken cancellationToken = default)
+    {
+        var existing = await _categories.GetByIdAsync(categoryId, cancellationToken)
+            ?? throw new InvalidOperationException("Categoria non trovata.");
+
+        var updated = new Category(
+            existing.Id,
+            request.Name,
+            request.Type,
+            request.Description,
+            request.Subcategory);
+        await _categories.UpdateAsync(updated, cancellationToken);
+        return updated;
     }
 
     public Task<Category?> GetByIdAsync(Guid categoryId, CancellationToken cancellationToken = default) =>

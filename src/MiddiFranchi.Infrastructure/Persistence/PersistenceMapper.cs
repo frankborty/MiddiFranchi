@@ -33,13 +33,15 @@ internal static class PersistenceMapper
         Name = category.Name,
         Type = category.Type,
         Description = category.Description,
+        Subcategory = category.Subcategory,
     };
 
     public static Category ToDomain(CategoryRecord record) => new(
         record.Id,
         record.Name,
         record.Type,
-        record.Description);
+        record.Description,
+        record.Subcategory);
 
     public static InvestmentPortfolioRecord ToRecord(InvestmentPortfolio portfolio) => new()
     {

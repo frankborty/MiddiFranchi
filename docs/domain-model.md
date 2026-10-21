@@ -97,7 +97,7 @@ Un Instrument è una voce di catalogo riutilizzabile da più portafogli. Conserv
 I prezzi di mercato e il costo medio ponderato sono espressi in EUR. Non esistono valute di quotazione diverse dall'EUR.
 
 2.4 Category
-Una Category classifica esclusivamente entrate e spese ordinarie. Ha nome, tipo (Income oppure Expense), descrizione opzionale e stato. Non classifica trasferimenti o operazioni d'investimento.
+Una Category classifica esclusivamente entrate e spese ordinarie. Ha nome (categoria), sottocategoria, tipo (Income oppure Expense), descrizione opzionale e stato. La sottocategoria è obbligatoria nella creazione e modifica dalla UI; i dati preesistenti senza sottocategoria restano leggibili. Non classifica trasferimenti o operazioni d'investimento.
 
 3. FinancialOperation e registrazioni monetarie
 3.1 Dati comuni

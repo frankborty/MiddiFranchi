@@ -18,15 +18,42 @@ public class CategoryServiceTests
     [Fact]
     public async Task Create_ShouldPersistANewCategory()
     {
-        var request = new NewCategory("Spese casa", CategoryType.Expense, "Per la casa");
+        var request = new NewCategory("Spese casa", CategoryType.Expense, "Per la casa", "Affitto");
 
         var created = await _service.CreateAsync(request);
 
         created.Name.ShouldBe("Spese casa");
         created.Type.ShouldBe(CategoryType.Expense);
         created.Description.ShouldBe("Per la casa");
+        created.Subcategory.ShouldBe("Affitto");
         _categories.Categories.ShouldHaveSingleItem().ShouldBe(created);
         created.Id.ShouldNotBe(Guid.Empty);
+    }
+
+    [Fact]
+    public async Task Update_ShouldReplaceTheCategoryFields()
+    {
+        var created = await _service.CreateAsync(
+            new NewCategory("Casa", CategoryType.Expense, null, "Affitto"));
+
+        var updated = await _service.UpdateAsync(
+            created.Id,
+            new NewCategory("Casa", CategoryType.Expense, "Canone", "Bollette"));
+
+        updated.Id.ShouldBe(created.Id);
+        updated.Name.ShouldBe("Casa");
+        updated.Description.ShouldBe("Canone");
+        updated.Subcategory.ShouldBe("Bollette");
+        _categories.Categories.ShouldHaveSingleItem().Subcategory.ShouldBe("Bollette");
+    }
+
+    [Fact]
+    public async Task Update_ShouldRejectAMissingCategory()
+    {
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.UpdateAsync(Guid.NewGuid(), new NewCategory("Casa", CategoryType.Expense)));
+
+        exception.Message.ShouldContain("Categoria non trovata");
     }
 
     [Fact]

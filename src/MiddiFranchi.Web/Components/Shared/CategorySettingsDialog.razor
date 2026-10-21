@@ -1,0 +1,163 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@inject CategoryService CategoriesService
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="category-settings-dialog-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="category-settings-dialog-title">Impostazioni categoria</h2>
+                    <p class="section-sub">Categoria, sottocategoria, tipo e descrizione.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveAsync">
+                <label>
+                    <span>Categoria *</span>
+                    <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
+                </label>
+                <label>
+                    <span>Sottocategoria *</span>
+                    <input type="text" maxlength="200" required aria-required="true" @bind="_subcategory" />
+                </label>
+                <label>
+                    <span>Tipo *</span>
+                    <select @bind="_type" required aria-required="true">
+                        <option value="@nameof(CategoryType.Income)">Entrate</option>
+                        <option value="@nameof(CategoryType.Expense)">Uscite</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Descrizione</span>
+                    <input type="text" maxlength="200" @bind="_description" />
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@_saving">Salva impostazioni</button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter, EditorRequired] public Guid CategoryId { get; set; }
+
+    [Parameter] public string Name { get; set; } = "";
+
+    [Parameter] public string? Subcategory { get; set; }
+
+    [Parameter] public CategoryType Type { get; set; }
+
+    [Parameter] public string? Description { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<Category> OnSaved { get; set; }
+
+    private bool _wasOpen;
+    private bool _saving;
+    private string? _error;
+    private string _name = "";
+    private string _subcategory = "";
+    private string _type = nameof(CategoryType.Income);
+    private string? _description;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _saving = false;
+        _error = null;
+        _name = Name;
+        _subcategory = Subcategory ?? "";
+        _type = Type.ToString();
+        _description = Description;
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "La categoria è obbligatoria.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_subcategory))
+        {
+            _error = "La sottocategoria è obbligatoria.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var updated = await CategoriesService.UpdateAsync(
+                CategoryId,
+                new NewCategory(
+                    _name.Trim(),
+                    Enum.Parse<CategoryType>(_type),
+                    string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
+                    _subcategory.Trim()));
+            await OnSaved.InvokeAsync(updated);
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Salvataggio non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

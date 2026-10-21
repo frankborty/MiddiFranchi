@@ -44,7 +44,7 @@
         <main class="page-body">
             @Body
         </main>
-        @if (!IsAccountsSection)
+        @if (!IsAccountsSection && !IsSettingsSection)
         {
             <a class="fab-add" href="operations" aria-label="Nuova operazione">
                 <MfIcon Name="plus" Size="24" />
@@ -61,6 +61,7 @@
 
 @code {
     private bool IsAccountsSection => IsAccountsPath(Navigation.Uri);
+    private bool IsSettingsSection => IsSettingsPath(Navigation.Uri);
 
     protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
 
@@ -74,6 +75,13 @@
         var path = new Uri(uri).AbsolutePath.TrimEnd('/');
         return path.Equals("/accounts", StringComparison.OrdinalIgnoreCase) ||
                path.StartsWith("/accounts/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSettingsPath(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.TrimEnd('/');
+        return path.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/settings/", StringComparison.OrdinalIgnoreCase);
     }
 }
 

@@ -117,7 +117,7 @@ else if (_summary is not null)
                         @foreach (var entry in _summary.Accounts)
                         {
                             <tr>
-                                <td>@entry.Account.Name <span class="balance-secondary">(@Format.AccountTypeLabel(entry.Account.Type))</span></td>
+                                <td>@entry.Account.Name</td>
                                 <td class="num"><AmountValue Value="@entry.Balance" UnavailableText="Saldo non registrato" /></td>
                                 <td><StatusBadge Tone="@(entry.IsComplete ? "income" : "warning")">@(entry.IncompletenessReason ?? "Ok")</StatusBadge></td>
                             </tr>

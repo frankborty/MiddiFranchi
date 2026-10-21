@@ -326,6 +326,18 @@ public class OperationFormTests
             Categories.Add(category);
             return Task.CompletedTask;
         }
+
+        public Task UpdateAsync(Category category, CancellationToken cancellationToken = default)
+        {
+            var index = Categories.FindIndex(candidate => candidate.Id == category.Id);
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Categoria non trovata.");
+            }
+
+            Categories[index] = category;
+            return Task.CompletedTask;
+        }
     }
 
     /// <summary>Falsificazione minimale del repository delle operazioni per i test di coordinamento.</summary>

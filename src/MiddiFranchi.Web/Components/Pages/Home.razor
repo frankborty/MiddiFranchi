@@ -268,7 +268,6 @@ else if (_dashboard is { } dashboard)
                                         @account.Name
                                     </a>
                                     <span class="account-summary-meta">
-                                        @Format.AccountTypeLabel(account.Type)
                                         @if (account.Status == AccountStatus.Closed)
                                         {
                                             <StatusBadge Tone="neutral">@Format.AccountStatusLabel(account.Status)</StatusBadge>
@@ -291,13 +290,6 @@ else if (_dashboard is { } dashboard)
                         }
                     </ul>
 
-                    @if (dashboard.Accounts.Count > VisibleAccounts.Count)
-                    {
-                        <p class="table-hint">
-                            Mostrati @VisibleAccounts.Count di @dashboard.Accounts.Count conti.
-                            <a href="accounts">Vedi tutti i conti</a>.
-                        </p>
-                    }
                     @if (AccountsWithoutBalanceCount > 0)
                     {
                         <p class="account-note">

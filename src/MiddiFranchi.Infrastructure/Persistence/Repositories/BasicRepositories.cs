@@ -159,6 +159,21 @@ public sealed class CategoryRepository : ICategoryRepository
         _context.Categories.Add(PersistenceMapper.ToRecord(category));
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task UpdateAsync(Category category, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(category);
+
+        var record = await _context.Categories
+            .SingleOrDefaultAsync(candidate => candidate.Id == category.Id, cancellationToken)
+            ?? throw new InvalidOperationException("Categoria non trovata.");
+
+        record.Name = category.Name;
+        record.Type = category.Type;
+        record.Description = category.Description;
+        record.Subcategory = category.Subcategory;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }
 
 public sealed class InvestmentPortfolioRepository : IInvestmentPortfolioRepository

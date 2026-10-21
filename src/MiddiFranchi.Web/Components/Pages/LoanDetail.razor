@@ -96,7 +96,7 @@ else
         <div class="section-head">
             <div>
                 <h2>Storico delle rilevazioni</h2>
-                <p class="section-sub">Apri il pannello di una riga per modificarla o eliminarla.</p>
+                <p class="section-sub">Clicca una riga per modificarla o eliminarla.</p>
             </div>
         </div>
 
@@ -138,31 +138,24 @@ else
                             <th scope="col">Data</th>
                             <th scope="col">Registrata il</th>
                             <th scope="col" class="num">Importo</th>
-                            <th scope="col">Azioni</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var reading in _loan.Readings)
                         {
-                            <tr>
+                            <tr class="history-row @(_panelReadingId == reading.Id ? "panel-open" : "")"
+                                tabindex="0"
+                                title="Clicca per modificare o eliminare"
+                                @onclick="() => TogglePanel(reading)"
+                                @onkeydown="e => HandleRowKeyDown(e, reading)">
                                 <td>@Format.Date(reading.ValidAt)</td>
                                 <td>@Format.UtcTimestamp(reading.RecordedAt)</td>
                                 <td class="num"><AmountValue Value="@reading.Amount" /></td>
-                                <td>
-                                    <button type="button"
-                                            class="icon-button"
-                                            aria-label="@($"Azioni per la rilevazione del {Format.Date(reading.ValidAt)}")"
-                                            aria-expanded="@(_panelReadingId == reading.Id)"
-                                            aria-controls="@($"loan-reading-panel-{reading.Id}")"
-                                            @onclick="() => TogglePanel(reading)">
-                                        <MfIcon Name="more" Size="18" />
-                                    </button>
-                                </td>
                             </tr>
                             @if (_panelReadingId == reading.Id)
                             {
                                 <tr class="reading-panel-row" id="@($"loan-reading-panel-{reading.Id}")">
-                                    <td colspan="4">
+                                    <td colspan="3">
                                         <div class="reading-panel">
                                             <label>
                                                 <span>Importo in EUR</span>
@@ -319,6 +312,14 @@ else
         [
             new("Importo", points, Color: "#0ea5e9"),
         ];
+    }
+
+    private void HandleRowKeyDown(KeyboardEventArgs args, LoanReading reading)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            TogglePanel(reading);
+        }
     }
 
     private void TogglePanel(LoanReading reading)

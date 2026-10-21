@@ -94,7 +94,7 @@ else
                                 <option value="">Seleziona…</option>
                                 @foreach (var category in _categoryChoices)
                                 {
-                                    <option value="@category.Id">@category.Name</option>
+                                    <option value="@category.Id">@CategoryLabel(category)</option>
                                 }
                             </select>
                         </label>
@@ -469,6 +469,11 @@ else
         serviceMessage.Contains("stornat", StringComparison.OrdinalIgnoreCase)
             ? "L'operazione risulta già eliminata."
             : serviceMessage;
+
+    private static string CategoryLabel(Category category) =>
+        string.IsNullOrWhiteSpace(category.Subcategory)
+            ? category.Name
+            : $"{category.Name} · {category.Subcategory}";
 
     private static string HistoryKindLabel(OperationKind kind) => kind switch
     {

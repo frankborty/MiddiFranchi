@@ -157,40 +157,42 @@ colore.
   un menu a tendina con avatar/icona a sinistra del nome e il conto Prestiti è escluso (si gestisce
   dai suoi prestiti). L'elenco conti non mostra più il saldo ricostruito né il modulo «Nuovo conto».
   Il conteggio dei conti è affiancato al titolo e il tasto «Nascondi chiusi» filtra i conti con stato
-  Chiuso; la riga mostra tipo e data della rilevazione senza la dicitura «rilevato al».
+  Chiuso; la riga mostra solo la data della rilevazione, senza tipo né «rilevato al».
 
 ## Dettaglio conto (`/accounts/{id}`)
 
-- La card «Saldo nel tempo» mostra il saldo corrente (e il saldo ricostruito, secondario) sopra il
-  grafico a linee delle rilevazioni; il selettore di intervallo filtra le date. Con meno di due date
-  compare un empty state.
-- Lo storico usa una tabella centrata con una sola icona «Azioni» per riga: il pannellino espande
-  importo e data modificabili con «Salva», «Elimina» (con conferma) e «Chiudi». Dopo ogni modifica
-  il saldo corrente e il grafico si ricaricano.
+- La card «Saldo nel tempo» mostra solo il saldo corrente con la data della rilevazione e il
+  grafico; il saldo ricostruito non è più duplicato nella card. Il selettore di intervallo filtra le
+  date. Con meno di due date compare un empty state.
+- Lo storico ha tre colonne (Data, Registrata il, Importo) senza colonna Azioni: cliccando una
+  qualsiasi cella della riga si apre il pannellino con importo e data modificabili, «Salva»,
+  «Elimina» (con conferma) e «Chiudi». Dopo ogni modifica saldo e grafico si ricaricano.
 - Il pulsante flottante apre il modale «Nuova rilevazione» con il conto fisso (avatar e nome
   accanto). La vecchia card di registrazione non esiste più.
-- L'ingranaggio in alto a destra apre `AccountSettingsDialog`: nome, tipo, stato (Attivo/Chiuso),
+- L'ingranaggio in alto a destra apre `AccountSettingsDialog`: nome, stato (Attivo/Chiuso),
   colore personalizzato dei grafici a barre e icona (PNG/JPEG/WebP fino a 512 KB, salvata come data
-  URL). L'icona personalizzata ha priorità sul logo e sull'icona del tipo; il colore è usato nelle
-  barre della pagina Conti. Un conto Prestiti con prestiti registrati non può essere convertito a
-  un altro tipo.
-- «Elimina conto» richiede una conferma esplicita e usa `.danger-button` per l'azione definitiva.
-  L'eliminazione rimuove anche le rilevazioni manuali; un conto con operazioni registrate viene
-  rifiutato dal servizio con un messaggio esplicito.
+  URL). L'icona personalizzata ha priorità sul logo e sull'icona predefinita; il colore è usato
+  nelle barre della pagina Conti. Il tipo non è modificabile dalla UI.
+- «Elimina conto» è nel modale di modifica del conto (icona ingranaggio) e richiede una conferma
+  esplicita con `.danger-button`. L'eliminazione rimuove anche le rilevazioni manuali; un conto con
+  operazioni registrate viene rifiutato dal servizio con un messaggio esplicito. I conti speciali
+  mostrano «Conto speciale: non eliminabile».
 
 ## Configurazione (`/settings`)
 
-- **Conti**: tabella con nome, tipo, stato, saldo manuale e azioni. L'ingranaggio apre
-  `AccountSettingsDialog`; il cestino elimina il conto con conferma. I conti speciali Cash e
-  Prestiti sono marcati «Speciale» e non possono essere eliminati: possono essere disattivati
-  dalle impostazioni. Un conto con operazioni registrate viene rifiutato dal servizio.
+- **Conti**: tabella Conto/Stato, senza colonne Tipo, Saldo manuale e Azioni; il nome del conto è un pulsante che
+  apre `AccountSettingsDialog`. Il modale contiene anche «Elimina conto» con conferma. I conti
+  speciali Cash e Prestiti sono marcati «Speciale» e non possono essere eliminati: possono essere
+  disattivati dalle impostazioni. Un conto con operazioni registrate viene rifiutato dal servizio.
 - **Aggiungi conto**: griglia di tessere predefinite con logo — BBVA, Banco di Sardegna, Directa,
   ING, Intesa San Paolo, PayPal, PostePay, Revolut, Unicredit — più la tessera «Nuovo conto» per un
   nome libero. Si seleziona una tessera e si conferma. I nuovi conti sono creati come Conto
-  corrente; il tipo resta configurabile dalle impostazioni per i conti speciali. I loghi sono in
-  `wwwroot/logos`. Dopo la creazione colore e icona si configurano dall'ingranaggio.
-- **Categorie**: `CategoryManagementPanel` con elenco e creazione. La stessa pagina `/categories`
-  resta disponibile e usa lo stesso pannello.
+  corrente; il tipo non è modificabile dalla UI. I loghi sono in `wwwroot/logos`. Dopo la creazione
+  nome, stato, colore e icona si configurano dall'ingranaggio.
+- **Categorie**: `CategoryManagementPanel` in layout bento (elenco + nuova categoria), con le
+  colonne Categoria, Sottocategoria, Tipo e Descrizione. Ogni categoria ha una sottocategoria
+  obbligatoria in creazione e modifica; il nome apre `CategorySettingsDialog` per aggiornarla. La
+  stessa pagina `/categories` resta disponibile e usa lo stesso pannello.
 - Il conteggio dei conti è affiancato al titolo «Conti».
 
 ## Conto Prestiti e singolo prestito
@@ -205,7 +207,7 @@ colore.
   conteggio è affiancato al titolo. Un prestito arrivato a zero è marcato «Estinto» e il tasto
   «Nascondi estinti» lo rimuove dalla lista. Il pulsante flottante apre «Nuovo prestito».
 - Ogni prestito ha una pagina dedicata `/accounts/{id}/loans/{loanId}` con grafico «Importo nel
-  tempo», selettore Anno/1A/3A/Max, storico delle rilevazioni con pannellino azioni e
+  tempo», selettore Anno/1A/3A/Max, storico delle rilevazioni apribile cliccando la riga e
   eliminazione del prestito con conferma.
 - I prestiti senza rilevazioni contribuiscono con zero alla somma del conto; il conto espone
   comunque un saldo (mai "Non calcolabile" per questo motivo).
@@ -245,7 +247,7 @@ colore.
 | Route | Contenuto |
 |---|---|
 | `/` | Dashboard: panoramica interattiva Investimenti/Conti con intervalli, patrimonio, card Movimenti (entrate/uscite del mese in EUR e ultime operazioni), conti con totale, investimenti per ticker, note sui limiti |
-| `/accounts`, `/accounts/{id}` | elenco con istogramma mensile impilato e linea del totale, range temporale e modale di registrazione; dettaglio con saldo nel grafico, storico con pannellino azioni ed eliminazione del conto. Per il conto Prestiti: elenco prestiti e gestione aggregata |
+| `/accounts`, `/accounts/{id}` | elenco con istogramma mensile impilato e linea del totale, range temporale e modale di registrazione; dettaglio con saldo, data e grafico, storico apribile cliccando la riga ed eliminazione dal modale del conto. Per il conto Prestiti: elenco prestiti e gestione aggregata |
 | `/accounts/{id}/loans/{loanId}` | dettaglio del singolo prestito con grafico dell'importo, rilevazioni modificabili/eliminabili ed eliminazione del prestito |
 | `/operations` | form a 3 tipologie, storico con eliminazione in due passi, movimenti |
 | `/movements` | vista economica con filtri |

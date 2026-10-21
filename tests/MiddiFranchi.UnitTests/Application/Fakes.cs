@@ -293,6 +293,19 @@ public sealed class FakeCategoryRepository : ICategoryRepository
         _categories.Add(category);
         return Task.CompletedTask;
     }
+
+    public Task UpdateAsync(Category category, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var index = _categories.FindIndex(candidate => candidate.Id == category.Id);
+        if (index < 0)
+        {
+            throw new InvalidOperationException("Categoria non trovata.");
+        }
+
+        _categories[index] = category;
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeFinancialOperationRepository : IFinancialOperationRepository
