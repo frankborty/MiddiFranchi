@@ -76,10 +76,17 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ColorHex")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
                     b.Property<string>("CurrencyCode")
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
+
+                    b.Property<string>("IconDataUrl")
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -103,7 +110,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_Accounts_Status", "\"Status\" IN ('Active', 'Closed')");
 
-                            t.HasCheckConstraint("CK_Accounts_Type", "\"Type\" IN ('Checking', 'Card', 'Cash', 'Liability')");
+                            t.HasCheckConstraint("CK_Accounts_Type", "\"Type\" IN ('Checking', 'Card', 'Cash', 'Liability', 'Loans')");
                         });
                 });
 
@@ -417,6 +424,62 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.LoanReadingRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AmountAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("AmountCurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<Guid>("LoanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.Property<DateOnly>("ValidAt")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId", "RecordedAt");
+
+                    b.HasIndex("LoanId", "ValidAt");
+
+                    b.ToTable("LoanReadings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LoanReadings_CurrencyCode", "\"AmountCurrencyCode\" IN ('EUR')");
+                        });
+                });
+
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.LoanRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Borrower")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("Loans", (string)null);
+                });
+
             modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.ManualBalanceRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -593,6 +656,28 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.Navigation("SourceAccount");
                 });
 
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.LoanReadingRecord", b =>
+                {
+                    b.HasOne("MiddiFranchi.Infrastructure.Persistence.Entities.LoanRecord", "Loan")
+                        .WithMany("Readings")
+                        .HasForeignKey("LoanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Loan");
+                });
+
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.LoanRecord", b =>
+                {
+                    b.HasOne("MiddiFranchi.Infrastructure.Persistence.Entities.AccountRecord", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
             modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.ManualBalanceRecord", b =>
                 {
                     b.HasOne("MiddiFranchi.Infrastructure.Persistence.Entities.AccountRecord", "Account")
@@ -621,6 +706,11 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.Navigation("Fees");
 
                     b.Navigation("Postings");
+                });
+
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.LoanRecord", b =>
+                {
+                    b.Navigation("Readings");
                 });
 #pragma warning restore 612, 618
         }

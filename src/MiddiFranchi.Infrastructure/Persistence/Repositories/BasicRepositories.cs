@@ -42,6 +42,85 @@ public sealed class AccountRepository : IAccountRepository
         _context.Accounts.Add(PersistenceMapper.ToRecord(account));
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task UpdateAsync(Account account, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+
+        var record = await _context.Accounts
+            .SingleOrDefaultAsync(candidate => candidate.Id == account.Id, cancellationToken)
+            ?? throw new InvalidOperationException($"Il conto {account.Id} non esiste.");
+
+        record.Name = account.Name;
+        record.Type = account.Type;
+        record.Status = account.Status;
+        record.ColorHex = account.ColorHex;
+        record.IconDataUrl = account.IconDataUrl;
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var account = await _context.Accounts
+            .SingleOrDefaultAsync(record => record.Id == id, cancellationToken);
+        if (account is null)
+        {
+            return;
+        }
+
+        var readings = await _context.ManualBalances
+            .Where(reading => reading.AccountId == id)
+            .ToListAsync(cancellationToken);
+
+        var loans = await _context.Loans
+            .Where(loan => loan.AccountId == id)
+            .ToListAsync(cancellationToken);
+        var loanIds = loans.Select(loan => loan.Id).ToArray();
+        List<LoanReadingRecord> loanReadings = loanIds.Length == 0
+            ? []
+            : await _context.LoanReadings
+                .Where(reading => loanIds.Contains(reading.LoanId))
+                .ToListAsync(cancellationToken);
+
+        var ownsTransaction = _context.Database.CurrentTransaction is null;
+        var transaction = ownsTransaction
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        try
+        {
+            // Le rilevazioni dipendono dal conto e dai prestiti: vanno rimosse prima.
+            _context.LoanReadings.RemoveRange(loanReadings);
+            _context.Loans.RemoveRange(loans);
+            _context.ManualBalances.RemoveRange(readings);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            _context.Accounts.Remove(account);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
+    }
 }
 
 public sealed class CategoryRepository : ICategoryRepository

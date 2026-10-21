@@ -14,6 +14,8 @@ internal static class PersistenceMapper
         Type = account.Type,
         CurrencyCode = account.Currency.Code,
         Status = account.Status,
+        ColorHex = account.ColorHex,
+        IconDataUrl = account.IconDataUrl,
     };
 
     public static Account ToDomain(AccountRecord record) => new(
@@ -21,7 +23,9 @@ internal static class PersistenceMapper
         record.Name,
         record.Type,
         Currency.Parse(record.CurrencyCode),
-        record.Status);
+        record.Status,
+        record.ColorHex,
+        record.IconDataUrl);
 
     public static CategoryRecord ToRecord(Category category) => new()
     {
@@ -553,6 +557,35 @@ internal static class PersistenceMapper
                 ? account
                 : throw new InvalidOperationException(
                     $"Il conto della rilevazione {record.Id} non è stato caricato."),
+            new Money(record.AmountAmount, Currency.Parse(record.AmountCurrencyCode)),
+            record.ValidAt,
+            record.RecordedAt);
+
+    public static LoanRecord ToRecord(Loan loan) => new()
+    {
+        Id = loan.Id,
+        AccountId = loan.AccountId,
+        Borrower = loan.Borrower,
+        CreatedAt = loan.CreatedAt,
+    };
+
+    public static Loan ToDomain(LoanRecord record, Account account) =>
+        new(record.Id, account, record.Borrower, record.CreatedAt);
+
+    public static LoanReadingRecord ToRecord(LoanReading reading) => new()
+    {
+        Id = reading.Id,
+        LoanId = reading.LoanId,
+        AmountAmount = reading.Amount.Amount,
+        AmountCurrencyCode = reading.Amount.Currency.Code,
+        ValidAt = reading.ValidAt,
+        RecordedAt = reading.RecordedAt,
+    };
+
+    public static LoanReading ToDomain(LoanReadingRecord record, Loan loan) =>
+        new(
+            record.Id,
+            loan,
             new Money(record.AmountAmount, Currency.Parse(record.AmountCurrencyCode)),
             record.ValidAt,
             record.RecordedAt);

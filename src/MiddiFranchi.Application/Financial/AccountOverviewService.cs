@@ -11,7 +11,9 @@ public sealed record AccountOverviewRow(
     Currency Currency,
     AccountStatus Status,
     ManualBalance? ManualReading,
-    Money? CalculatedBalance)
+    Money? CalculatedBalance,
+    string? ColorHex = null,
+    string? IconDataUrl = null)
 {
     /// <summary>Saldo manuale corrente: informazione principale, assente se non registrata (mai zero per convenzione).</summary>
     public Money? ManualBalance => ManualReading?.Amount;
@@ -62,7 +64,9 @@ public sealed class AccountOverviewService
                 account.Currency,
                 account.Status,
                 manualReading,
-                calculated));
+                calculated,
+                account.ColorHex,
+                account.IconDataUrl));
         }
 
         return rows;
@@ -89,7 +93,9 @@ public sealed class AccountOverviewService
             account.Currency,
             account.Status,
             manualReading,
-            calculated);
+            calculated,
+            account.ColorHex,
+            account.IconDataUrl);
     }
 
     /// <summary>

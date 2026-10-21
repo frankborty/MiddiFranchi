@@ -12,13 +12,14 @@ public class AccountServiceTests
     private readonly FakeAccountRepository _accounts = new();
     private readonly FakeFinancialOperationRepository _operations = new();
     private readonly FakeAccountPostingRepository _postings;
+    private readonly FakeLoanRepository _loans = new();
 
     private readonly AccountService _service;
 
     public AccountServiceTests()
     {
         _postings = new FakeAccountPostingRepository(_operations.Operations);
-        _service = new AccountService(_accounts, _postings);
+        _service = new AccountService(_accounts, _postings, _operations, _loans);
     }
 
     [Fact]
@@ -73,6 +74,98 @@ public class AccountServiceTests
         var listed = await _service.ListAsync();
 
         listed.Select(account => account.Name).ShouldBe(["Banca orale", "Conto corrente"]);
+    }
+
+    [Fact]
+    public async Task Update_ShouldChangeNameTypeStatusColorAndIcon()
+    {
+        var account = await CreateAccountAsync("Conto corrente");
+
+        var updated = await _service.UpdateAsync(new UpdateAccountRequest(
+            account.Id,
+            "Conto aggiornato",
+            AccountType.Cash,
+            AccountStatus.Closed,
+            "#FF8800",
+            "data:image/png;base64,AAAA"));
+
+        updated.Name.ShouldBe("Conto aggiornato");
+        updated.Type.ShouldBe(AccountType.Cash);
+        updated.Status.ShouldBe(AccountStatus.Closed);
+        updated.ColorHex.ShouldBe("#ff8800");
+        updated.IconDataUrl.ShouldBe("data:image/png;base64,AAAA");
+        _accounts.Accounts.ShouldHaveSingleItem().ShouldBe(updated);
+    }
+
+    [Fact]
+    public async Task Update_ShouldRejectAMissingAccount()
+    {
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.UpdateAsync(new UpdateAccountRequest(
+                Guid.NewGuid(),
+                "Conto",
+                AccountType.Checking,
+                AccountStatus.Active,
+                null,
+                null)));
+
+        exception.Message.ShouldContain("non esiste");
+    }
+
+    [Fact]
+    public async Task Update_ShouldRejectConvertingALoansAccountWithLoans()
+    {
+        var account = await _service.CreateAsync(new NewAccount("Prestiti", AccountType.Loans));
+        _loans.Loans.Add(new Loan(
+            Guid.NewGuid(), account, "Mario", DateTimeOffset.UtcNow));
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.UpdateAsync(new UpdateAccountRequest(
+                account.Id,
+                account.Name,
+                AccountType.Checking,
+                AccountStatus.Active,
+                null,
+                null)));
+
+        exception.Message.ShouldContain("prestiti registrati");
+        _accounts.Accounts.ShouldHaveSingleItem().Type.ShouldBe(AccountType.Loans);
+    }
+
+    [Fact]
+    public async Task Delete_ShouldRemoveAnAccountWithoutOperations()
+    {
+        var account = await CreateAccountAsync("Conto corrente");
+
+        await _service.DeleteAsync(account.Id);
+
+        _accounts.Accounts.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Delete_ShouldRejectAnAccountWithOperations()
+    {
+        var account = await CreateAccountAsync("Conto corrente");
+        var category = new Category(Guid.NewGuid(), "Categoria", CategoryType.Income, null);
+        _operations.Operations.Add(new Income(
+            Guid.NewGuid(), account, category,
+            new PositiveMoney(new Money(100m, Euro)),
+            new DateOnly(2026, 3, 1), new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero)));
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.DeleteAsync(account.Id));
+
+        exception.Message.ShouldContain("operazioni registrate");
+        _accounts.Accounts.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Delete_ShouldRejectAMissingAccount()
+    {
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.DeleteAsync(Guid.NewGuid()));
+
+        exception.Message.ShouldContain("non esiste");
     }
 
     [Fact]

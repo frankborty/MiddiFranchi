@@ -2,7 +2,11 @@
 @using MiddiFranchi.Domain.Financial
 
 <span class="account-avatar" aria-hidden="true">
-    @if (LogoPath(Name) is { } logo)
+    @if (!string.IsNullOrWhiteSpace(IconDataUrl))
+    {
+        <img class="account-logo custom" src="@IconDataUrl" alt="" />
+    }
+    else if (LogoPath(Name) is { } logo)
     {
         <img class="account-logo" src="@logo" alt="" loading="lazy" />
     }
@@ -19,14 +23,24 @@
     [Parameter]
     public AccountType Type { get; set; }
 
+    /// <summary>Icona caricata dall'utente come data URL; ha priorità sul logo e sull'icona del tipo.</summary>
+    [Parameter]
+    public string? IconDataUrl { get; set; }
+
     // Loghi reali in wwwroot/logos, abbinati al nome del conto (case-insensitive, match su prefisso).
     private static readonly (string Prefix, string Path)[] Logos =
     [
-        ("postepay", "logos/postepay.png"),
-        ("paypal", "logos/paypal.png"),
-        ("ing", "logos/ing.png"),
-        ("bbva", "logos/bbva.png"),
+        ("bbva", "logos/bbva.jpg"),
+        ("banco di sardegna", "logos/bds.jpg"),
+        ("bds", "logos/bds.jpg"),
         ("directa", "logos/directa.png"),
+        ("ing", "logos/ing.png"),
+        ("intesa", "logos/isp.png"),
+        ("isp", "logos/isp.png"),
+        ("paypal", "logos/paypal.png"),
+        ("postepay", "logos/postepay.jpg"),
+        ("revolut", "logos/revolut.png"),
+        ("unicredit", "logos/unicredit.png"),
     ];
 
     private static string? LogoPath(string name)
@@ -47,8 +61,9 @@
     {
         AccountType.Checking => "bank",
         AccountType.Card => "wallet",
-        AccountType.Cash => "coin",
+        AccountType.Cash => "cash",
         AccountType.Liability => "alert",
+        AccountType.Loans => "loan",
         _ => "wallet",
     };
 }

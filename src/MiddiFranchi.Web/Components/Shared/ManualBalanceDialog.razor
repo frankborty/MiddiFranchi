@@ -1,0 +1,233 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject ManualBalanceService ManualBalances
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="manual-balance-dialog-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="manual-balance-dialog-title">Nuova rilevazione</h2>
+                    <p class="section-sub">Saldo manuale del conto alla data scelta.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveAsync">
+                @if (FixedAccountId is null)
+                {
+                    <div class="dialog-account-picker">
+                        <span class="dialog-label">Conto *</span>
+                        <div class="account-dropdown">
+                            <button type="button"
+                                    class="account-select"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="@_accountMenuOpen"
+                                    @onclick="ToggleAccountMenu">
+                                @if (SelectedAccount is { } selected)
+                                {
+                                    <AccountAvatar Name="@selected.Name" Type="@selected.Type" IconDataUrl="@selected.IconDataUrl" />
+                                    <span class="account-choice-name">@selected.Name</span>
+                                }
+                                else
+                                {
+                                    <span class="account-choice-name">Seleziona…</span>
+                                }
+                                <MfIcon Name="chevron-down" Size="16" />
+                            </button>
+
+                            @if (_accountMenuOpen)
+                            {
+                                <div class="account-menu" role="listbox" aria-label="Conto">
+                                    @foreach (var account in Accounts)
+                                    {
+                                        <button type="button"
+                                                class="@(IsSelected(account) ? "account-option selected" : "account-option")"
+                                                role="option"
+                                                aria-selected="@IsSelected(account)"
+                                                @onclick="() => SelectAccount(account)">
+                                            <AccountAvatar Name="@account.Name" Type="@account.Type" IconDataUrl="@account.IconDataUrl" />
+                                            <span class="account-choice-name">@account.Name</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else if (Accounts.FirstOrDefault() is { } fixedAccount)
+                {
+                    <div class="dialog-account">
+                        <AccountAvatar Name="@fixedAccount.Name" Type="@fixedAccount.Type" IconDataUrl="@fixedAccount.IconDataUrl" />
+                        <span>@fixedAccount.Name</span>
+                    </div>
+                }
+                <label>
+                    <span>Importo in EUR *</span>
+                    <input type="number" step="any" required aria-required="true" autofocus @bind="_amount" />
+                </label>
+                <label>
+                    <span>Data *</span>
+                    <input type="date" required aria-required="true" @bind="_validAt" />
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@_saving">
+                        <MfIcon Name="plus" Size="18" /> Registra rilevazione
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    public sealed record AccountChoice(Guid Id, string Name, AccountType Type, string? IconDataUrl = null);
+
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public IReadOnlyList<AccountChoice> Accounts { get; set; } = [];
+
+    /// <summary>Quando impostato, il conto è fisso e il selettore non viene mostrato.</summary>
+    [Parameter] public Guid? FixedAccountId { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<ManualBalance> OnSaved { get; set; }
+
+    private bool _wasOpen;
+    private bool _accountMenuOpen;
+    private bool _saving;
+    private string? _error;
+    private string _accountId = "";
+    private string _amount = "";
+    private DateOnly? _validAt;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _accountMenuOpen = false;
+        _saving = false;
+        _error = null;
+        _amount = "";
+        _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+        _accountId = FixedAccountId?.ToString() ?? Accounts.FirstOrDefault()?.Id.ToString() ?? "";
+    }
+
+    private AccountChoice? SelectedAccount => Accounts.FirstOrDefault(IsSelected);
+
+    private bool IsSelected(AccountChoice account) =>
+        string.Equals(_accountId, account.Id.ToString(), StringComparison.Ordinal);
+
+    private void ToggleAccountMenu() => _accountMenuOpen = !_accountMenuOpen;
+
+    private void SelectAccount(AccountChoice account)
+    {
+        _accountId = account.Id.ToString();
+        _accountMenuOpen = false;
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _error = null;
+
+        Guid? accountId = FixedAccountId;
+        if (accountId is null && Guid.TryParse(_accountId, out var selected))
+        {
+            accountId = selected;
+        }
+
+        if (accountId is null)
+        {
+            _error = "Selezionare un conto.";
+            return;
+        }
+
+        if (!TryParseAmount(_amount, out var amount))
+        {
+            _error = "L'importo è obbligatorio e deve essere un numero (per esempio: 123,45).";
+            return;
+        }
+
+        if (_validAt is null)
+        {
+            _error = "La data della rilevazione è obbligatoria.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var reading = await ManualBalances.RecordAsync(
+                new NewManualBalance(accountId.Value, new Money(amount, Currency.Euro), _validAt.Value));
+            await OnSaved.InvokeAsync(reading);
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Registrazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static bool TryParseAmount(string? text, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
+            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
+    }
+}

@@ -77,7 +77,9 @@ public class ReversalFlowTests : PostgresTestBase
             .ShouldBeEmpty();
         var accountService = new AccountService(
             new AccountRepository(Context),
-            new AccountPostingRepository(Context));
+            new AccountPostingRepository(Context),
+            new FinancialOperationRepository(Context),
+            new LoanRepository(Context));
         var calculatedBalance = await accountService.GetCalculatedBalanceAsync(account.Id, new DateOnly(2026, 5, 1));
         calculatedBalance.Amount.ShouldBe(0m);
         // Le rilevazioni manuali non sono toccate.
@@ -99,7 +101,9 @@ public class ReversalFlowTests : PostgresTestBase
 
         var accountService = new AccountService(
             new AccountRepository(Context),
-            new AccountPostingRepository(Context));
+            new AccountPostingRepository(Context),
+            new FinancialOperationRepository(Context),
+            new LoanRepository(Context));
         (await accountService.GetCalculatedBalanceAsync(account.Id, new DateOnly(2026, 5, 1)))
             .Amount.ShouldBe(-30m);
 
@@ -268,7 +272,9 @@ public class ReversalFlowTests : PostgresTestBase
         view.ShouldBeEmpty();
         var accountService = new AccountService(
             new AccountRepository(Context),
-            new AccountPostingRepository(Context));
+            new AccountPostingRepository(Context),
+            new FinancialOperationRepository(Context),
+            new LoanRepository(Context));
         (await accountService.GetCalculatedBalanceAsync(account.Id, new DateOnly(2026, 4, 10)))
             .Amount.ShouldBe(0m);
     }

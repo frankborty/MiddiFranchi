@@ -1,0 +1,149 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject LoanService LoansService
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="loan-reading-dialog-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="loan-reading-dialog-title">Nuova rilevazione</h2>
+                    <p class="section-sub">
+                        <MfIcon Name="loan" Size="16" /> Prestito di @Borrower
+                    </p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveAsync">
+                <label>
+                    <span>Importo in EUR *</span>
+                    <input type="number" step="any" required aria-required="true" autofocus @bind="_amount" />
+                </label>
+                <label>
+                    <span>Data *</span>
+                    <input type="date" required aria-required="true" @bind="_validAt" />
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@_saving">
+                        <MfIcon Name="plus" Size="18" /> Registra rilevazione
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter, EditorRequired] public Guid LoanId { get; set; }
+
+    [Parameter] public string Borrower { get; set; } = "";
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<LoanReading> OnSaved { get; set; }
+
+    private bool _wasOpen;
+    private bool _saving;
+    private string? _error;
+    private string _amount = "";
+    private DateOnly? _validAt;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _saving = false;
+        _error = null;
+        _amount = "";
+        _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (!TryParseAmount(_amount, out var amount))
+        {
+            _error = "L'importo è obbligatorio e deve essere un numero (per esempio: 123,45).";
+            return;
+        }
+
+        if (_validAt is null)
+        {
+            _error = "La data della rilevazione è obbligatoria.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var reading = await LoansService.AddReadingAsync(
+                LoanId,
+                new Money(amount, Currency.Euro),
+                _validAt.Value);
+            await OnSaved.InvokeAsync(reading);
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Registrazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static bool TryParseAmount(string text, out decimal amount) =>
+        decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
+        || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
+}

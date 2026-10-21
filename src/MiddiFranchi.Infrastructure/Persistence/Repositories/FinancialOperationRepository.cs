@@ -137,4 +137,16 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
         _context.FinancialOperations.Add(record);
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public Task<bool> AnyReferencingAccountAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default) =>
+        _context.FinancialOperations.AnyAsync(
+            operation =>
+                operation.AccountId == accountId ||
+                operation.SourceAccountId == accountId ||
+                operation.DestinationAccountId == accountId ||
+                operation.SettlementAccountId == accountId ||
+                operation.Fees.Any(fee => fee.DebitAccountId == accountId),
+            cancellationToken);
 }

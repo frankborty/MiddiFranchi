@@ -126,6 +126,67 @@ public class ManualBalanceServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ShouldChangeAmountAndDateKeepingTheRegistration()
+    {
+        var account = RegisteredAccount();
+        var reading = await RecordAsync(
+            account, 100m, new DateTimeOffset(2026, 4, 1, 9, 0, 0, TimeSpan.Zero), ValidAt);
+
+        var updated = await _service.UpdateAsync(
+            reading.Id, new Money(150m, Euro), new DateOnly(2026, 4, 2));
+
+        updated.Id.ShouldBe(reading.Id);
+        updated.Amount.ShouldBe(new Money(150m, Euro));
+        updated.ValidAt.ShouldBe(new DateOnly(2026, 4, 2));
+        updated.RecordedAt.ShouldBe(reading.RecordedAt);
+        _manualBalances.Readings.ShouldHaveSingleItem().ShouldBe(updated);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldRejectAFutureEconomicDate()
+    {
+        var account = RegisteredAccount();
+        var reading = await RecordAsync(
+            account, 100m, new DateTimeOffset(2026, 4, 1, 9, 0, 0, TimeSpan.Zero), ValidAt);
+
+        var exception = await Should.ThrowAsync<ArgumentException>(
+            () => _service.UpdateAsync(reading.Id, new Money(150m, Euro), Today.AddDays(1)));
+
+        exception.Message.ShouldContain("successiva alla data corrente");
+        _manualBalances.Readings.ShouldHaveSingleItem().Amount.ShouldBe(new Money(100m, Euro));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldRejectAMissingReading()
+    {
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.UpdateAsync(Guid.NewGuid(), new Money(10m, Euro), ValidAt));
+
+        exception.Message.ShouldContain("non esiste");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ShouldRemoveTheReading()
+    {
+        var account = RegisteredAccount();
+        var reading = await RecordAsync(
+            account, 100m, new DateTimeOffset(2026, 4, 1, 9, 0, 0, TimeSpan.Zero), ValidAt);
+
+        await _service.DeleteAsync(reading.Id);
+
+        _manualBalances.Readings.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ShouldRejectAMissingReading()
+    {
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.DeleteAsync(Guid.NewGuid()));
+
+        exception.Message.ShouldContain("non esiste");
+    }
+
+    [Fact]
     public async Task Operations_ShouldNotAlterTheManualBalance()
     {
         var account = RegisteredAccount();

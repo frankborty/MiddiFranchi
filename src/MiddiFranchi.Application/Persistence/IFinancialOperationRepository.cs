@@ -14,4 +14,7 @@ public interface IFinancialOperationRepository
         CancellationToken cancellationToken = default);
 
     Task AddAsync(FinancialOperation operation, CancellationToken cancellationToken = default);
+
+    /// <summary>Indica se almeno un'operazione, anche stornata, riferisce il conto.</summary>
+    Task<bool> AnyReferencingAccountAsync(Guid accountId, CancellationToken cancellationToken = default);
 }

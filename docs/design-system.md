@@ -40,14 +40,21 @@ Il tema scuro riusa gli stessi token: chiave `data-theme="dark"` su `<html>`
 | `StatTile` | dato di punta; variante `Hero` (blu scuro) per il patrimonio |
 | `EmptyState` | vuoti con significato: titolo, spiegazione, azione di uscita |
 | `MiniBarChart` | barre di distribuzione da valori reali (nessun dato fittizio) |
+| `ManualBalanceDialog` | modale per registrare una rilevazione manuale; il conto è scelto da un menu a tendina con avatar e icone |
+| `NewLoanDialog` | modale per aggiungere un prestito al conto Prestiti (debitore, importo iniziale, data) |
+| `LoanReadingDialog` | modale per aggiungere una rilevazione a un singolo prestito |
+| `AccountSettingsDialog` | impostazioni del conto: nome, tipo, stato, colore dei grafici e icona caricata |
+| `CategoryManagementPanel` | elenco e creazione categorie, riusato da `/categories` e dalla Configurazione |
 
 Classi strutturali: `.page` (shell), `.app-sidebar` (rail di icone, vedi "Sidebar" sotto), `.topbar`, `.page-body`,
 `.bento` (griglia 12 colonne con `.sp-3…sp-12`), `.card`, `.data-table` (con `.num` per importi
 e scroll orizzontale con prima colonna sticky sui mobili), `.table-scroll` (contenitore tabella
 scrollabile e focusabile da tastiera), `.form-grid`/`.form-inline`, `.accent-button`,
-`.primary-button`, `.secondary-button`, `.status-chip`, `.alert(-error/-success/-warning/-info)`,
-`.empty-state`, `.distribution`, `.pagination`. Sui mobili la caption delle tabelle resta per gli
-screen reader ma non viene mostrata; nella tabella delle operazioni l'azione resta sticky a destra.
+`.primary-button`, `.secondary-button`, `.danger-button` (azioni distruttive confermate),
+`.status-chip`, `.alert(-error/-success/-warning/-info)`, `.inline-edit` (campi compatti nelle
+tabelle), `.empty-state`, `.distribution`, `.pagination`. Sui mobili la caption delle tabelle resta
+per gli screen reader ma non viene mostrata; nella tabella delle operazioni l'azione resta sticky a
+destra.
 
 ## Dashboard (`/`)
 
@@ -81,9 +88,10 @@ colore.
   1° gennaio. Con entrambe le categorie attive, o con il solo
   Totale, il valore grande è la somma.
 - La testata mostra il **totale combinato come valore grande**: con entrambe le categorie attive
-  o con il solo Totale è la somma degli investimenti e dei conti solo quando entrambi i valori sono noti, altrimenti
-  "Non calcolabile" (mai stime); con una sola categoria attiva è il valore di quella. Sotto il
-  totale: per gli investimenti rendimento assoluto e percentuale con capitale versato
+  o con il solo Totale è la somma degli investimenti e dei conti; con una sola categoria attiva è il
+  valore di quella. Se una categoria è incompleta, il valore è la somma dei dati disponibili e
+  accanto compare il chip **Parziale** (i conti senza saldo manuale restano esclusi, mai zero).
+  Sotto il totale: per gli investimenti rendimento assoluto e percentuale con capitale versato
   ("+€X +Y% su €Z versati"); per i soli conti la variazione nel periodo selezionato.
   Con entrambe le categorie attive, o con il solo Totale, una riga di dettaglio etichetta il
   valore di ciascuna.
@@ -119,7 +127,10 @@ colore.
 
 - `.library-chart`: figura con titolo, descrizione, grafico **Blazor-ApexCharts 7.0.0**
   (MIT), nota e tabella dati richiudibile. È l'unico grafico temporale delle pagine Investimenti e
-  Conti.
+  Conti. Il componente `ApexTimeSeriesChart` disegna linee per impostazione predefinita; le serie
+  con `Kind = Bar` diventano barre e, con `Stacked`, vengono impilate mentre le serie di linea
+  restano sovrapposte (grafico misto). Il tooltip mostra il dettaglio per serie e, se
+  `ShowStackedTotal` è attivo, anche il totale.
 - Il tema Apex segue il toggle chiaro/scuro dell'app senza ricaricare la pagina; colori, assi,
   tooltip e griglia sono coerenti con i token dell'interfaccia.
 - L'asse X è temporale e i punti sono le date realmente disponibili (quotazioni, operazioni o
@@ -133,19 +144,81 @@ colore.
   la card senza allargare la pagina.
 - `.library-chart-data` espone una tabella accessibile con una riga per data e una colonna per serie,
   così i valori restano disponibili anche senza interazione col grafico.
-- Conti (`/accounts`): il grafico mostra un conto alla volta, scelto dal selettore, in EUR. Usa le
-  rilevazioni manuali per data di validità. Il saldo corrente in tabella resta l'ultima rilevazione
-  registrata e può differire dall'ultimo punto storico in caso di correzioni retrodatate.
+- Conti (`/accounts`): la card si chiama **«Valore conti»** e mostra in testa il **totale attuale**
+  di tutti i conti (con chip «Parziale» se qualcuno non ha saldo). Il grafico è misto: una barra
+  impilata per mese e una linea del totale. Ogni barra è composta dal saldo manuale valido a fine
+  mese dei singoli conti; per ogni mese si usa l'ultima rilevazione disponibile e i conti senza
+  rilevazione non sono conteggiati come zero. La linea rappresenta sempre la somma di tutti i conti.
+  Il selettore (**Anno, 1A, 3A, Max**) filtra i mesi mostrati.
+  Al posto della tabella dati il grafico mostra una griglia `.chart-stats` con valore massimo,
+  minimo, medio, variazione media mensile e variazione media annuale, calcolati sull'intervallo
+  selezionato.
+  Il pulsante flottante apre il modale per registrare una nuova rilevazione: il conto si sceglie da
+  un menu a tendina con avatar/icona a sinistra del nome e il conto Prestiti è escluso (si gestisce
+  dai suoi prestiti). L'elenco conti non mostra più il saldo ricostruito né il modulo «Nuovo conto».
+  Il conteggio dei conti è affiancato al titolo e il tasto «Nascondi chiusi» filtra i conti con stato
+  Chiuso; la riga mostra tipo e data della rilevazione senza la dicitura «rilevato al».
+
+## Dettaglio conto (`/accounts/{id}`)
+
+- La card «Saldo nel tempo» mostra il saldo corrente (e il saldo ricostruito, secondario) sopra il
+  grafico a linee delle rilevazioni; il selettore di intervallo filtra le date. Con meno di due date
+  compare un empty state.
+- Lo storico usa una tabella centrata con una sola icona «Azioni» per riga: il pannellino espande
+  importo e data modificabili con «Salva», «Elimina» (con conferma) e «Chiudi». Dopo ogni modifica
+  il saldo corrente e il grafico si ricaricano.
+- Il pulsante flottante apre il modale «Nuova rilevazione» con il conto fisso (avatar e nome
+  accanto). La vecchia card di registrazione non esiste più.
+- L'ingranaggio in alto a destra apre `AccountSettingsDialog`: nome, tipo, stato (Attivo/Chiuso),
+  colore personalizzato dei grafici a barre e icona (PNG/JPEG/WebP fino a 512 KB, salvata come data
+  URL). L'icona personalizzata ha priorità sul logo e sull'icona del tipo; il colore è usato nelle
+  barre della pagina Conti. Un conto Prestiti con prestiti registrati non può essere convertito a
+  un altro tipo.
+- «Elimina conto» richiede una conferma esplicita e usa `.danger-button` per l'azione definitiva.
+  L'eliminazione rimuove anche le rilevazioni manuali; un conto con operazioni registrate viene
+  rifiutato dal servizio con un messaggio esplicito.
+
+## Configurazione (`/settings`)
+
+- **Conti**: tabella con nome, tipo, stato, saldo manuale e azioni. L'ingranaggio apre
+  `AccountSettingsDialog`; il cestino elimina il conto con conferma. I conti speciali Cash e
+  Prestiti sono marcati «Speciale» e non possono essere eliminati: possono essere disattivati
+  dalle impostazioni. Un conto con operazioni registrate viene rifiutato dal servizio.
+- **Aggiungi conto**: il campo «Banca / conto» propone un elenco predefinito con datalist —
+  BBVA, Banco di Sardegna, Directa, ING, Intesa San Paolo, PayPal, PostePay, Revolut, Unicredit —
+  e permette di digitare un nome nuovo. PostePay imposta il tipo Carta; gli altri Conto corrente.
+  I loghi sono in `wwwroot/logos`. Dopo la creazione colore e icona si configurano dall'ingranaggio.
+- **Categorie**: `CategoryManagementPanel` con elenco e creazione. La stessa pagina `/categories`
+  resta disponibile e usa lo stesso pannello.
+- Il conteggio dei conti è affiancato al titolo «Conti».
+
+## Conto Prestiti e singolo prestito
+
+- I due conti speciali **Cash** (tipo Cassa, icona banconota) e **Prestiti** (tipo Prestiti, icona
+  mano con moneta) vengono creati in modo idempotente all'avvio.
+- Il conto Prestiti non usa le rilevazioni manuali dirette: ogni prestito ha le sue rilevazioni e
+  il saldo del conto è la somma delle ultime rilevazioni di tutti i prestiti. La somma è
+  materializzata come rilevazioni manuali aggregate, così dashboard, grafici e patrimonio netto
+  vedono un unico saldo.
+- Nel dettaglio del conto Prestiti la card «Prestiti» elenca i debitori con importo e data; il
+  conteggio è affiancato al titolo. Un prestito arrivato a zero è marcato «Estinto» e il tasto
+  «Nascondi estinti» lo rimuove dalla lista. Il pulsante flottante apre «Nuovo prestito».
+- Ogni prestito ha una pagina dedicata `/accounts/{id}/loans/{loanId}` con grafico «Importo nel
+  tempo», selettore Anno/1A/3A/Max, storico delle rilevazioni con pannellino azioni e
+  eliminazione del prestito con conferma.
+- I prestiti senza rilevazioni contribuiscono con zero alla somma del conto; il conto espone
+  comunque un saldo (mai "Non calcolabile" per questo motivo).
 
 ## Sidebar
 
 - Rail di icone da 68px, compressa per default. Il pulsante circolare a cavallo del bordo la
   espande a 252px con etichette e nome dell'app; lo stato è salvato in `mf-sidebar-collapsed`.
   Il marchio usa la stessa icona da 20px delle voci, centrata nella rail.
-- Ordine senza titoli di gruppo: in alto Investimenti e Patrimonio netto; poi Dashboard, Conti,
-  Operazioni e Movimenti; in fondo Categorie, separata da un divisore.
+- Ordine senza titoli di gruppo: in alto Dashboard e Conti, seguiti da Operazioni e Movimenti;
+  poi Investimenti e Patrimonio netto; in fondo **Configurazione** (ingranaggio), separata da un
+  divisore. La pagina Configurazione include anche la gestione delle categorie.
 - Ogni voce ha un'accento proprio (`--mf-nav-*`, varianti scure dei token semantici: blu per la
-  dashboard, azzurro conti, ambra operazioni, teal categorie, arancio investimenti, verde
+  dashboard, azzurro conti, ambra operazioni, teal configurazione, arancio investimenti, verde
   patrimonio) applicato alla sola icona; le etichette restano neutre. Ogni voce mantiene il
   `title`/`aria-label` quando l'etichetta scritta è nascosta.
 - Lo stato attivo è un riquadro con bordo e alone blu.
@@ -171,10 +244,12 @@ colore.
 | Route | Contenuto |
 |---|---|
 | `/` | Dashboard: panoramica interattiva Investimenti/Conti con intervalli, patrimonio, card Movimenti (entrate/uscite del mese in EUR e ultime operazioni), conti con totale, investimenti per ticker, note sui limiti |
-| `/accounts`, `/accounts/{id}` | elenco e dettaglio conto con rilevazioni manuali e grafico temporale per conto |
+| `/accounts`, `/accounts/{id}` | elenco con istogramma mensile impilato e linea del totale, range temporale e modale di registrazione; dettaglio con saldo nel grafico, storico con pannellino azioni ed eliminazione del conto. Per il conto Prestiti: elenco prestiti e gestione aggregata |
+| `/accounts/{id}/loans/{loanId}` | dettaglio del singolo prestito con grafico dell'importo, rilevazioni modificabili/eliminabili ed eliminazione del prestito |
 | `/operations` | form a 3 tipologie, storico con eliminazione in due passi, movimenti |
 | `/movements` | vista economica con filtri |
-| `/categories` | categorie entrata/uscita |
+| `/categories` | categorie entrata/uscita (stesso pannello della Configurazione) |
+| `/settings` | configurazione generale: conti (aggiunta, impostazioni, eliminazione) e categorie |
 | `/investments` | grafico temporale ApexCharts, capitale investito, rendimento per portafoglio e card asset |
 | `/net-worth` | riepilogo patrimonio alla data selezionata |
 
@@ -183,4 +258,4 @@ i valori sono in EUR; nessuna evoluzione storica del patrimonio (nessuno snapsho
 posizioni non valorizzate senza quotazione valida. La pagina Investimenti mostra "Sigla non
 disponibile" per gli strumenti senza `Symbol`: la sigla non viene dedotta dal nome. I grafici
 temporali usano Blazor-ApexCharts 7.0.0 (MIT), solo le date con dati registrati, e non interpolano;
-il grafico dei conti mostra un conto alla volta.
+il grafico dei conti è un istogramma mensile impilato con la linea del totale.

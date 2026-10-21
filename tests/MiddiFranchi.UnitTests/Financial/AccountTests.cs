@@ -50,4 +50,54 @@ public class AccountTests
             () => new Account(Guid.NewGuid(), name!, AccountType.Checking, Euro, AccountStatus.Active))
             .ParamName.ShouldBe("name");
     }
+
+    [Fact]
+    public void Construction_ShouldAcceptAndNormalizeCustomColorAndIcon()
+    {
+        var account = new Account(
+            Guid.NewGuid(),
+            "Conto corrente",
+            AccountType.Checking,
+            Euro,
+            AccountStatus.Active,
+            "#FF8800",
+            "data:image/png;base64,AAAA");
+
+        account.ColorHex.ShouldBe("#ff8800");
+        account.IconDataUrl.ShouldBe("data:image/png;base64,AAAA");
+    }
+
+    [Fact]
+    public void Construction_ShouldKeepColorAndIconNullWhenMissing()
+    {
+        var account = new Account(
+            Guid.NewGuid(), "Conto corrente", AccountType.Checking, Euro, AccountStatus.Active);
+
+        account.ColorHex.ShouldBeNull();
+        account.IconDataUrl.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("ff8800")]
+    [InlineData("#FFF")]
+    [InlineData("#GGGGGG")]
+    public void Construction_ShouldRejectAnInvalidColor(string colorHex)
+    {
+        Should.Throw<ArgumentException>(() => new Account(
+            Guid.NewGuid(), "Conto corrente", AccountType.Checking, Euro, AccountStatus.Active, colorHex))
+            .ParamName.ShouldBe("colorHex");
+    }
+
+    [Fact]
+    public void Construction_ShouldRejectANonImageIcon()
+    {
+        Should.Throw<ArgumentException>(() => new Account(
+            Guid.NewGuid(),
+            "Conto corrente",
+            AccountType.Checking,
+            Euro,
+            AccountStatus.Active,
+            iconDataUrl: "testo"))
+            .ParamName.ShouldBe("iconDataUrl");
+    }
 }

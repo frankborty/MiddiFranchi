@@ -262,7 +262,7 @@ else if (_dashboard is { } dashboard)
                         @foreach (var account in VisibleAccounts)
                         {
                             <li class="account-summary-row">
-                                <AccountAvatar Name="@account.Name" Type="@account.Type" />
+                                <AccountAvatar Name="@account.Name" Type="@account.Type" IconDataUrl="@account.IconDataUrl" />
                                 <div class="account-summary-main">
                                     <a class="account-summary-name" href="accounts/@account.AccountId" title="@account.Name">
                                         @account.Name
@@ -302,8 +302,9 @@ else if (_dashboard is { } dashboard)
                     {
                         <p class="account-note">
                             <MfIcon Name="alert" Size="14" />
-                            @AccountsWithoutBalanceCount conti senza saldo manuale: esclusi dal patrimonio
-                            e mai trattati come zero.
+                            @(AccountsWithoutBalanceCount == 1
+                                ? "1 conto senza saldo manuale: escluso dal totale parziale e mai trattato come zero."
+                                : $"{AccountsWithoutBalanceCount} conti senza saldo manuale: esclusi dal totale parziale e mai trattati come zero.")
                         </p>
                     }
                 }

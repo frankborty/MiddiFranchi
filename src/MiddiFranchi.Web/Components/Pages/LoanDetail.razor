@@ -1,0 +1,510 @@
+@page "/accounts/{AccountId:guid}/loans/{LoanId:guid}"
+@rendermode InteractiveServer
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject LoanService LoansService
+@inject NavigationManager Navigation
+
+<PageTitle>@(_loan?.Loan.Borrower ?? "Prestito")</PageTitle>
+
+@if (_loading)
+{
+    <p class="page-status">Caricamento in corso…</p>
+}
+else if (_loadError is not null)
+{
+    <p class="alert alert-error" role="alert">@_loadError</p>
+    <p class="page-status"><a class="primary-link" href="accounts/@AccountId">Torna al conto Prestiti</a></p>
+}
+else if (_loan is null)
+{
+    <EmptyState Title="Il prestito richiesto non esiste"
+                Hint="Il link può essere errato oppure il prestito è stato eliminato."
+                Icon="loan" Href="@($"accounts/{AccountId}")" ActionLabel="Torna al conto Prestiti" />
+}
+else
+{
+    <nav class="balance-back" aria-label="Navigazione locale">
+        <a class="primary-link" href="accounts/@AccountId">
+            <MfIcon Name="loan" Size="16" /> @_loan.Loan.Account.Name
+        </a>
+    </nav>
+    <h1 class="account-detail-title">
+        <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="loan" Size="18" /></span>
+        @_loan.Loan.Borrower
+    </h1>
+    <p class="page-intro">
+        Prestito del conto @_loan.Loan.Account.Name.
+        @if (!_loan.IsActive)
+        {
+            <StatusBadge Tone="neutral">Estinto</StatusBadge>
+        }
+    </p>
+
+    <section class="card accounts-chart-card" aria-labelledby="loan-chart-title">
+        <div class="section-head">
+            <div>
+                <h2 id="loan-chart-title"><MfIcon Name="chart" Size="18" /> Importo nel tempo</h2>
+            </div>
+            <div class="overview-ranges" role="group" aria-label="Intervallo temporale">
+                @foreach (var option in ChartRanges.Options)
+                {
+                    <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => _range = option.Key">@option.Label</button>
+                }
+            </div>
+        </div>
+
+        @if (_readingMessage is not null)
+        {
+            <p class="alert alert-success" role="status">@_readingMessage</p>
+        }
+
+        <div class="account-current">
+            <div class="balance-main">
+                <span class="balance-label">Importo attuale</span>
+                <span class="balance-value">
+                    <AmountValue Value="@_loan.CurrentAmount" UnavailableText="Nessuna rilevazione" />
+                </span>
+                @if (_loan.LatestDate is { } latest)
+                {
+                    <span class="table-hint">rilevato al @Format.Date(latest)</span>
+                }
+            </div>
+        </div>
+
+        @if (HasChartData)
+        {
+            <ApexTimeSeriesChart Title=""
+                                 Currency="@_loan.Loan.Account.Currency"
+                                 Series="@Series"
+                                 XAxisLabelMode="month"
+                                 ShowHeader="false"
+                                 ShowFooter="false"
+                                 ShowDataTable="false" />
+        }
+        else
+        {
+            <EmptyState Title="Servono almeno due rilevazioni nel periodo"
+                        Hint="Scegli un intervallo più ampio o registra una nuova rilevazione."
+                        Icon="chart" />
+        }
+    </section>
+
+    <section class="card">
+        <div class="section-head">
+            <div>
+                <h2>Storico delle rilevazioni</h2>
+                <p class="section-sub">Apri il pannello di una riga per modificarla o eliminarla.</p>
+            </div>
+        </div>
+
+        @if (_historyMessage is not null)
+        {
+            <p class="alert alert-success" role="status">@_historyMessage</p>
+        }
+        @if (_historyError is not null)
+        {
+            <p class="alert alert-error" role="alert">@_historyError</p>
+        }
+
+        @if (_loan.Readings.Count == 0)
+        {
+            <EmptyState Title="Nessuna rilevazione registrata"
+                        Hint="Usa il pulsante + per registrare la prima rilevazione del prestito."
+                        Icon="clock" />
+        }
+        else
+        {
+            @if (PendingDeleteReading is { } pending)
+            {
+                <div class="alert alert-warning" role="alert">
+                    <div>
+                        Eliminare la rilevazione del @Format.Date(pending.ValidAt) di
+                        @Format.Money(pending.Amount)? L'operazione non è reversibile.
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="danger-button" disabled="@_savingReading" @onclick="ConfirmDeleteReadingAsync">Elimina</button>
+                        <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="CancelDeleteReading">Annulla</button>
+                    </div>
+                </div>
+            }
+
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table history-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Data</th>
+                            <th scope="col">Registrata il</th>
+                            <th scope="col" class="num">Importo</th>
+                            <th scope="col">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var reading in _loan.Readings)
+                        {
+                            <tr>
+                                <td>@Format.Date(reading.ValidAt)</td>
+                                <td>@Format.UtcTimestamp(reading.RecordedAt)</td>
+                                <td class="num"><AmountValue Value="@reading.Amount" /></td>
+                                <td>
+                                    <button type="button"
+                                            class="icon-button"
+                                            aria-label="@($"Azioni per la rilevazione del {Format.Date(reading.ValidAt)}")"
+                                            aria-expanded="@(_panelReadingId == reading.Id)"
+                                            aria-controls="@($"loan-reading-panel-{reading.Id}")"
+                                            @onclick="() => TogglePanel(reading)">
+                                        <MfIcon Name="more" Size="18" />
+                                    </button>
+                                </td>
+                            </tr>
+                            @if (_panelReadingId == reading.Id)
+                            {
+                                <tr class="reading-panel-row" id="@($"loan-reading-panel-{reading.Id}")">
+                                    <td colspan="4">
+                                        <div class="reading-panel">
+                                            <label>
+                                                <span>Importo in EUR</span>
+                                                <input class="inline-edit" type="number" step="any" @bind="_panelAmount" />
+                                            </label>
+                                            <label>
+                                                <span>Data</span>
+                                                <input class="inline-edit" type="date" @bind="_panelValidAt" />
+                                            </label>
+                                            <div class="form-actions">
+                                                <button type="button" class="primary-button" disabled="@_savingReading" @onclick="SaveReadingAsync">Salva</button>
+                                                <button type="button" class="danger-button" disabled="@_savingReading" @onclick="() => StartDeleteReading(reading)">Elimina</button>
+                                                <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="ClosePanel">Chiudi</button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <div class="section-head">
+            <div>
+                <h2><MfIcon Name="alert" Size="18" /> Elimina prestito</h2>
+                <p class="section-sub">Il prestito e le sue rilevazioni saranno rimossi. L'operazione non è reversibile.</p>
+            </div>
+        </div>
+        @if (_deleteError is not null)
+        {
+            <p class="alert alert-error" role="alert">@_deleteError</p>
+        }
+        @if (_confirmingDeleteLoan)
+        {
+            <div class="alert alert-warning" role="alert">
+                <div>Eliminare definitivamente il prestito di «@_loan.Loan.Borrower»?</div>
+                <div class="form-actions">
+                    <button type="button" class="danger-button" disabled="@_deletingLoan" @onclick="DeleteLoanAsync">Elimina definitivamente</button>
+                    <button type="button" class="secondary-button" disabled="@_deletingLoan" @onclick="CancelDeleteLoan">Annulla</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <button type="button" class="secondary-button" @onclick="StartDeleteLoan">Elimina prestito</button>
+        }
+    </section>
+
+    <button type="button" class="fab-add" aria-label="Nuova rilevazione" @onclick="OpenReadingDialog">
+        <MfIcon Name="plus" Size="24" />
+    </button>
+
+    <LoanReadingDialog Open="_readingDialogOpen"
+                       LoanId="@_loan.Loan.Id"
+                       Borrower="@_loan.Loan.Borrower"
+                       OnClose="CloseReadingDialog"
+                       OnSaved="OnReadingSaved" />
+}
+
+@code {
+    [Parameter] public Guid AccountId { get; set; }
+
+    [Parameter] public Guid LoanId { get; set; }
+
+    private LoanOverview? _loan;
+    private bool _loading = true;
+    private string? _loadError;
+    private string _range = "max";
+    private bool _readingDialogOpen;
+    private string? _readingMessage;
+    private Guid? _panelReadingId;
+    private string _panelAmount = "";
+    private DateOnly? _panelValidAt;
+    private Guid? _pendingDeleteReadingId;
+    private string? _historyError;
+    private string? _historyMessage;
+    private bool _savingReading;
+    private bool _confirmingDeleteLoan;
+    private bool _deletingLoan;
+    private string? _deleteError;
+
+    private LoanReading? PendingDeleteReading =>
+        _loan?.Readings.FirstOrDefault(reading => reading.Id == _pendingDeleteReadingId);
+
+    private IReadOnlyList<TimeSeriesSeries> Series => BuildSeries();
+
+    private bool HasChartData => Series.Count > 0;
+
+    private DateOnly? RangeStart =>
+        ChartRanges.Start(_range, DateOnly.FromDateTime(DateTime.UtcNow));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _loadError = null;
+            await ReloadAsync();
+
+            if (_loan is not null && _loan.Loan.AccountId != AccountId)
+            {
+                _loan = null;
+                _loadError = "Il prestito non appartiene al conto indicato.";
+            }
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secret.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile contattare il database. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+    }
+
+    private async Task ReloadAsync() => _loan = await LoansService.GetAsync(LoanId);
+
+    private IReadOnlyList<TimeSeriesSeries> BuildSeries()
+    {
+        if (_loan is null || _loan.Readings.Count == 0)
+        {
+            return [];
+        }
+
+        var start = RangeStart;
+        var dates = _loan.Readings
+            .Select(reading => reading.ValidAt)
+            .Distinct()
+            .Where(date => start is null || date >= start.Value)
+            .OrderBy(date => date)
+            .ToArray();
+
+        if (dates.Length < 2)
+        {
+            return [];
+        }
+
+        var points = dates
+            .Select(date => new TimeSeriesPoint(
+                date,
+                LoanReadings.LatestOnOrBefore(_loan.Readings, _loan.Loan.Id, date)?.Amount.Amount))
+            .ToArray();
+
+        return
+        [
+            new("Importo", points, Color: "#0ea5e9"),
+        ];
+    }
+
+    private void TogglePanel(LoanReading reading)
+    {
+        _historyError = null;
+        _historyMessage = null;
+        _pendingDeleteReadingId = null;
+
+        if (_panelReadingId == reading.Id)
+        {
+            _panelReadingId = null;
+            return;
+        }
+
+        _panelReadingId = reading.Id;
+        _panelAmount = reading.Amount.Amount.ToString(CultureInfo.InvariantCulture);
+        _panelValidAt = reading.ValidAt;
+    }
+
+    private void ClosePanel()
+    {
+        _panelReadingId = null;
+        _historyError = null;
+    }
+
+    private async Task SaveReadingAsync()
+    {
+        if (_panelReadingId is not { } readingId || _loan is null || _savingReading)
+        {
+            return;
+        }
+
+        _historyError = null;
+        _historyMessage = null;
+
+        if (!TryParseAmount(_panelAmount, out var amount))
+        {
+            _historyError = "L'importo deve essere un numero (per esempio: 123,45).";
+            return;
+        }
+
+        if (_panelValidAt is null)
+        {
+            _historyError = "La data della rilevazione è obbligatoria.";
+            return;
+        }
+
+        _savingReading = true;
+        try
+        {
+            await LoansService.UpdateReadingAsync(
+                readingId,
+                new Money(amount, _loan.Loan.Account.Currency),
+                _panelValidAt.Value);
+            _panelReadingId = null;
+            _historyMessage = "Rilevazione aggiornata.";
+            await ReloadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _historyError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _historyError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _historyError = "Aggiornamento non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _savingReading = false;
+        }
+    }
+
+    private void StartDeleteReading(LoanReading reading)
+    {
+        _historyError = null;
+        _historyMessage = null;
+        _panelReadingId = null;
+        _pendingDeleteReadingId = reading.Id;
+    }
+
+    private void CancelDeleteReading()
+    {
+        _pendingDeleteReadingId = null;
+        _historyError = null;
+    }
+
+    private async Task ConfirmDeleteReadingAsync()
+    {
+        if (_pendingDeleteReadingId is not { } readingId || _savingReading)
+        {
+            return;
+        }
+
+        _savingReading = true;
+        _historyError = null;
+        _historyMessage = null;
+        try
+        {
+            await LoansService.DeleteReadingAsync(readingId);
+            _pendingDeleteReadingId = null;
+            _historyMessage = "Rilevazione eliminata.";
+            await ReloadAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _historyError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _historyError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _savingReading = false;
+        }
+    }
+
+    private void OpenReadingDialog()
+    {
+        _readingMessage = null;
+        _readingDialogOpen = true;
+    }
+
+    private void CloseReadingDialog() => _readingDialogOpen = false;
+
+    private async Task OnReadingSaved(LoanReading reading)
+    {
+        _readingMessage = $"Rilevazione registrata: {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.";
+        await ReloadAsync();
+    }
+
+    private void StartDeleteLoan()
+    {
+        _deleteError = null;
+        _confirmingDeleteLoan = true;
+    }
+
+    private void CancelDeleteLoan()
+    {
+        _confirmingDeleteLoan = false;
+        _deleteError = null;
+    }
+
+    private async Task DeleteLoanAsync()
+    {
+        if (!_confirmingDeleteLoan || _deletingLoan)
+        {
+            return;
+        }
+
+        _deletingLoan = true;
+        _deleteError = null;
+        try
+        {
+            await LoansService.DeleteLoanAsync(LoanId);
+            Navigation.NavigateTo($"accounts/{AccountId}");
+        }
+        catch (InvalidOperationException exception)
+        {
+            _deleteError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _deleteError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _deletingLoan = false;
+        }
+    }
+
+    private static string AriaPressed(bool value) => value ? "true" : "false";
+
+    private static bool TryParseAmount(string? text, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
+            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
+    }
+}

@@ -290,6 +290,24 @@ public class OperationFormTests
             Accounts.Add(account);
             return Task.CompletedTask;
         }
+
+        public Task UpdateAsync(Account account, CancellationToken cancellationToken = default)
+        {
+            var index = Accounts.FindIndex(candidate => candidate.Id == account.Id);
+            if (index < 0)
+            {
+                throw new InvalidOperationException($"Il conto {account.Id} non esiste.");
+            }
+
+            Accounts[index] = account;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            Accounts.RemoveAll(account => account.Id == id);
+            return Task.CompletedTask;
+        }
     }
 
     /// <summary>Falsificazione minimale del repository delle categorie per i test di coordinamento.</summary>
@@ -332,5 +350,21 @@ public class OperationFormTests
             Operations.Add(operation);
             return Task.CompletedTask;
         }
+
+        public Task<bool> AnyReferencingAccountAsync(
+            Guid accountId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Operations.Any(operation => operation switch
+            {
+                Income income => income.Account.Id == accountId,
+                Expense expense => expense.Account.Id == accountId,
+                Transfer transfer =>
+                    transfer.SourceAccount.Id == accountId ||
+                    transfer.DestinationAccount.Id == accountId,
+                InvestmentOperation investment =>
+                    investment.SettlementAccount.Id == accountId ||
+                    investment.Fees.Any(fee => fee.DebitAccount.Id == accountId),
+                _ => false,
+            }));
     }
 }

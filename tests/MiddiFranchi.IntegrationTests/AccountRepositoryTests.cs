@@ -57,6 +57,34 @@ public class AccountRepositoryTests : PostgresTestBase
     }
 
     [PostgresFact]
+    public async Task Update_ShouldPersistNameTypeStatusColorAndIcon()
+    {
+        var repository = new AccountRepository(Context);
+        var account = new Account(
+            Guid.NewGuid(), "Conto", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        await repository.AddAsync(account);
+        ClearTracker();
+
+        var updated = new Account(
+            account.Id,
+            "Conto aggiornato",
+            AccountType.Cash,
+            Currency.Euro,
+            AccountStatus.Closed,
+            "#ff8800",
+            "data:image/png;base64,AAAA");
+        await repository.UpdateAsync(updated);
+        ClearTracker();
+
+        var loaded = (await repository.GetByIdAsync(account.Id)).ShouldNotBeNull();
+        loaded.Name.ShouldBe("Conto aggiornato");
+        loaded.Type.ShouldBe(AccountType.Cash);
+        loaded.Status.ShouldBe(AccountStatus.Closed);
+        loaded.ColorHex.ShouldBe("#ff8800");
+        loaded.IconDataUrl.ShouldBe("data:image/png;base64,AAAA");
+    }
+
+    [PostgresFact]
     public async Task GetById_ShouldReturnNullWhenMissing()
     {
         var repository = new AccountRepository(Context);

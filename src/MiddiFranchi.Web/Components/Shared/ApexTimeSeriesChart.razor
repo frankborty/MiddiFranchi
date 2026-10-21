@@ -26,7 +26,7 @@
                 <ApexPointSeries TItem="ApexTimePoint"
                                  Items="@ToPoints(series)"
                                  Name="@series.Label"
-                                 SeriesType="SeriesType.Line"
+                                 SeriesType="@(IsBar(series) ? SeriesType.Bar : SeriesType.Line)"
                                  XValue="@(point => point.Date)"
                                  YValue="@(point => point.Value)"
                                  Stroke="@StrokeFor(series)" />
@@ -48,7 +48,7 @@
             <summary>Dati del grafico</summary>
             <div class="table-scroll" tabindex="0">
                 <table class="data-table">
-                    <caption class="table-hint">Valori alle date disponibili; nessuna interpolazione.</caption>
+                    <caption class="table-hint">@(DataTableCaption ?? "Valori alle date disponibili; nessuna interpolazione.")</caption>
                     <thead>
                         <tr>
                             <th scope="col">Data</th>
@@ -141,6 +141,18 @@
 
     [Parameter]
     public bool SharedTooltip { get; set; } = true;
+
+    /// <summary>Impila le serie marcate come barre; le serie di linea restano sovrapposte.</summary>
+    [Parameter]
+    public bool Stacked { get; set; }
+
+    /// <summary>Mostra la riga «Totale» nel tooltip delle barre impilate.</summary>
+    [Parameter]
+    public bool ShowStackedTotal { get; set; } = true;
+
+    /// <summary>Didascalia della tabella dati; null usa il testo predefinito.</summary>
+    [Parameter]
+    public string? DataTableCaption { get; set; }
 
     protected override void OnParametersSet()
     {
@@ -297,10 +309,13 @@
 
     // Lo stroke della serie è impostato per-serie con colore pieno: l'opacità
     // globale del fill di ApexCharts altrimenti sbiadisce anche la linea.
+    private bool IsBar(TimeSeriesSeries series) =>
+        Stacked && series.Kind == TimeSeriesSeriesKind.Bar;
+
     private SeriesStroke StrokeFor(TimeSeriesSeries series) => new()
     {
         Color = series.Color ?? (_theme == "dark" ? "#2dd4bf" : "#0c8fa5"),
-        Width = 2,
+        Width = IsBar(series) ? 0 : 2,
     };
 
     private string SeriesSignature() => string.Join("|", Series.Select(series =>
@@ -328,6 +343,8 @@
             .ToList();
         var currencyFormatter =
             $"function(val) {{ return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
+        var stackedChart = Stacked ? "true" : "false";
+        var showStackedTotal = Stacked && ShowStackedTotal ? "true" : "false";
         var customTooltip =
             $$"""
             function (opts) {
@@ -335,7 +352,9 @@
               var chartSeries = w.config.series || [];
               var colors = w.globals.colors || [];
               var fmt = new Intl.NumberFormat('it-IT', { style: 'currency', currency: '{{currencyCode}}', maximumFractionDigits: 0, useGrouping: true });
-              var dateFmt = new Intl.DateTimeFormat('it-IT', { year: 'numeric', month: '2-digit', day: '2-digit' });
+              // Le barre sono mensili: il titolo mostra mese e anno, non il giorno di chiusura.
+              var stacked = {{stackedChart}};
+              var dateFmt = new Intl.DateTimeFormat('it-IT', stacked ? { year: 'numeric', month: 'long' } : { year: 'numeric', month: '2-digit', day: '2-digit' });
               // Le x arrivano come stringa ISO o numerico: normalizziamo a millisecondi.
               function ms(x) {
                 if (x === undefined || x === null) { return null; }
@@ -356,6 +375,7 @@
               var title = dateFmt.format(new Date(ts));
 
               var rows = '';
+              var total = 0;
               chartSeries.forEach(function (s, i) {
                 var data = s && s.data ? s.data : [];
                 var item = null;
@@ -367,9 +387,13 @@
                 if (!item) { return; }
                 var y = typeof item === 'object' ? item.y : item;
                 if (y === undefined || y === null) { return; }
+                total += Number(y);
                 rows += '<div class="mf-tooltip-row"><span class="mf-tooltip-dot" style="background:' + (colors[i] || '#999') + '"></span><span class="mf-tooltip-name">' + (s.name || '') + '</span><span class="mf-tooltip-value">' + fmt.format(y) + '</span></div>';
               });
               if (!rows) { return ''; }
+              if ({{showStackedTotal}}) {
+                rows += '<div class="mf-tooltip-row mf-tooltip-total"><span class="mf-tooltip-name">Totale</span><span class="mf-tooltip-value">' + fmt.format(total) + '</span></div>';
+              }
 
               return '<div class="apexcharts-tooltip-title">' + title + '</div>' + rows;
             }
@@ -395,10 +419,24 @@
                 },
                 Background = "transparent",
                 ForeColor = dark ? "#b6b6bf" : "#45536e",
+                Stacked = Stacked,
+                StackType = Stacked ? ApexCharts.StackType.Normal : null,
             },
             Colors = colors,
             Fill = new Fill { Type = FillType.Solid, Opacity = 1 },
-            Stroke = new Stroke { Curve = Curve.Straight, Width = 2.5, LineCap = ApexCharts.LineCap.Round },
+            Stroke = new Stroke { Curve = Curve.Straight, Width = Stacked ? 0 : 2.5, LineCap = ApexCharts.LineCap.Round },
+            PlotOptions = Stacked
+                ? new PlotOptions
+                {
+                    Bar = new PlotOptionsBar
+                    {
+                        ColumnWidth = "64%",
+                        BorderRadius = 4,
+                        BorderRadiusApplication = ApexCharts.BorderRadiusApplication.End,
+                        BorderRadiusWhenStacked = ApexCharts.BorderRadiusWhenStacked.Last,
+                    },
+                }
+                : null,
             Legend = new Legend { Show = false },
             Markers = new Markers
             {
@@ -408,7 +446,9 @@
             DataLabels = new DataLabels { Enabled = false },
             Xaxis = new XAxis
             {
-                Type = XAxisType.Datetime,
+                // Le barre usano un asse categoria: con l'asse datetime due rilevazioni ravvicinate
+                // ridurrebbero la larghezza delle colonne a pochi pixel.
+                Type = Stacked ? XAxisType.Category : XAxisType.Datetime,
                 TickAmount = XAxisTickAmount,
                 Labels = new XAxisLabels
                 {

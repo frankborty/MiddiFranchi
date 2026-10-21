@@ -23,6 +23,15 @@ public sealed class ManualBalanceRepository : IManualBalanceRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<ManualBalance?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var record = await _context.ManualBalances
+            .AsNoTracking()
+            .SingleOrDefaultAsync(reading => reading.Id == id, cancellationToken);
+
+        return record is null ? null : await ToDomainAsync(record, cancellationToken);
+    }
+
     public async Task<ManualBalance?> GetLatestAsync(Guid accountId, CancellationToken cancellationToken = default)
     {
         var record = await _context.ManualBalances
@@ -76,6 +85,90 @@ public sealed class ManualBalanceRepository : IManualBalanceRepository
             .ToListAsync(cancellationToken);
 
         return await MaterializeAsync(records, cancellationToken);
+    }
+
+    public async Task UpdateAsync(ManualBalance reading, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+
+        var record = await _context.ManualBalances
+            .SingleOrDefaultAsync(candidate => candidate.Id == reading.Id, cancellationToken)
+            ?? throw new InvalidOperationException($"La rilevazione {reading.Id} non esiste.");
+
+        record.AmountAmount = reading.Amount.Amount;
+        record.AmountCurrencyCode = reading.Amount.Currency.Code;
+        record.ValidAt = reading.ValidAt;
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var record = await _context.ManualBalances
+            .SingleOrDefaultAsync(reading => reading.Id == id, cancellationToken);
+        if (record is null)
+        {
+            return;
+        }
+
+        _context.ManualBalances.Remove(record);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task ReplaceForAccountAsync(
+        Guid accountId,
+        IReadOnlyList<ManualBalance> readings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(readings);
+
+        if (readings.Any(reading => reading.AccountId != accountId))
+        {
+            throw new ArgumentException(
+                "Tutte le rilevazioni sostitutive devono appartenere al conto indicato.",
+                nameof(readings));
+        }
+
+        var existing = await _context.ManualBalances
+            .Where(reading => reading.AccountId == accountId)
+            .ToListAsync(cancellationToken);
+
+        var ownsTransaction = _context.Database.CurrentTransaction is null;
+        var transaction = ownsTransaction
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        try
+        {
+            _context.ManualBalances.RemoveRange(existing);
+            foreach (var reading in readings)
+            {
+                _context.ManualBalances.Add(PersistenceMapper.ToRecord(reading));
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
     }
 
     private async Task<IReadOnlyList<ManualBalance>> MaterializeAsync(

@@ -49,7 +49,9 @@ I nomi in questo documento identificano concetti di dominio, non implicano che c
 Ogni dato registrato ha una fonte di verità. Saldi, quantità, costo residuo, prezzi applicabili, valori di mercato e risultati sono derivati dalle operazioni e dalle osservazioni; non sono campi modificabili che sostituiscono la storia.
 
 2.1 Account
-Un Account rappresenta un conto corrente, conto titoli con liquidità, carta, cassa o passività monetaria. Conserva almeno identificativo, nome, tipo, stato e valuta EUR.
+Un Account rappresenta un conto corrente, conto titoli con liquidità, carta, cassa, passività monetaria o conto prestiti. Conserva almeno identificativo, nome, tipo, stato e valuta EUR. Può inoltre conservare un colore personalizzato nel formato #RRGGBB (usato nei grafici a barre) e un'icona come data URL; entrambi sono facoltativi. Nome, tipo, stato, colore e icona sono modificabili dal dettaglio del conto, mentre la valuta resta immutabile.
+
+L'applicazione garantisce due conti speciali, creati in modo idempotente all'avvio: **Cash** (tipo Cassa) e **Prestiti** (tipo Prestiti). Il conto Cash è un normale conto di cassa; il conto Prestiti aggrega i prestiti concessi.
 
 Per un Account esistono due semantiche di saldo, distinte e non equivalenti:
 - Il **saldo ricostruito dai posting** a una data economica T è la somma dei SignedAmount dei posting validi associati al conto, con OperationDate ≤ T, secondo la politica degli storni descritta nella sezione 4. È una grandezza derivata dalle operazioni registrate.
@@ -57,13 +59,13 @@ Per un Account esistono due semantiche di saldo, distinte e non equivalenti:
 
 I due saldi coesistono senza che l'uno sostituisca l'altro: la registrazione di un movimento aggiorna il saldo ricostruito, mai il saldo manuale; la registrazione di una rilevazione manuale aggiorna il saldo corrente, mai i posting. Un saldo iniziale può essere registrato sia come operazione esplicita sia come rilevazione manuale: sono dati diversi e nessuno dei due è salvato come valore modificabile separato.
 
-Un conto di regolamento rappresenta esclusivamente liquidità; non conserva quantità di strumenti finanziari.
+Un conto di regolamento rappresenta esclusivamente liquidità; non conserva quantità di strumenti finanziari. Un conto può essere eliminato solo se non ha operazioni registrate; l'eliminazione rimuove anche le sue rilevazioni manuali e, per un conto Prestiti, i prestiti con le loro rilevazioni.
 
 2.1.1 Rilevazione manuale del saldo (ManualBalance)
 Una ManualBalance è una rilevazione manuale del saldo assoluto di un conto, registrata dall'utente. Conserva identificativo, conto di riferimento, importo in EUR, data della rilevazione ValidAt (data economica a cui il saldo osservato si riferisce) e istante di registrazione RecordedAt (UTC). ValidAt e RecordedAt hanno ruoli distinti: la prima determina da quale data la rilevazione è consultabile storicamente, la seconda documenta quando è stata inserita e risolve l'ordine tra rilevazioni concorrenti.
 
 Le invarianti della rilevazione manuale:
-1. Le rilevazioni sono dati storici immutabili e append-only: una nuova rilevazione aggiunge una riga, non modifica né elimina le precedenti.
+1. Le rilevazioni sono dati storici: una nuova rilevazione aggiunge una riga; l'utente può correggere importo e data di una rilevazione oppure eliminarla dal dettaglio del conto. RecordedAt resta l'istante della prima registrazione.
 2. L'importo è espresso in EUR. Il saldo osservato può essere negativo o zero: nessuna regola di positività si applica a un'osservazione.
 3. Il **saldo corrente** del conto è l'ultima rilevazione registrata per il conto, scelta per (RecordedAt, Id) discendenti. L'Application rifiuta le nuove rilevazioni con ValidAt successiva alla data corrente.
 4. La **consultazione storica** a una data T restituisce la massima rilevazione con ValidAt ≤ T per (ValidAt, RecordedAt, Id) discendenti.
@@ -71,6 +73,18 @@ Le invarianti della rilevazione manuale:
 6. Le registrazioni di entrate, uscite, trasferimenti, commissioni e altri posting non scrivono né aggiornano le rilevazioni manuali e non generano rettifiche contabili o operazioni fittizie.
 7. Nessuna vista bitemporale completa è richiesta in questa versione; ValidAt e RecordedAt vengono conservati per consentirla in futuro.
 8. L'Application rifiuta una nuova rilevazione con ValidAt successiva alla data corrente, valutata in UTC alla registrazione. Il Domain resta indipendente dall'orologio.
+
+2.1.2 Prestito e rilevazione del prestito (Loan, LoanReading)
+Un **Loan** appartiene esclusivamente a un conto di tipo Prestiti e conserva identificativo, debitore, conto di riferimento e istante di creazione. Un **LoanReading** è una rilevazione manuale dell'importo ancora dovuto per quel singolo prestito: conserva importo in EUR, ValidAt e RecordedAt con le stesse regole delle rilevazioni manuali dei conti.
+
+Invarianti dei prestiti:
+1. Ogni prestito ha le proprie rilevazioni, indipendenti da quelle degli altri prestiti.
+2. Il saldo del conto Prestiti alla data T è la somma dell'ultima rilevazione di ciascun prestito con ValidAt ≤ T; un prestito senza rilevazioni contribuisce con zero.
+3. Il saldo aggregato è materializzato come ManualBalance del conto Prestiti a ogni data con rilevazioni e alla data corrente. La materializzazione è una proiezione ricostruita a ogni modifica di prestito o rilevazione e anche all'avvio dell'applicazione, non una seconda fonte di verità.
+4. Grafici, dashboard e patrimonio netto leggono il saldo aggregato del conto; non sommano i singoli prestiti separatamente.
+5. L'Application rifiuta le rilevazioni future; l'eliminazione di un prestito rimuove le sue rilevazioni e ricostruisce il saldo aggregato.
+6. Un prestito è considerato **attivo** finché l'ultima rilevazione disponibile non è zero; quando arriva a zero è **estinto**. Lo stato è derivato, non memorizzato, e la lista può nascondere gli estinti.
+7. Un conto di tipo Prestiti con prestiti registrati non può essere convertito a un altro tipo; gli altri conti possono cambiare tipo dal dettaglio.
 
 2.2 Portfolio
 Un Portfolio raggruppa posizioni e definisce i conti di regolamento ammessi. Tutti i valori del portafoglio sono in EUR.
@@ -256,7 +270,7 @@ Se la posizione contiene 1 quota e viene tentata la vendita di 2 quote, l'operaz
 12. Commissioni d'acquisto e vendita non vengono sottratte due volte; le commissioni autonome sono costi separati.
 13. I valori derivati non valutabili propagano uno stato di incompletezza nei risultati aggregati.
 14. Il saldo corrente di un Account è determinato dall'ultima rilevazione manuale registrata; le operazioni e i posting non lo modificano automaticamente.
-15. Le rilevazioni manuali sono storico immutabile e append-only; ogni rilevazione è espressa in EUR.
+15. Le rilevazioni manuali sono storiche e modificabili o eliminabili su azione esplicita dell'utente; ogni rilevazione è espressa in EUR.
 16. L'assenza di una rilevazione manuale rende il saldo corrente esplicitamente non disponibile, mai uguale a zero per convenzione.
 17. L'Application rifiuta una nuova rilevazione manuale con data economica successiva alla data corrente UTC; questa è una regola di ingresso applicativa e non introduce dipendenze temporali nel Domain.
 18. Un trasferimento richiede due conti distinti e due importi positivi in EUR coincidenti.

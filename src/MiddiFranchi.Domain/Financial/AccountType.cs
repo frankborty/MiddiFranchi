@@ -6,4 +6,5 @@ public enum AccountType
     Card,
     Cash,
     Liability,
+    Loans,
 }

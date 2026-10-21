@@ -14,6 +14,10 @@ public sealed class AccountRecord
     public string CurrencyCode { get; set; } = null!;
 
     public AccountStatus Status { get; set; }
+
+    public string? ColorHex { get; set; }
+
+    public string? IconDataUrl { get; set; }
 }
 
 public sealed class CategoryRecord
@@ -196,6 +200,38 @@ public sealed class ManualBalanceRecord
     public Guid AccountId { get; set; }
 
     public AccountRecord Account { get; set; } = null!;
+
+    public decimal AmountAmount { get; set; }
+
+    public string AmountCurrencyCode { get; set; } = null!;
+
+    public DateOnly ValidAt { get; set; }
+
+    public DateTimeOffset RecordedAt { get; set; }
+}
+
+public sealed class LoanRecord
+{
+    public Guid Id { get; set; }
+
+    public Guid AccountId { get; set; }
+
+    public AccountRecord Account { get; set; } = null!;
+
+    public string Borrower { get; set; } = null!;
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public ICollection<LoanReadingRecord> Readings { get; set; } = new List<LoanReadingRecord>();
+}
+
+public sealed class LoanReadingRecord
+{
+    public Guid Id { get; set; }
+
+    public Guid LoanId { get; set; }
+
+    public LoanRecord Loan { get; set; } = null!;
 
     public decimal AmountAmount { get; set; }
 

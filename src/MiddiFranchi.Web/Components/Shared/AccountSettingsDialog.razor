@@ -1,0 +1,233 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@inject AccountService AccountsService
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="account-settings-dialog-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="account-settings-dialog-title">Impostazioni conto</h2>
+                    <p class="section-sub">Nome, tipo, stato, colore e icona.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveAsync">
+                <label>
+                    <span>Nome *</span>
+                    <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
+                </label>
+                <label>
+                    <span>Tipo *</span>
+                    <select @bind="_type" required aria-required="true">
+                        @foreach (var type in Enum.GetValues<AccountType>())
+                        {
+                            <option value="@type">@Format.AccountTypeLabel(type)</option>
+                        }
+                    </select>
+                </label>
+                <label>
+                    <span>Stato *</span>
+                    <select @bind="_status" required aria-required="true">
+                        @foreach (var status in Enum.GetValues<AccountStatus>())
+                        {
+                            <option value="@status">@Format.AccountStatusLabel(status)</option>
+                        }
+                    </select>
+                </label>
+
+                <div class="color-picker">
+                    <span class="dialog-label">Colore nei grafici</span>
+                    <div class="color-row">
+                        <input type="color" @bind="_colorHex" disabled="@_useAutomaticColor" />
+                        <label>
+                            <input type="checkbox" @bind="_useAutomaticColor" />
+                            <span>Colore automatico</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="icon-upload">
+                    <span class="dialog-label">Icona</span>
+                    <div class="icon-upload-preview">
+                        <AccountAvatar Name="@_name" Type="@_type" IconDataUrl="@_iconDataUrl" />
+                        <div class="icon-upload-actions">
+                            <InputFile OnChange="OnIconSelected" accept="image/png,image/jpeg,image/webp" />
+                            @if (!string.IsNullOrWhiteSpace(_iconDataUrl))
+                            {
+                                <button type="button" class="secondary-button" disabled="@_saving" @onclick="RemoveIcon">Rimuovi icona</button>
+                            }
+                        </div>
+                    </div>
+                    <span class="table-hint">PNG, JPEG o WebP, massimo 512 KB. L'icona ha priorità sul logo e sull'icona predefinita.</span>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@_saving">Salva impostazioni</button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+
+    [Parameter] public string Name { get; set; } = "";
+
+    [Parameter] public AccountType Type { get; set; }
+
+    [Parameter] public AccountStatus Status { get; set; }
+
+    [Parameter] public string? ColorHex { get; set; }
+
+    [Parameter] public string? IconDataUrl { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<Account> OnSaved { get; set; }
+
+    private const long MaxIconBytes = 512 * 1024;
+    private const string DefaultColor = "#0ea5e9";
+
+    private bool _wasOpen;
+    private bool _saving;
+    private string? _error;
+    private string _name = "";
+    private AccountType _type;
+    private AccountStatus _status;
+    private string _colorHex = DefaultColor;
+    private bool _useAutomaticColor = true;
+    private string? _iconDataUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _saving = false;
+        _error = null;
+        _name = Name;
+        _type = Type;
+        _status = Status;
+        _colorHex = string.IsNullOrWhiteSpace(ColorHex) ? DefaultColor : ColorHex;
+        _useAutomaticColor = string.IsNullOrWhiteSpace(ColorHex);
+        _iconDataUrl = IconDataUrl;
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task OnIconSelected(InputFileChangeEventArgs args)
+    {
+        _error = null;
+        var file = args.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        var contentType = file.ContentType?.ToLowerInvariant();
+        if (contentType is not ("image/png" or "image/jpeg" or "image/webp"))
+        {
+            _error = "Formato icona non supportato: usa PNG, JPEG o WebP.";
+            return;
+        }
+
+        if (file.Size > MaxIconBytes)
+        {
+            _error = "L'icona supera 512 KB.";
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxIconBytes);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            _iconDataUrl = $"data:{contentType};base64,{Convert.ToBase64String(memory.ToArray())}";
+        }
+        catch (Exception)
+        {
+            _error = "Impossibile leggere l'icona selezionata.";
+        }
+    }
+
+    private void RemoveIcon() => _iconDataUrl = null;
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "Il nome del conto è obbligatorio.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var updated = await AccountsService.UpdateAsync(new UpdateAccountRequest(
+                AccountId,
+                _name.Trim(),
+                _type,
+                _status,
+                _useAutomaticColor ? null : _colorHex,
+                _iconDataUrl));
+            await OnSaved.InvokeAsync(updated);
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Salvataggio non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -16,7 +16,7 @@ internal sealed class AccountRecordConfiguration : IEntityTypeConfiguration<Acco
                 $"\"CurrencyCode\" IN ({PersistenceConfigurationHelpers.SupportedCurrenciesSql})");
             table.HasCheckConstraint(
                 "CK_Accounts_Type",
-                "\"Type\" IN ('Checking', 'Card', 'Cash', 'Liability')");
+                "\"Type\" IN ('Checking', 'Card', 'Cash', 'Liability', 'Loans')");
             table.HasCheckConstraint(
                 "CK_Accounts_Status",
                 "\"Status\" IN ('Active', 'Closed')");
@@ -29,6 +29,8 @@ internal sealed class AccountRecordConfiguration : IEntityTypeConfiguration<Acco
         builder.Property(account => account.Type).IsEnumString();
         builder.Property(account => account.CurrencyCode).IsCurrencyCode();
         builder.Property(account => account.Status).IsEnumString();
+        builder.Property(account => account.ColorHex).HasMaxLength(7);
+        builder.Property(account => account.IconDataUrl);
     }
 }
 

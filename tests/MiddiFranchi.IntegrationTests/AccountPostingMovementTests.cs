@@ -115,7 +115,9 @@ public class AccountPostingMovementTests : PostgresTestBase
 
         var accountService = new AccountService(
             new AccountRepository(Context),
-            postingRepository);
+            postingRepository,
+            new FinancialOperationRepository(Context),
+            new LoanRepository(Context));
         var balance = await accountService.GetCalculatedBalanceAsync(account.Id, new DateOnly(2026, 4, 1));
 
         balance.ShouldBe(new Money(0m, Currency.Euro));
@@ -144,7 +146,9 @@ public class AccountPostingMovementTests : PostgresTestBase
 
         var accountService = new AccountService(
             new AccountRepository(Context),
-            new AccountPostingRepository(Context));
+            new AccountPostingRepository(Context),
+            new FinancialOperationRepository(Context),
+            new LoanRepository(Context));
         var balance = await accountService.GetCalculatedBalanceAsync(account.Id, new DateOnly(2026, 3, 10));
 
         balance.ShouldBe(new Money(80m, Currency.Euro));

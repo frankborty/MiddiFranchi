@@ -17,11 +17,13 @@ builder.Services.AddScoped<ReversalService>();
 builder.Services.AddScoped<OperationHistoryService>();
 builder.Services.AddScoped<MovementService>();
 builder.Services.AddScoped<ManualBalanceService>();
+builder.Services.AddScoped<LoanService>();
 builder.Services.AddScoped<AccountOverviewService>();
 builder.Services.AddScoped<NetWorthOverviewService>();
 builder.Services.AddScoped<FinancialDashboardService>();
 builder.Services.AddScoped<InvestmentOverviewService>();
 builder.Services.AddScoped<DashboardOverviewService>();
+builder.Services.AddScoped<SpecialAccountsSeeder>();
 
 var app = builder.Build();
 
@@ -39,5 +41,18 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<SpecialAccountsSeeder>().EnsureAsync();
+        await scope.ServiceProvider.GetRequiredService<LoanService>().RebuildAllAsync();
+    }
+    catch (Exception exception)
+    {
+        app.Logger.LogWarning(exception, "Impossibile inizializzare i conti speciali o i saldi dei prestiti.");
+    }
+}
 
 app.Run();

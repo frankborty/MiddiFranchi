@@ -1,5 +1,8 @@
 ﻿@inherits LayoutComponentBase
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Routing
 @using MiddiFranchi.Web.Components.Shared
+@inject NavigationManager Navigation
 
 <div class="page nav-collapsed" id="mf-page">
     <aside class="app-sidebar" id="mf-sidebar">
@@ -18,17 +21,17 @@
         </div>
         <nav class="sidebar-nav" aria-label="Navigazione principale">
             <div class="sidebar-group">
-                <NavLink href="investments" class="nav-investments" Match="NavLinkMatch.All" title="Investimenti" aria-label="Investimenti"><MfIcon Name="pie" Size="20" /><span class="nav-label">Investimenti</span></NavLink>
-                <NavLink href="net-worth" class="nav-networth" Match="NavLinkMatch.All" title="Patrimonio netto" aria-label="Patrimonio netto"><MfIcon Name="trend" Size="20" /><span class="nav-label">Patrimonio netto</span></NavLink>
-            </div>
-            <div class="sidebar-group">
                 <NavLink href="" class="nav-home" Match="NavLinkMatch.All" title="Dashboard" aria-label="Dashboard"><MfIcon Name="chart" Size="20" /><span class="nav-label">Dashboard</span></NavLink>
                 <NavLink href="accounts" class="nav-accounts" Match="NavLinkMatch.Prefix" title="Conti" aria-label="Conti"><MfIcon Name="wallet" Size="20" /><span class="nav-label">Conti</span></NavLink>
                 <NavLink href="operations" class="nav-operations" Match="NavLinkMatch.All" title="Operazioni" aria-label="Operazioni"><MfIcon Name="swap" Size="20" /><span class="nav-label">Operazioni</span></NavLink>
                 <NavLink href="movements" class="nav-movements" Match="NavLinkMatch.All" title="Movimenti" aria-label="Movimenti"><MfIcon Name="list" Size="20" /><span class="nav-label">Movimenti</span></NavLink>
             </div>
+            <div class="sidebar-group">
+                <NavLink href="investments" class="nav-investments" Match="NavLinkMatch.All" title="Investimenti" aria-label="Investimenti"><MfIcon Name="pie" Size="20" /><span class="nav-label">Investimenti</span></NavLink>
+                <NavLink href="net-worth" class="nav-networth" Match="NavLinkMatch.All" title="Patrimonio netto" aria-label="Patrimonio netto"><MfIcon Name="trend" Size="20" /><span class="nav-label">Patrimonio netto</span></NavLink>
+            </div>
             <div class="sidebar-group sidebar-group-bottom">
-                <NavLink href="categories" class="nav-categories" Match="NavLinkMatch.All" title="Categorie" aria-label="Categorie"><MfIcon Name="tag" Size="20" /><span class="nav-label">Categorie</span></NavLink>
+                <NavLink href="settings" class="nav-settings" Match="NavLinkMatch.All" title="Configurazione" aria-label="Configurazione"><MfIcon Name="settings" Size="20" /><span class="nav-label">Configurazione</span></NavLink>
             </div>
         </nav>
     </aside>
@@ -41,9 +44,12 @@
         <main class="page-body">
             @Body
         </main>
-        <a class="fab-add" href="operations" aria-label="Nuova operazione">
-            <MfIcon Name="plus" Size="24" />
-        </a>
+        @if (!IsAccountsSection)
+        {
+            <a class="fab-add" href="operations" aria-label="Nuova operazione">
+                <MfIcon Name="plus" Size="24" />
+            </a>
+        }
     </div>
 </div>
 
@@ -52,4 +58,22 @@
     <a href="." class="reload">Ricarica</a>
     <span class="dismiss" role="button" tabindex="0" aria-label="Nascondi il messaggio di errore">🗙</span>
 </div>
+
+@code {
+    private bool IsAccountsSection => IsAccountsPath(Navigation.Uri);
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
+    private static bool IsAccountsPath(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.TrimEnd('/');
+        return path.Equals("/accounts", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/accounts/", StringComparison.OrdinalIgnoreCase);
+    }
+}
 

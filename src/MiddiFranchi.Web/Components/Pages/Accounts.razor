@@ -4,167 +4,339 @@
 @using MiddiFranchi.Domain.Financial
 @using MiddiFranchi.Domain.Shared
 @inject AccountOverviewService Overview
-@inject AccountService AccountsService
 @inject ManualBalanceService ManualBalanceSvc
 
 <PageTitle>Conti</PageTitle>
-<h1>Conti</h1>
-<p class="page-intro">
-    Il saldo manuale è la fonte autorevole di ogni conto; il saldo ricostruito dai movimenti è
-    mostrato come riferimento secondario e non si somma mai al primo.
-</p>
+
+<div class="dashboard-header">
+    <h1 class="account-detail-title">
+        <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="wallet" Size="18" /></span>
+        Conti
+    </h1>
+</div>
 
 @if (_loading)
 {
-    <p class="page-status">Caricamento in corso…</p>
+    <section class="card dashboard-loading" aria-live="polite">
+        <p class="page-status" role="status">Caricamento in corso…</p>
+    </section>
 }
 else if (_loadError is not null)
 {
-    <p class="alert alert-error" role="alert">@_loadError</p>
+    <section class="card">
+        <p class="alert alert-error" role="alert">@_loadError</p>
+        <div class="form-actions">
+            <button type="button" class="secondary-button" @onclick="LoadRowsAsync">Riprova</button>
+        </div>
+    </section>
 }
 else
 {
-    @if (_rows is null || _rows.Count == 0)
+    @if (_rows is { Count: > 0 })
     {
-        <EmptyState Title="Nessun conto registrato"
-                    Hint="Crea il primo conto con il modulo qui sotto: servirà per registrare rilevazioni dei saldi e operazioni."
-                    Icon="wallet" />
-    }
-    else
-    {
-        <section class="card" aria-labelledby="accounts-history-title">
-            <div class="section-head">
-                <div>
-                    <h2 id="accounts-history-title"><MfIcon Name="chart" Size="18" /> Andamento dei saldi</h2>
-                    <p class="section-sub">Saldo manuale del conto selezionato, in EUR.</p>
-                </div>
-            </div>
+        <div class="bento">
+            <div class="sp-12">
+                <section class="card accounts-chart-card" aria-labelledby="accounts-history-title">
+                    <div class="section-head">
+                        <div>
+                            <h2 id="accounts-history-title"><MfIcon Name="chart" Size="18" /> Valore conti</h2>
+                        </div>
+                        <div class="overview-ranges" role="group" aria-label="Intervallo temporale">
+                            @foreach (var option in ChartRanges.Options)
+                            {
+                                <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => _range = option.Key">@option.Label</button>
+                            }
+                        </div>
+                    </div>
 
-            <div class="chart-filter">
-                <label>
-                    <span>Conto da visualizzare</span>
-                    <select @bind="_selectedAccountId" @bind:after="LoadHistoryAsync">
-                        @foreach (var row in _rows)
-                        {
-                            <option value="@row.AccountId">@row.Name</option>
-                        }
-                    </select>
-                </label>
-            </div>
-
-            @if (_historyLoading)
-            {
-                <p class="page-status" role="status">Caricamento dello storico…</p>
-            }
-            else if (_historyError is not null)
-            {
-                <p class="alert alert-error" role="alert">@_historyError</p>
-            }
-            else if (_selectedRow is { } selected && _selectedSeries.Count > 0)
-            {
-                <ApexTimeSeriesChart Title="@($"Saldo manuale · {selected.Name}")"
-                                     Description="Rilevazioni manuali per data di validità; nessun valore interpolato."
-                                     Currency="@selected.Currency"
-                                     Series="@_selectedSeries" />
-                <p class="table-hint">
-                    Il saldo corrente nella tabella è l'ultima rilevazione registrata; il grafico usa la
-                    data di validità delle rilevazioni.
-                </p>
-            }
-            else
-            {
-                <EmptyState Title="Servono almeno due rilevazioni"
-                            Hint="Registra un'altra rilevazione del saldo per vedere l'andamento nel tempo."
-                            Icon="chart" />
-            }
-        </section>
-
-        <section class="card">
-            <h2>Elenco dei conti</h2>
-            <div class="table-scroll" tabindex="0">
-                <table class="data-table">
-                    <caption class="table-hint">Saldo in EUR; "rilevato al" indica la data della rilevazione manuale corrente.</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Nome</th>
-                            <th scope="col">Tipo</th>
-                            <th scope="col">Stato</th>
-                            <th scope="col" class="num">Saldo manuale</th>
-                            <th scope="col" class="num">Saldo ricostruito (secondario)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in _rows)
-                        {
-                            <tr>
-                                <td>
-                                    <a class="primary-link" href="accounts/@row.AccountId">@row.Name</a>
-                                    @if (row.ManualReading is not null)
-                                    {
-                                        <div class="table-hint">rilevato al @Format.Date(row.ManualReading.ValidAt)</div>
-                                    }
-                                </td>
-                                <td>@Format.AccountTypeLabel(row.Type)</td>
-                                <td><StatusBadge Tone="@(row.Status == AccountStatus.Active ? "income" : "neutral")">@Format.AccountStatusLabel(row.Status)</StatusBadge></td>
-                                <td class="num">
-                                    <AmountValue Value="@row.ManualBalance" UnavailableText="Saldo non registrato" />
-                                </td>
-                                <td class="num">
-                                    <AmountValue Value="@row.CalculatedBalance" Tone="neutral" />
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </section>
-    }
-
-    <section class="card">
-        <h2>Nuovo conto</h2>
-        @if (_createdMessage is not null)
-        {
-            <p class="alert alert-success" role="status">@_createdMessage</p>
-        }
-        @if (_createError is not null)
-        {
-            <p class="alert alert-error" role="alert">@_createError</p>
-        }
-        <form class="form-grid" @onsubmit="CreateAsync">
-            <label>
-                <span>Nome *</span>
-                <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
-            </label>
-            <label>
-                <span>Tipo *</span>
-                <select @bind="_type" required aria-required="true">
-                    @foreach (var type in Enum.GetValues<AccountType>())
+                    @if (_readingMessage is not null)
                     {
-                        <option value="@type">@Format.AccountTypeLabel(type)</option>
+                        <p class="alert alert-success" role="status">@_readingMessage</p>
                     }
-                </select>
-            </label>
-            <div class="form-actions">
-                <button type="submit" class="primary-button"><MfIcon Name="plus" Size="18" /> Crea conto</button>
+
+                    <div class="accounts-current">
+                        <div class="balance-main">
+                            <span class="balance-label">Totale attuale</span>
+                            <span class="balance-value">
+                                <AmountValue Value="@CurrentAccountsTotal" UnavailableText="Non calcolabile" />
+                            </span>
+                            <span class="table-hint">
+                                @if (AccountsWithoutBalanceCount == 0)
+                                {
+                                    <text>Tutti i conti hanno un saldo registrato.</text>
+                                }
+                                else if (AccountsWithoutBalanceCount == 1)
+                                {
+                                    <text>1 conto senza saldo escluso dal totale.</text>
+                                }
+                                else
+                                {
+                                    <text>@AccountsWithoutBalanceCount conti senza saldo esclusi dal totale.</text>
+                                }
+                            </span>
+                        </div>
+                        @if (CurrentAccountsTotal is not null && AccountsWithoutBalanceCount > 0)
+                        {
+                            <StatusBadge Tone="warning">Parziale</StatusBadge>
+                        }
+                    </div>
+
+                    @if (HasChartData)
+                    {
+                        <ApexTimeSeriesChart Title=""
+                                             Currency="@_rows[0].Currency"
+                                             Series="@ChartSeries"
+                                             Stacked="true"
+                                             ShowStackedTotal="false"
+                                             ShowHeader="false"
+                                             ShowFooter="false"
+                                             ShowDataTable="false"
+                                             XAxisLabelMode="month" />
+
+                        @if (ChartStatistics is { } statistics)
+                        {
+                            <dl class="chart-stats">
+                                <div>
+                                    <dt>Valore massimo</dt>
+                                    <dd><AmountValue Value="@statistics.Maximum" Tone="balance" /></dd>
+                                </div>
+                                <div>
+                                    <dt>Valore minimo</dt>
+                                    <dd><AmountValue Value="@statistics.Minimum" Tone="balance" /></dd>
+                                </div>
+                                <div>
+                                    <dt>Valore medio</dt>
+                                    <dd><AmountValue Value="@statistics.Average" Tone="balance" /></dd>
+                                </div>
+                                <div>
+                                    <dt>Variazione media mensile</dt>
+                                    <dd><AmountValue Value="@statistics.AverageMonthlyChange" Signed="true" Tone="@Tone(statistics.AverageMonthlyChange)" /></dd>
+                                </div>
+                                <div>
+                                    <dt>Variazione media annuale</dt>
+                                    <dd><AmountValue Value="@statistics.AverageAnnualChange" Signed="true" Tone="@Tone(statistics.AverageAnnualChange)" /></dd>
+                                </div>
+                            </dl>
+                            <p class="table-hint">
+                                Statistiche calcolate sull'intervallo selezionato
+                                @if (AccountsWithoutBalanceCount > 0)
+                                {
+                                    <text>sui conti con saldo disponibile</text>
+                                }.
+                            </p>
+                        }
+                    }
+                    else
+                    {
+                        <EmptyState Title="Nessuna rilevazione nel periodo"
+                                    Hint="Scegli un intervallo più ampio o registra una nuova rilevazione."
+                                    Icon="chart" />
+                    }
+                </section>
             </div>
-        </form>
-        <p class="table-hint">I campi contrassegnati con * sono obbligatori. Le regole complete sono verificate dall'applicazione.</p>
-    </section>
+        </div>
+    }
+
+    <div class="bento">
+        <div class="sp-12">
+            <section class="card" aria-labelledby="accounts-list-title">
+                <div class="section-head">
+                    <div class="section-title-row">
+                        <h2 id="accounts-list-title"><MfIcon Name="wallet" Size="18" /> Elenco dei conti</h2>
+                        @if (_rows is { Count: > 0 })
+                        {
+                            <StatusBadge Tone="accounts">@AccountCountLabel</StatusBadge>
+                        }
+                    </div>
+                    @if (_rows is { Count: > 0 })
+                    {
+                        <button type="button" class="small-toggle" aria-pressed="@_hideClosedAccounts" @onclick="ToggleHideClosedAccounts">
+                            @(_hideClosedAccounts ? "Mostra chiusi" : "Nascondi chiusi")
+                        </button>
+                    }
+                </div>
+
+                @if (_rows is null || _rows.Count == 0)
+                {
+                    <EmptyState Title="Nessun conto registrato"
+                                Hint="I conti esistenti compaiono qui."
+                                Icon="wallet" />
+                }
+                else if (VisibleAccountRows.Count == 0)
+                {
+                    <EmptyState Title="Nessun conto visibile"
+                                Hint="I conti chiusi sono nascosti. Usa «Mostra chiusi» per visualizzarli."
+                                Icon="wallet" />
+                }
+                else
+                {
+                    <ul class="account-summary-list">
+                        @foreach (var row in VisibleAccountRows)
+                        {
+                            <li class="account-summary-row">
+                                <AccountAvatar Name="@row.Name" Type="@row.Type" IconDataUrl="@row.IconDataUrl" />
+                                <div class="account-summary-main">
+                                    <a class="account-summary-name" href="accounts/@row.AccountId" title="@row.Name">
+                                        @row.Name
+                                    </a>
+                                    <span class="account-summary-meta">
+                                        @Format.AccountTypeLabel(row.Type)
+                                        @if (row.ManualReading is not null)
+                                        {
+                                            <span aria-hidden="true">·</span>
+                                            <span>@Format.Date(row.ManualReading.ValidAt)</span>
+                                        }
+                                        @if (row.Status == AccountStatus.Closed)
+                                        {
+                                            <StatusBadge Tone="neutral">@Format.AccountStatusLabel(row.Status)</StatusBadge>
+                                        }
+                                    </span>
+                                </div>
+                                <div class="account-summary-balance">
+                                    @if (row.ManualBalance is null)
+                                    {
+                                        <span class="account-balance-missing">
+                                            <MfIcon Name="alert" Size="14" /> Saldo non registrato
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <AmountValue Value="@row.ManualBalance" />
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                    @if (AccountsWithoutBalanceCount > 0)
+                    {
+                        <p class="account-note">
+                            <MfIcon Name="alert" Size="14" />
+                            @(AccountsWithoutBalanceCount == 1
+                                ? "1 conto senza saldo manuale: escluso dal totale parziale."
+                                : $"{AccountsWithoutBalanceCount} conti senza saldo manuale: esclusi dal totale parziale.")
+                        </p>
+                    }
+                }
+            </section>
+        </div>
+    </div>
+
+    @if (_rows is { Count: > 0 })
+    {
+        <button type="button" class="fab-add" aria-label="Nuova rilevazione" @onclick="OpenReadingDialog">
+            <MfIcon Name="plus" Size="24" />
+        </button>
+    }
+
+    <ManualBalanceDialog Open="_readingDialogOpen"
+                         Accounts="@ReadingAccountChoices"
+                         OnClose="CloseReadingDialog"
+                         OnSaved="OnReadingSaved" />
 }
 
 @code {
     private IReadOnlyList<AccountOverviewRow>? _rows;
+    private IReadOnlyList<ManualBalance> _allReadings = [];
     private bool _loading = true;
+    private bool _hideClosedAccounts;
+    private string _range = "max";
+    private bool _readingDialogOpen;
+    private string? _readingMessage;
     private string? _loadError;
-    private string _name = "";
-    private string _type = nameof(AccountType.Checking);
-    private string? _createError;
-    private string? _createdMessage;
-    private string _selectedAccountId = "";
-    private AccountOverviewRow? _selectedRow;
-    private IReadOnlyList<TimeSeriesSeries> _selectedSeries = [];
-    private bool _historyLoading;
-    private string? _historyError;
+
+    private int AccountsWithoutBalanceCount =>
+        _rows?.Count(row => row.ManualBalance is null) ?? 0;
+
+    private IReadOnlyList<AccountOverviewRow> VisibleAccountRows =>
+        _rows is null
+            ? []
+            : _hideClosedAccounts
+                ? _rows.Where(row => row.Status == AccountStatus.Active).ToArray()
+                : _rows;
+
+    private string AccountCountLabel =>
+        VisibleAccountRows.Count == 1 ? "1 conto" : $"{VisibleAccountRows.Count} conti";
+
+    private IReadOnlyList<ManualBalanceDialog.AccountChoice> ReadingAccountChoices =>
+        _rows?
+            .Where(row => row.Type != AccountType.Loans)
+            .Select(row => new ManualBalanceDialog.AccountChoice(row.AccountId, row.Name, row.Type, row.IconDataUrl))
+            .ToArray() ?? [];
+
+    private IReadOnlyList<TimeSeriesSeries> ChartSeries => BuildChartSeries();
+
+    private bool HasChartData =>
+        ChartSeries.Any(series => series.Points.Any(point => point.Value is not null));
+
+    private Money? CurrentAccountsTotal
+    {
+        get
+        {
+            if (_rows is null)
+            {
+                return null;
+            }
+
+            Money? total = null;
+            foreach (var row in _rows)
+            {
+                if (row.ManualBalance is { } balance)
+                {
+                    total = total is null ? balance : total.Value + balance;
+                }
+            }
+
+            return total;
+        }
+    }
+
+    private AccountChartStatistics? ChartStatistics
+    {
+        get
+        {
+            if (_rows is null)
+            {
+                return null;
+            }
+
+            var series = ChartSeries.FirstOrDefault(candidate => candidate.Label == "Totale");
+            if (series is null)
+            {
+                return null;
+            }
+
+            var values = series.Points
+                .Where(point => point.Value is not null)
+                .Select(point => point.Value!.Value)
+                .ToArray();
+
+            if (values.Length == 0)
+            {
+                return null;
+            }
+
+            var currency = _rows[0].Currency;
+            Money? monthlyChange = null;
+            Money? annualChange = null;
+
+            if (values.Length >= 2)
+            {
+                var averageMonthly = (values[^1] - values[0]) / (values.Length - 1);
+                monthlyChange = new Money(averageMonthly, currency);
+                annualChange = new Money(averageMonthly * 12m, currency);
+            }
+
+            return new AccountChartStatistics(
+                new Money(values.Max(), currency),
+                new Money(values.Min(), currency),
+                new Money(values.Average(), currency),
+                monthlyChange,
+                annualChange);
+        }
+    }
+
+    private DateOnly? RangeStart =>
+        ChartRanges.Start(_range, DateOnly.FromDateTime(DateTime.UtcNow));
 
     protected override async Task OnInitializedAsync()
     {
@@ -177,11 +349,13 @@ else
         try
         {
             _loadError = null;
+            _allReadings = [];
             _rows = await Overview.ListAsync();
+            _allReadings = await ManualBalanceSvc.ListAllAsync();
         }
         catch (InvalidOperationException exception) when (exception.Message.Contains("CONNECTION", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
         {
-            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secret.";
         }
         catch (InvalidOperationException exception)
         {
@@ -191,131 +365,139 @@ else
         {
             _loadError = "Impossibile contattare il database. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
         }
-
-        if (_loadError is not null)
-        {
-            return;
-        }
-
-        if (_rows is { Count: > 0 })
-        {
-            if (!Guid.TryParse(_selectedAccountId, out var selectedId) ||
-                _rows.All(row => row.AccountId != selectedId))
-            {
-                _selectedAccountId = _rows[0].AccountId.ToString();
-            }
-
-            await LoadHistoryAsync();
-        }
-        else
-        {
-            _selectedAccountId = "";
-            _selectedRow = null;
-            _selectedSeries = [];
-        }
     }
 
-    private async Task LoadHistoryAsync()
+    private IReadOnlyList<TimeSeriesSeries> BuildChartSeries()
     {
-        _historyError = null;
-        _selectedRow = null;
-        _selectedSeries = [];
-
-        if (!Guid.TryParse(_selectedAccountId, out var accountId) || _rows is null)
-        {
-            return;
-        }
-
-        _selectedRow = _rows.FirstOrDefault(row => row.AccountId == accountId);
-        if (_selectedRow is null)
-        {
-            return;
-        }
-
-        var requestedSelection = _selectedAccountId;
-        _historyLoading = true;
-        try
-        {
-            var readings = await ManualBalanceSvc.ListForAccountAsync(accountId);
-            if (!string.Equals(_selectedAccountId, requestedSelection, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _selectedSeries = BuildSeries(accountId, readings);
-        }
-        catch (Exception)
-        {
-            if (string.Equals(_selectedAccountId, requestedSelection, StringComparison.Ordinal))
-            {
-                _historyError = "Impossibile caricare lo storico del conto. Verificare che PostgreSQL sia raggiungibile.";
-            }
-        }
-        finally
-        {
-            if (string.Equals(_selectedAccountId, requestedSelection, StringComparison.Ordinal))
-            {
-                _historyLoading = false;
-            }
-        }
-    }
-
-    private static IReadOnlyList<TimeSeriesSeries> BuildSeries(
-        Guid accountId,
-        IReadOnlyList<ManualBalance> readings)
-    {
-        var dates = readings
-            .Select(reading => reading.ValidAt)
-            .Distinct()
-            .OrderBy(date => date)
-            .ToArray();
-
-        if (dates.Length < 2)
+        if (_rows is null || _allReadings.Count == 0)
         {
             return [];
         }
 
-        var points = dates
-            .Select(date =>
+        var start = RangeStart;
+        var months = MonthEnds(
+                _allReadings.Min(reading => reading.ValidAt),
+                _allReadings.Max(reading => reading.ValidAt))
+            .Where(monthEnd => start is null || monthEnd >= start.Value)
+            .ToArray();
+
+        if (months.Length == 0)
+        {
+            return [];
+        }
+
+        var readingsByAccount = _rows.ToDictionary(
+            row => row.AccountId,
+            row => _allReadings.Where(reading => reading.AccountId == row.AccountId).ToArray());
+
+        var series = new List<TimeSeriesSeries>();
+        var colorIndex = 0;
+        foreach (var row in _rows)
+        {
+            var readings = readingsByAccount[row.AccountId];
+            if (readings.Length == 0)
             {
-                var effective = ManualBalances.LatestOnOrBefore(readings, accountId, date);
-                return new TimeSeriesPoint(date, effective?.Amount.Amount);
+                continue;
+            }
+
+            var points = months
+                .Select(monthEnd => new TimeSeriesPoint(
+                    monthEnd,
+                    ManualBalances.LatestOnOrBefore(readings, row.AccountId, monthEnd)?.Amount.Amount))
+                .ToArray();
+            if (points.All(point => point.Value is null))
+            {
+                continue;
+            }
+
+            series.Add(new TimeSeriesSeries(
+                row.Name,
+                points,
+                row.ColorHex ?? ChartPalette.Colors[colorIndex % ChartPalette.Colors.Length],
+                TimeSeriesSeriesKind.Bar));
+            colorIndex++;
+        }
+
+        if (series.Count == 0)
+        {
+            return [];
+        }
+
+        var totalPoints = months
+            .Select(monthEnd =>
+            {
+                decimal? total = null;
+                foreach (var (accountId, readings) in readingsByAccount)
+                {
+                    if (readings.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var value = ManualBalances
+                        .LatestOnOrBefore(readings, accountId, monthEnd)?.Amount.Amount;
+                    if (value is not null)
+                    {
+                        total = (total ?? 0m) + value.Value;
+                    }
+                }
+
+                return new TimeSeriesPoint(monthEnd, total);
             })
             .ToArray();
 
-        return
-        [
-            new("Saldo manuale", points, Color: "#0ea5e9"),
-        ];
+        if (totalPoints.Any(point => point.Value is not null))
+        {
+            series.Add(new TimeSeriesSeries("Totale", totalPoints, Color: "#94a3b8"));
+        }
+
+        return series;
     }
 
-    private async Task CreateAsync()
+    /// <summary>Un punto per mese, alla data di fine mese: l'ultima rilevazione disponibile nel mese.</summary>
+    private static IEnumerable<DateOnly> MonthEnds(DateOnly from, DateOnly to)
     {
-        _createError = null;
-        _createdMessage = null;
+        var cursor = new DateOnly(from.Year, from.Month, 1);
+        var last = new DateOnly(to.Year, to.Month, 1);
+        while (cursor <= last)
+        {
+            yield return new DateOnly(
+                cursor.Year,
+                cursor.Month,
+                DateTime.DaysInMonth(cursor.Year, cursor.Month));
+            cursor = cursor.AddMonths(1);
+        }
+    }
 
-        if (string.IsNullOrWhiteSpace(_name))
-        {
-            _createError = "Il nome del conto è obbligatorio.";
-            return;
-        }
+    private static string AriaPressed(bool value) => value ? "true" : "false";
 
-        try
-        {
-            var created = await AccountsService.CreateAsync(
-                new NewAccount(_name, Enum.Parse<AccountType>(_type)));
-            _createdMessage = $"Conto «{created.Name}» registrato.";
-            _name = "";
-            _type = nameof(AccountType.Checking);
-            await LoadRowsAsync();
-        }
-        catch (ArgumentException exception)
-        {
-            _createError = exception.Message;
-        }
-        catch (InvalidOperationException exception)
-        {
-            _createError = exception.Message;
-        }
+    private void ToggleHideClosedAccounts() => _hideClosedAccounts = !_hideClosedAccounts;
+
+    private static string Tone(Money? value) => value switch
+    {
+        { Amount: > 0m } => "income",
+        { Amount: < 0m } => "expense",
+        _ => "neutral",
+    };
+
+    private sealed record AccountChartStatistics(
+        Money Maximum,
+        Money Minimum,
+        Money Average,
+        Money? AverageMonthlyChange,
+        Money? AverageAnnualChange);
+
+    private void OpenReadingDialog()
+    {
+        _readingMessage = null;
+        _readingDialogOpen = true;
+    }
+
+    private void CloseReadingDialog() => _readingDialogOpen = false;
+
+    private async Task OnReadingSaved(ManualBalance reading)
+    {
+        _readingMessage = $"Rilevazione registrata: {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.";
+        await LoadRowsAsync();
     }
 }

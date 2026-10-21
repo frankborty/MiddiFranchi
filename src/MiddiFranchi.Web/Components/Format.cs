@@ -53,6 +53,7 @@ public static class Format
         AccountType.Card => "Carta di credito",
         AccountType.Cash => "Cassa",
         AccountType.Liability => "Passività monetaria",
+        AccountType.Loans => "Prestiti",
         _ => type.ToString(),
     };
 

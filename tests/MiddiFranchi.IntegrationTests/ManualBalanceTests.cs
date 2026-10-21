@@ -108,6 +108,79 @@ public class ManualBalanceTests : PostgresTestBase
     }
 
     [PostgresFact]
+    public async Task Reading_ShouldBeUpdatableAndDeletable()
+    {
+        var account = await AddAccountAsync("Conto corrente");
+        var repository = new ManualBalanceRepository(Context);
+        var service = BuildService();
+        var reading = await service.RecordAsync(new NewManualBalance(
+            account.Id, new Money(100m, Currency.Euro), new DateOnly(2026, 4, 1)));
+        ClearTracker();
+
+        var updated = await service.UpdateAsync(
+            reading.Id, new Money(125m, Currency.Euro), new DateOnly(2026, 4, 2));
+        ClearTracker();
+
+        updated.RecordedAt.ShouldBe(reading.RecordedAt, TimeSpan.FromMilliseconds(1));
+        var loaded = (await repository.GetByIdAsync(reading.Id)).ShouldNotBeNull();
+        loaded.Amount.ShouldBe(new Money(125m, Currency.Euro));
+        loaded.ValidAt.ShouldBe(new DateOnly(2026, 4, 2));
+
+        await service.DeleteAsync(reading.Id);
+        ClearTracker();
+
+        (await repository.GetByIdAsync(reading.Id)).ShouldBeNull();
+        (await Context.ManualBalances.CountAsync()).ShouldBe(0);
+    }
+
+    [PostgresFact]
+    public async Task DeletingAnAccount_ShouldRemoveItsManualReadings()
+    {
+        var account = await AddAccountAsync("Conto corrente");
+        await BuildService().RecordAsync(new NewManualBalance(
+            account.Id, new Money(100m, Currency.Euro), new DateOnly(2026, 4, 1)));
+        ClearTracker();
+
+        var service = new AccountService(
+            new AccountRepository(Context),
+            new AccountPostingRepository(Context),
+            new FinancialOperationRepository(Context),
+            new LoanRepository(Context));
+        await service.DeleteAsync(account.Id);
+        ClearTracker();
+
+        (await Context.Accounts.AnyAsync(record => record.Id == account.Id)).ShouldBeFalse();
+        (await Context.ManualBalances.AnyAsync(record => record.AccountId == account.Id)).ShouldBeFalse();
+    }
+
+    [PostgresFact]
+    public async Task DeletingAnAccountWithOperations_ShouldBeRejected()
+    {
+        var (account, category) = await AddOrdinaryContextAsync(CategoryType.Income);
+        var registration = new OperationRegistrationService(
+            new AccountRepository(Context),
+            new CategoryRepository(Context),
+            new FinancialOperationRepository(Context));
+        await registration.IncomeAsync(new RegisterIncomeRequest(
+            account.Id,
+            category.Id,
+            new PositiveMoney(new Money(100m, Currency.Euro)),
+            new DateOnly(2026, 4, 10)));
+        ClearTracker();
+
+        var service = new AccountService(
+            new AccountRepository(Context),
+            new AccountPostingRepository(Context),
+            new FinancialOperationRepository(Context),
+            new LoanRepository(Context));
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.DeleteAsync(account.Id));
+
+        error.Message.ShouldContain("operazioni registrate");
+        (await Context.Accounts.AnyAsync(record => record.Id == account.Id)).ShouldBeTrue();
+    }
+
+    [PostgresFact]
     public async Task Reading_ShouldRejectAMissingAccount()
     {
         var service = BuildService();

@@ -9,4 +9,8 @@ public interface IAccountRepository
     Task<IReadOnlyList<Account>> ListAsync(CancellationToken cancellationToken = default);
 
     Task AddAsync(Account account, CancellationToken cancellationToken = default);
+
+    Task UpdateAsync(Account account, CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }

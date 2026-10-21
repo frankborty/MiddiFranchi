@@ -135,8 +135,9 @@ public sealed class DashboardOverviewService
                 }
                 else if (covered < accounts.Count)
                 {
-                    reasons.Add(
-                        $"Solo {covered} conti su {accounts.Count} hanno una rilevazione corrente.");
+                    reasons.Add(covered == 1
+                        ? $"Solo 1 conto su {accounts.Count} ha una rilevazione corrente."
+                        : $"Solo {covered} conti su {accounts.Count} hanno una rilevazione corrente.");
                 }
             }
 
@@ -152,7 +153,9 @@ public sealed class DashboardOverviewService
             Euro,
             "Totale conti",
             "",
-            currentComplete ? currentPoint.Value : null,
+            // Il valore corrente è la somma dei conti con saldo disponibile: se qualcuno
+            // manca, il totale resta visibile come parziale (IsComplete = false), mai zero.
+            currentPoint.Value,
             null,
             null,
             null,

@@ -1,6 +1,7 @@
 using System.Globalization;
 using MiddiFranchi.Application.Persistence;
 using MiddiFranchi.Domain.Financial;
+using MiddiFranchi.Domain.Shared;
 
 namespace MiddiFranchi.Application.Financial;
 
@@ -29,14 +30,7 @@ public sealed class ManualBalanceService
     /// </summary>
     public async Task<ManualBalance> RecordAsync(NewManualBalance request, CancellationToken cancellationToken = default)
     {
-        var currentUtcDate = _currentUtcDate();
-        if (request.ValidAt > currentUtcDate)
-        {
-            throw new ArgumentException(
-                $"La data della rilevazione ({FormatDate(request.ValidAt)}) è successiva alla data corrente " +
-                $"({FormatDate(currentUtcDate)}): una rilevazione manuale non può avere data futura.",
-                nameof(request));
-        }
+        EnsureNotFuture(request.ValidAt, nameof(request));
 
         var account = await _accounts.GetByIdAsync(request.AccountId, cancellationToken)
             ?? throw new InvalidOperationException($"Il conto {request.AccountId} non esiste.");
@@ -89,9 +83,61 @@ public sealed class ManualBalanceService
         return await _manualBalances.ListForAccountAsync(accountId, cancellationToken);
     }
 
+    /// <summary>
+    /// Tutte le rilevazioni registrate, in ordine deterministico per (ValidAt, RecordedAt, Id):
+    /// alimenta le viste aggregate per conto senza una query per ciascun conto.
+    /// </summary>
+    public async Task<IReadOnlyList<ManualBalance>> ListAllAsync(CancellationToken cancellationToken = default) =>
+        await _manualBalances.ListAsync(cancellationToken);
+
+    /// <summary>
+    /// Corregge importo e data economica di una rilevazione esistente; l'istante di registrazione
+    /// resta quello originale. La modifica è esplicita: una nuova rilevazione continua ad aggiungere
+    /// una riga.
+    /// </summary>
+    public async Task<ManualBalance> UpdateAsync(
+        Guid readingId,
+        Money amount,
+        DateOnly validAt,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureNotFuture(validAt, nameof(validAt));
+
+        var reading = await _manualBalances.GetByIdAsync(readingId, cancellationToken)
+            ?? throw new InvalidOperationException($"La rilevazione {readingId} non esiste.");
+        var updated = new ManualBalance(
+            reading.Id,
+            reading.Account,
+            amount,
+            validAt,
+            reading.RecordedAt);
+        await _manualBalances.UpdateAsync(updated, cancellationToken);
+        return updated;
+    }
+
+    /// <summary>Elimina una rilevazione esistente; il saldo corrente torna alla precedente.</summary>
+    public async Task DeleteAsync(Guid readingId, CancellationToken cancellationToken = default)
+    {
+        _ = await _manualBalances.GetByIdAsync(readingId, cancellationToken)
+            ?? throw new InvalidOperationException($"La rilevazione {readingId} non esiste.");
+        await _manualBalances.DeleteAsync(readingId, cancellationToken);
+    }
+
     private async Task<Account> RequireAccountAsync(Guid accountId, CancellationToken cancellationToken) =>
         await _accounts.GetByIdAsync(accountId, cancellationToken)
             ?? throw new InvalidOperationException($"Il conto {accountId} non esiste.");
+
+    private void EnsureNotFuture(DateOnly validAt, string parameterName)
+    {
+        var currentUtcDate = _currentUtcDate();
+        if (validAt > currentUtcDate)
+        {
+            throw new ArgumentException(
+                $"La data della rilevazione ({FormatDate(validAt)}) è successiva alla data corrente " +
+                $"({FormatDate(currentUtcDate)}): una rilevazione manuale non può avere data futura.",
+                parameterName);
+        }
+    }
 
     private static string FormatDate(DateOnly date) =>
         date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

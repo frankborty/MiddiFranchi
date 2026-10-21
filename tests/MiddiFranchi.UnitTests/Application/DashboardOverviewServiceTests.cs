@@ -96,7 +96,7 @@ public class DashboardOverviewServiceTests
     }
 
     [Fact]
-    public async Task LoadAsync_ShouldNotTreatMissingAccountReadingsAsZero()
+    public async Task LoadAsync_ShouldExposeAPartialTotalWithoutTreatingMissingAccountReadingsAsZero()
     {
         var checking = AddAccount("Conto corrente", AccountType.Checking);
         AddAccount("Cassa", AccountType.Cash);
@@ -105,10 +105,11 @@ public class DashboardOverviewServiceTests
         var overview = await BuildService().LoadAsync();
         var accounts = overview.Accounts;
 
-        accounts.CurrentValue.ShouldBeNull();
+        // Il totale è la somma dei soli conti con saldo disponibile ed è dichiarato parziale.
+        accounts.CurrentValue.ShouldBe(new Money(100m, Euro));
         accounts.CurrentReference.ShouldBeNull();
         accounts.IsComplete.ShouldBeFalse();
-        accounts.IncompletenessReasons.ShouldContain(reason => reason.Contains("1 conti su 2"));
+        accounts.IncompletenessReasons.ShouldContain(reason => reason.Contains("1 conto su 2"));
         accounts.Points[^1].Value.ShouldBe(new Money(100m, Euro));
         accounts.Points[^1].IsComplete.ShouldBeFalse();
     }

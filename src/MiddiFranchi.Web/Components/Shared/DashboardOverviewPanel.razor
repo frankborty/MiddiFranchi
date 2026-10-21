@@ -37,14 +37,20 @@
     </div>
 
     <div class="overview-total">
-        @if (TotalValue is { } total)
-        {
-            <strong class="overview-value">@Format.Money(total)</strong>
-        }
-        else
-        {
-            <strong class="overview-value overview-value-missing">Non calcolabile</strong>
-        }
+        <div class="overview-value-row">
+            @if (TotalValue is { } total)
+            {
+                <strong class="overview-value">@Format.Money(total)</strong>
+            }
+            else
+            {
+                <strong class="overview-value overview-value-missing">Non calcolabile</strong>
+            }
+            @if (TotalValue is not null && TotalIsPartial)
+            {
+                <StatusBadge Tone="warning">Parziale</StatusBadge>
+            }
+        </div>
 
         <p class="overview-subtitle">
             @if ((_showInvestments || TotalOnly) && Data.Investments.CurrentValue is { } investmentsValue)
@@ -203,6 +209,11 @@
     }
 
     private bool TotalOnly => !_showInvestments && !_showAccounts;
+
+    /// <summary>Il totale è parziale quando una delle categorie che lo compongono non è completa.</summary>
+    private bool TotalIsPartial =>
+        ((_showInvestments || TotalOnly) && !Data.Investments.IsComplete) ||
+        ((_showAccounts || TotalOnly) && !Data.Accounts.IsComplete);
 
     private DashboardOverviewWindow WindowFor(DashboardOverviewCategory category) =>
         category.Window(_range, Data.ValuationDate);

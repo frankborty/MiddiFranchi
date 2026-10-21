@@ -34,6 +34,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAccountPostingRepository, AccountPostingRepository>();
         services.AddScoped<IPriceObservationRepository, PriceObservationRepository>();
         services.AddScoped<IManualBalanceRepository, ManualBalanceRepository>();
+        services.AddScoped<ILoanRepository, LoanRepository>();
+        services.AddScoped<ILoanReadingRepository, LoanReadingRepository>();
 
         return services;
     }
