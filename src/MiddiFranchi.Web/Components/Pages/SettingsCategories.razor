@@ -43,70 +43,331 @@ else
         <p class="alert alert-success" role="status">@_message</p>
     }
 
-    <section class="card category-admin-section" id="income" aria-labelledby="income-categories-title">
-        <div class="section-head">
-            <div>
-                <h2 id="income-categories-title"><MfIcon Name="trend" Size="18" /> Entrate</h2>
-                <p class="section-sub">Categorie senza sottocategorie, usate per stipendio, rimborsi e altre entrate.</p>
+    <section class="category-workbench @(_activeType == CategoryType.Income ? "income" : "expense")"
+             aria-label="Configurazione categorie">
+        <div class="category-workbench-bar">
+            <div class="category-type-switch" role="tablist" aria-label="Tipo di categoria">
+                <button type="button" role="tab" class="@CategoryTypeTabClass(CategoryType.Income)"
+                        aria-selected="@(_activeType == CategoryType.Income ? "true" : "false")"
+                        @onclick="() => SelectType(CategoryType.Income)">
+                    <span class="category-type-icon" aria-hidden="true"><MfIcon Name="trend" Size="17" /></span>
+                    <strong>Entrate</strong>
+                    <small class="category-type-count">@_incomeGroups.Count</small>
+                </button>
+                <button type="button" role="tab" class="@CategoryTypeTabClass(CategoryType.Expense)"
+                        aria-selected="@(_activeType == CategoryType.Expense ? "true" : "false")"
+                        @onclick="() => SelectType(CategoryType.Expense)">
+                    <span class="category-type-icon" aria-hidden="true"><MfIcon Name="trend-down" Size="17" /></span>
+                    <strong>Uscite</strong>
+                    <small class="category-type-count">@_expenseGroups.Count</small>
+                </button>
             </div>
-            <button type="button" class="primary-button" @onclick="() => OpenCreate(CategoryType.Income)">
-                <MfIcon Name="plus" Size="18" /> Nuova categoria
+
+            <div class="category-search">
+                <MfIcon Name="search" Size="16" />
+                <input type="search"
+                       aria-label="Cerca categorie e sottocategorie"
+                       placeholder="Cerca categoria o sottocategoria…"
+                       @bind="_search"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrWhiteSpace(_search))
+                {
+                    <button type="button" class="category-search-clear" aria-label="Azzera ricerca" @onclick="ClearSearch">
+                        <MfIcon Name="close" Size="14" />
+                    </button>
+                }
+            </div>
+
+            <button type="button" class="secondary-button category-create-button" @onclick="() => OpenCreate(_activeType)">
+                Nuova categoria
             </button>
         </div>
 
-        @if (_incomeGroups.Count == 0)
-        {
-            <EmptyState Title="Nessuna categoria di entrata"
-                        Hint="Crea la prima categoria per classificare le entrate."
-                        Icon="tag" />
-        }
-        else
-        {
-            <div class="category-admin-list">
-                @foreach (var group in _incomeGroups)
-                {
-                    <CategoryAdminGroupCard Group="group"
-                                            OnEdit="OpenEditGroup"
-                                            OnMove="OpenMoveGroup"
-                                            OnDelete="OpenDeleteGroup" />
-                }
-            </div>
-        }
-    </section>
+        <div class="category-workbench-grid @(_mobileDetail ? "show-detail" : "")">
+            <aside class="category-catalog" aria-label="Catalogo categorie">
+                <div class="category-catalog-head">
+                    <div>
+                        <span class="category-eyebrow">Catalogo</span>
+                        <strong>@(_activeType == CategoryType.Income ? "Entrate" : "Uscite")</strong>
+                    </div>
+                    <StatusBadge Tone="@(_activeType == CategoryType.Income ? "income" : "expense")">@FilteredGroups.Count</StatusBadge>
+                </div>
 
-    <section class="card category-admin-section" id="expense" aria-labelledby="expense-categories-title">
-        <div class="section-head">
-            <div>
-                <h2 id="expense-categories-title"><MfIcon Name="trend-down" Size="18" /> Uscite</h2>
-                <p class="section-sub">Ogni categoria raggruppa più sottocategorie; le operazioni sono collegate alla singola sottocategoria.</p>
-            </div>
-            <button type="button" class="primary-button" @onclick="() => OpenCreate(CategoryType.Expense)">
-                <MfIcon Name="plus" Size="18" /> Nuova categoria
-            </button>
+                @if (ActiveGroups.Count == 0)
+                {
+                    <div class="category-catalog-empty">
+                        <MfIcon Name="tag" Size="24" />
+                        <p>Nessuna categoria di @ActiveTypeName.</p>
+                        <button type="button" class="category-tool" @onclick="() => OpenCreate(_activeType)">
+                            <MfIcon Name="plus" Size="14" /> Crea la prima
+                        </button>
+                    </div>
+                }
+                else if (FilteredGroups.Count == 0)
+                {
+                    <div class="category-catalog-empty">
+                        <MfIcon Name="search" Size="24" />
+                        <p>Nessun risultato per «@_search».</p>
+                        <button type="button" class="category-tool" @onclick="ClearSearch">Azzera ricerca</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="category-catalog-list">
+                        @foreach (var group in FilteredGroups)
+                        {
+                            <button type="button"
+                                    class="@(IsSelected(group) ? "category-catalog-item selected" : "category-catalog-item")"
+                                    style="--mf-category-color: @CategoryAppearance.ColorFor(group.Primary.ColorHex)"
+                                    aria-current="@(IsSelected(group) ? "true" : null)"
+                                    @onclick="() => SelectGroup(group)">
+                                <span class="category-catalog-mark" aria-hidden="true">
+                                    <MfIcon Name="@CategoryAppearance.IconFor(group.Primary.Icon)" Size="17" />
+                                </span>
+                                <span class="category-catalog-copy">
+                                    <strong>@group.Name</strong>
+                                    <span>@group.Meta</span>
+                                </span>
+                                <MfIcon Name="arrow-right" Size="16" />
+                            </button>
+                        }
+                    </div>
+                }
+            </aside>
+
+            <section class="category-detail" aria-live="polite">
+                @if (SelectedGroup is { } selected)
+                {
+                    <div class="category-detail-hero" style="--mf-category-color: @CategoryAppearance.ColorFor(selected.Primary.ColorHex)">
+                        <button type="button" class="category-back" @onclick="ShowCatalog">
+                            <MfIcon Name="arrow-left" Size="16" /> Catalogo
+                        </button>
+
+                        <div class="category-hero-top">
+                            <span class="category-hero-mark" aria-hidden="true">
+                                <MfIcon Name="@CategoryAppearance.IconFor(selected.Primary.Icon)" Size="30" />
+                            </span>
+                            <div class="category-hero-copy">
+                                <h2>@selected.Name</h2>
+                                <p class="category-hero-meta">
+                                    <span>@OperationLabel(selected.OperationCount)</span>
+                                    @if (selected.Type == CategoryType.Expense)
+                                    {
+                                        <span aria-hidden="true">·</span>
+                                        <span>@SubcategoryLabel(selected.SubcategoryCount)</span>
+                                    }
+                                </p>
+                                @if (!string.IsNullOrWhiteSpace(selected.Primary.Description))
+                                {
+                                    <p class="category-hero-description">@selected.Primary.Description</p>
+                                }
+                            </div>
+                            <div class="category-hero-actions">
+                                <button type="button" class="category-tool" @onclick="() => OpenMoveGroup(selected)">
+                                    <MfIcon Name="transfer" Size="14" /> Sposta
+                                </button>
+                                <button type="button" class="delete-button compact" @onclick="() => OpenDeleteGroup(selected)">
+                                    <MfIcon Name="trash" Size="14" /> Elimina
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form class="category-panel category-config-card" @onsubmit="SaveInlineGroupAsync">
+                        <div class="category-panel-head">
+                            <div>
+                                <h3>Configurazione</h3>
+                            </div>
+                        </div>
+                        <div class="category-config-body">
+                            <div class="category-config-fields">
+                                <label class="category-field">
+                                    <span>Nome *</span>
+                                    <input type="text" maxlength="200" required aria-required="true" @bind="_inlineName" />
+                                </label>
+                                <label class="category-field">
+                                    <span>Descrizione</span>
+                                    <input type="text" maxlength="200" @bind="_inlineDescription" />
+                                </label>
+                            </div>
+
+                            <details class="category-appearance">
+                                <summary>
+                                    <span class="category-appearance-preview" style="--mf-category-color: @_inlineColor" aria-hidden="true">
+                                        <MfIcon Name="@_inlineIcon" Size="17" />
+                                    </span>
+                                    <span class="category-appearance-copy">
+                                        <strong>Icona e colore</strong>
+                                        <small>Personalizza l'aspetto della categoria</small>
+                                    </span>
+                                    <MfIcon Name="chevron-down" Size="16" />
+                                </summary>
+                                <div class="category-appearance-body">
+                                    <div class="icon-picker-field">
+                                        <span>Icona</span>
+                                        <IconPicker @bind-Value="_inlineIcon" Label="Icona della categoria" />
+                                    </div>
+                                    <div class="color-picker-field">
+                                        <span>Colore</span>
+                                        <ColorPicker @bind-Value="_inlineColor" Label="Colore della categoria" />
+                                    </div>
+                                </div>
+                            </details>
+
+                            @if (_inlineError is not null)
+                            {
+                                <p class="alert alert-error" role="alert">@_inlineError</p>
+                            }
+
+                            <div class="form-actions">
+                                <button type="submit" class="primary-button" disabled="@_inlineSaving">
+                                    @if (_inlineSaving) { <text>Salvataggio…</text> } else { <text>Salva categoria</text> }
+                                </button>
+                                <button type="button" class="secondary-button" disabled="@_inlineSaving" @onclick="ResetInlineEditor">
+                                    Annulla
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    @if (selected.Type == CategoryType.Expense)
+                    {
+                        <div class="category-panel">
+                            <div class="category-panel-head">
+                                <div class="category-panel-title">
+                                    <h3>Sottocategorie</h3>
+                                </div>
+                                <div class="category-panel-tools">
+                                    <span class="category-subcategory-total"
+                                          aria-label="@SubcategoryLabel(selected.SubcategoryCount)"
+                                          title="@SubcategoryLabel(selected.SubcategoryCount)">
+                                        @selected.SubcategoryCount
+                                    </span>
+                                    <button type="button" class="category-tool small primary" @onclick="ToggleAddSubcategory">
+                                        <MfIcon Name="@(_addingSubcategory ? "close" : "plus")" Size="13" />
+                                        @(_addingSubcategory ? "Chiudi" : "Aggiungi")
+                                    </button>
+                                </div>
+                            </div>
+
+                            @if (_addingSubcategory)
+                            {
+                                <form class="category-subcategory-add" @onsubmit="AddInlineSubcategoryAsync">
+                                    <div class="category-subcategory-fields">
+                                        <label class="category-field">
+                                            <span>Sottocategoria *</span>
+                                            <input type="text" maxlength="200" required aria-required="true"
+                                                   @bind="_inlineSubcategoryName"
+                                                   @bind:after="ClearInlineSubcategoryDuplicate" />
+                                        </label>
+                                        <label class="category-field">
+                                            <span>Descrizione</span>
+                                            <input type="text" maxlength="200" @bind="_inlineSubcategoryDescription" />
+                                        </label>
+                                    </div>
+
+                                    @if (_inlineSubcategoryError is not null)
+                                    {
+                                        <p class="alert alert-error" role="alert">@_inlineSubcategoryError</p>
+                                    }
+
+                                    <DuplicateNamePrompt Suggestion="@_inlineSubcategoryDuplicate"
+                                                         Disabled="@_subcategoryWorking"
+                                                         OnAccept="ConfirmInlineSubcategoryAsync"
+                                                         OnCancel="ClearInlineSubcategoryDuplicate" />
+
+                                    <div class="form-actions">
+                                        <button type="submit" class="primary-button" disabled="@_subcategoryWorking">
+                                            Aggiungi sottocategoria
+                                        </button>
+                                        <button type="button" class="secondary-button" disabled="@_subcategoryWorking" @onclick="ToggleAddSubcategory">
+                                            Annulla
+                                        </button>
+                                    </div>
+                                </form>
+                            }
+
+                            <div class="category-subcategory-list">
+                                @foreach (var row in selected.Rows)
+                                {
+                                    @if (_editingSubcategoryRow?.Category.Id == row.Category.Id)
+                                    {
+                                        <div class="category-subcategory-item editing">
+                                            <form class="category-subcategory-edit" @onsubmit="SaveInlineSubcategoryAsync">
+                                                <div class="category-subcategory-fields">
+                                                    <label class="category-field">
+                                                        <span>Sottocategoria *</span>
+                                                        <input type="text" maxlength="200" required aria-required="true"
+                                                               @bind="_inlineEditSubcategoryName" />
+                                                    </label>
+                                                    <label class="category-field">
+                                                        <span>Descrizione</span>
+                                                        <input type="text" maxlength="200" @bind="_inlineEditSubcategoryDescription" />
+                                                    </label>
+                                                </div>
+
+                                                @if (_inlineEditSubcategoryError is not null)
+                                                {
+                                                    <p class="alert alert-error" role="alert">@_inlineEditSubcategoryError</p>
+                                                }
+
+                                                <div class="form-actions">
+                                                    <button type="submit" class="primary-button" disabled="@_subcategoryWorking">
+                                                        Salva sottocategoria
+                                                    </button>
+                                                    <button type="button" class="secondary-button" disabled="@_subcategoryWorking" @onclick="CancelInlineSubcategoryEdit">
+                                                        Annulla
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="category-subcategory-item">
+                                            <div class="category-subcategory-copy">
+                                                <strong>@(string.IsNullOrWhiteSpace(row.Category.Subcategory) ? "Senza nome" : row.Category.Subcategory)</strong>
+                                                <span>@OperationLabel(row.OperationCount)</span>
+                                            </div>
+                                            <div class="category-subcategory-actions">
+                                                <button type="button" class="category-tool small" @onclick="() => StartInlineSubcategoryEdit(row)">
+                                                    <MfIcon Name="settings" Size="13" /> Modifica
+                                                </button>
+                                                <button type="button" class="category-tool small" @onclick="() => OpenMoveSubcategory(row)">
+                                                    <MfIcon Name="transfer" Size="13" /> Sposta
+                                                </button>
+                                                <button type="button" class="delete-button compact" @onclick="() => OpenDeleteSubcategory(row)">
+                                                    <MfIcon Name="trash" Size="13" /> Elimina
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="category-detail-empty">
+                        <span class="category-empty-mark" aria-hidden="true"><MfIcon Name="tag" Size="26" /></span>
+                        <span class="category-eyebrow">Area di lavoro</span>
+                        <h2>@(ActiveGroups.Count == 0 ? "Nessuna categoria" : "Seleziona una categoria")</h2>
+                        <p>
+                            @(ActiveGroups.Count == 0
+                                ? $"Crea la prima categoria di {ActiveTypeName} per iniziare."
+                                : "Scegli una voce dal catalogo per gestire sottocategorie e operazioni.")
+                        </p>
+                        @if (ActiveGroups.Count == 0)
+                        {
+                            <button type="button" class="secondary-button category-create-button" @onclick="() => OpenCreate(_activeType)">
+                                Nuova categoria
+                            </button>
+                        }
+                    </div>
+                }
+            </section>
         </div>
-
-        @if (_expenseGroups.Count == 0)
-        {
-            <EmptyState Title="Nessuna categoria di uscita"
-                        Hint="Crea la prima categoria con almeno una sottocategoria."
-                        Icon="tag" />
-        }
-        else
-        {
-            <div class="category-admin-list">
-                @foreach (var group in _expenseGroups)
-                {
-                    <CategoryAdminGroupCard Group="group"
-                                            OnEdit="OpenEditGroup"
-                                            OnAddSubcategory="OpenAddSubcategory"
-                                            OnMove="OpenMoveGroup"
-                                            OnDelete="OpenDeleteGroup"
-                                            OnEditSubcategory="OpenEditSubcategory"
-                                            OnMoveSubcategory="OpenMoveSubcategory"
-                                            OnDeleteSubcategory="OpenDeleteSubcategory" />
-                }
-            </div>
-        }
     </section>
 }
 
@@ -356,6 +617,31 @@ else
     private IReadOnlyList<CategoryAdminGroup> _incomeGroups = [];
     private IReadOnlyList<CategoryAdminGroup> _expenseGroups = [];
 
+    private CategoryType _activeType = CategoryType.Expense;
+    private string? _selectedGroupName;
+    private string _search = "";
+    private bool _mobileDetail;
+
+    private string? _inlineGroupKey;
+    private string _inlineName = "";
+    private string _inlineDescription = "";
+    private string _inlineIcon = CategoryAppearance.DefaultIcon;
+    private string _inlineColor = CategoryAppearance.DefaultColor;
+    private string? _inlineError;
+    private bool _inlineSaving;
+
+    private bool _addingSubcategory;
+    private string _inlineSubcategoryName = "";
+    private string _inlineSubcategoryDescription = "";
+    private string? _inlineSubcategoryError;
+    private string? _inlineSubcategoryDuplicate;
+    private bool _subcategoryWorking;
+
+    private CategoryAdminRow? _editingSubcategoryRow;
+    private string _inlineEditSubcategoryName = "";
+    private string _inlineEditSubcategoryDescription = "";
+    private string? _inlineEditSubcategoryError;
+
     private bool _editorOpen;
     private EditorMode _editorMode;
     private CategoryType _editorType;
@@ -412,6 +698,7 @@ else
                 .ToDictionary(group => group.Key, group => group.Count());
             _incomeGroups = BuildGroups(CategoryType.Income);
             _expenseGroups = BuildGroups(CategoryType.Expense);
+            EnsureSelection();
         }
         catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
         {
@@ -438,6 +725,304 @@ else
         })
         .OrderBy(group => group.Name, StringComparer.CurrentCultureIgnoreCase)
         .ToArray();
+
+    private IReadOnlyList<CategoryAdminGroup> ActiveGroups => GroupsOf(_activeType);
+
+    private IReadOnlyList<CategoryAdminGroup> FilteredGroups
+    {
+        get
+        {
+            var term = _search.Trim();
+            if (term.Length == 0)
+            {
+                return ActiveGroups;
+            }
+
+            return ActiveGroups
+                .Where(group =>
+                    Contains(group.Name) ||
+                    Contains(group.Primary.Description) ||
+                    group.Rows.Any(row => Contains(row.Category.Subcategory)))
+                .ToArray();
+
+            bool Contains(string? value) =>
+                value is not null && value.Contains(term, StringComparison.CurrentCultureIgnoreCase);
+        }
+    }
+
+    private CategoryAdminGroup? SelectedGroup =>
+        ActiveGroups.FirstOrDefault(group => Same(group.Name, _selectedGroupName));
+
+    private string ActiveTypeName => _activeType == CategoryType.Income ? "entrate" : "uscite";
+
+    private static string OperationLabel(int count) =>
+        count == 1 ? "1 operazione" : $"{count} operazioni";
+
+    private static string SubcategoryLabel(int count) =>
+        count == 1 ? "1 sottocategoria" : $"{count} sottocategorie";
+
+    private string CategoryTypeTabClass(CategoryType type) =>
+        _activeType == type
+            ? $"category-type-tab active {(type == CategoryType.Income ? "income" : "expense")}"
+            : "category-type-tab";
+
+    private bool IsSelected(CategoryAdminGroup group) => Same(group.Name, _selectedGroupName);
+
+    private void SelectType(CategoryType type)
+    {
+        _activeType = type;
+        _search = "";
+        _selectedGroupName = GroupsOf(type).FirstOrDefault()?.Name;
+        _mobileDetail = false;
+        SyncInlineEditor();
+    }
+
+    private void SelectGroup(CategoryAdminGroup group)
+    {
+        _activeType = group.Type;
+        _selectedGroupName = group.Name;
+        _mobileDetail = true;
+        SyncInlineEditor();
+    }
+
+    private void ShowCatalog() => _mobileDetail = false;
+
+    private void ClearSearch() => _search = "";
+
+    private void EnsureSelection()
+    {
+        var groups = GroupsOf(_activeType);
+        if (_selectedGroupName is null ||
+            !groups.Any(group => Same(group.Name, _selectedGroupName)))
+        {
+            _selectedGroupName = groups.FirstOrDefault()?.Name;
+        }
+
+        SyncInlineEditor();
+    }
+
+    private void SyncInlineEditor()
+    {
+        if (SelectedGroup is not { } group)
+        {
+            _inlineGroupKey = null;
+            return;
+        }
+
+        var key = $"{group.Type}:{group.Name}";
+        if (string.Equals(_inlineGroupKey, key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _inlineGroupKey = key;
+        _inlineName = group.Name;
+        _inlineDescription = group.Primary.Description ?? "";
+        _inlineIcon = CategoryAppearance.IconFor(group.Primary.Icon);
+        _inlineColor = CategoryAppearance.ColorFor(group.Primary.ColorHex);
+        _inlineError = null;
+        _addingSubcategory = false;
+        _inlineSubcategoryName = "";
+        _inlineSubcategoryDescription = "";
+        _inlineSubcategoryError = null;
+        _inlineSubcategoryDuplicate = null;
+        _editingSubcategoryRow = null;
+        _inlineEditSubcategoryName = "";
+        _inlineEditSubcategoryDescription = "";
+        _inlineEditSubcategoryError = null;
+    }
+
+    private void ResetInlineEditor()
+    {
+        _inlineGroupKey = null;
+        SyncInlineEditor();
+    }
+
+    private async Task SaveInlineGroupAsync()
+    {
+        if (_inlineSaving || SelectedGroup is not { } group)
+        {
+            return;
+        }
+
+        var name = _inlineName.Trim();
+        if (name.Length == 0)
+        {
+            _inlineError = "Il nome della categoria è obbligatorio.";
+            return;
+        }
+
+        _inlineSaving = true;
+        _inlineError = null;
+        try
+        {
+            await Admin.UpdateGroupAsync(
+                group.Type,
+                group.Name,
+                name,
+                Clean(_inlineDescription),
+                _inlineIcon,
+                _inlineColor);
+            _message = $"Categoria «{name}» aggiornata.";
+            _activeType = group.Type;
+            _selectedGroupName = name;
+            _inlineGroupKey = null;
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _inlineError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _inlineError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _inlineError = "Salvataggio non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _inlineSaving = false;
+        }
+    }
+
+    private void ToggleAddSubcategory()
+    {
+        _addingSubcategory = !_addingSubcategory;
+        _editingSubcategoryRow = null;
+        _inlineSubcategoryName = "";
+        _inlineSubcategoryDescription = "";
+        _inlineSubcategoryError = null;
+        _inlineSubcategoryDuplicate = null;
+    }
+
+    private void ClearInlineSubcategoryDuplicate() => _inlineSubcategoryDuplicate = null;
+
+    private Task AddInlineSubcategoryAsync() => AddInlineSubcategoryCoreAsync(null);
+
+    private Task ConfirmInlineSubcategoryAsync() =>
+        _inlineSubcategoryDuplicate is { } name
+            ? AddInlineSubcategoryCoreAsync(name)
+            : Task.CompletedTask;
+
+    private async Task AddInlineSubcategoryCoreAsync(string? confirmedName)
+    {
+        if (_subcategoryWorking || SelectedGroup is not { Type: CategoryType.Expense } group)
+        {
+            return;
+        }
+
+        var name = (confirmedName ?? _inlineSubcategoryName).Trim();
+        if (name.Length == 0)
+        {
+            _inlineSubcategoryError = "Il nome della sottocategoria è obbligatorio.";
+            return;
+        }
+
+        if (confirmedName is null)
+        {
+            var suggestion = NameUniqueness.SuggestIfDuplicate(
+                name,
+                group.Rows.Select(row => row.Category.Subcategory ?? ""));
+            if (suggestion is not null)
+            {
+                _inlineSubcategoryDuplicate = suggestion;
+                return;
+            }
+        }
+
+        _subcategoryWorking = true;
+        _inlineSubcategoryError = null;
+        try
+        {
+            await Admin.AddSubcategoryAsync(
+                group.Rows[0].Category.Id,
+                name,
+                Clean(_inlineSubcategoryDescription));
+            _message = $"Sottocategoria «{name}» aggiunta.";
+            _addingSubcategory = false;
+            _inlineSubcategoryName = "";
+            _inlineSubcategoryDescription = "";
+            _inlineSubcategoryDuplicate = null;
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _inlineSubcategoryError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _inlineSubcategoryError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _inlineSubcategoryError = "Salvataggio non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _subcategoryWorking = false;
+        }
+    }
+
+    private void StartInlineSubcategoryEdit(CategoryAdminRow row)
+    {
+        _addingSubcategory = false;
+        _editingSubcategoryRow = row;
+        _inlineEditSubcategoryName = row.Category.Subcategory ?? "";
+        _inlineEditSubcategoryDescription = row.Category.Description ?? "";
+        _inlineEditSubcategoryError = null;
+    }
+
+    private void CancelInlineSubcategoryEdit()
+    {
+        _editingSubcategoryRow = null;
+        _inlineEditSubcategoryError = null;
+    }
+
+    private async Task SaveInlineSubcategoryAsync()
+    {
+        if (_subcategoryWorking || _editingSubcategoryRow is not { } row)
+        {
+            return;
+        }
+
+        var name = _inlineEditSubcategoryName.Trim();
+        if (name.Length == 0)
+        {
+            _inlineEditSubcategoryError = "Il nome della sottocategoria è obbligatorio.";
+            return;
+        }
+
+        _subcategoryWorking = true;
+        _inlineEditSubcategoryError = null;
+        try
+        {
+            await Admin.UpdateSubcategoryAsync(
+                row.Category.Id,
+                name,
+                Clean(_inlineEditSubcategoryDescription));
+            _message = $"Sottocategoria «{name}» aggiornata.";
+            _editingSubcategoryRow = null;
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _inlineEditSubcategoryError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _inlineEditSubcategoryError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _inlineEditSubcategoryError = "Salvataggio non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _subcategoryWorking = false;
+        }
+    }
 
     private string EditorTitle => _editorMode switch
     {
@@ -593,6 +1178,9 @@ else
                         _editIcon,
                         _editColor));
                     _message = $"Categoria «{created.Name}» creata.";
+                    _activeType = created.Type;
+                    _selectedGroupName = created.Name;
+                    _mobileDetail = true;
                     break;
                 case EditorMode.EditGroup when _editorGroup is not null:
                     await Admin.UpdateGroupAsync(
@@ -603,6 +1191,9 @@ else
                         _editIcon,
                         _editColor);
                     _message = $"Categoria «{_editName.Trim()}» aggiornata.";
+                    _activeType = _editorGroup.Type;
+                    _selectedGroupName = _editName.Trim();
+                    _mobileDetail = true;
                     break;
                 case EditorMode.AddSubcategory when _editorGroup is not null:
                     var subcategoryName = confirmedName ?? _editSubcategory.Trim();
@@ -611,6 +1202,9 @@ else
                         subcategoryName,
                         Clean(_editDescription));
                     _message = $"Sottocategoria «{createdSubcategory.Subcategory}» aggiunta.";
+                    _activeType = _editorGroup.Type;
+                    _selectedGroupName = _editorGroup.Name;
+                    _mobileDetail = true;
                     break;
                 case EditorMode.EditSubcategory when _editorRow is not null:
                     await Admin.UpdateSubcategoryAsync(
@@ -618,6 +1212,9 @@ else
                         _editSubcategory.Trim(),
                         Clean(_editDescription));
                     _message = $"Sottocategoria «{_editSubcategory.Trim()}» aggiornata.";
+                    _activeType = _editorRow.Category.Type;
+                    _selectedGroupName = _editorRow.Category.Name;
+                    _mobileDetail = true;
                     break;
             }
 
