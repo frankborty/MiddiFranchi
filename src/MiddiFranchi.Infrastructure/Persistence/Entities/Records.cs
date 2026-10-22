@@ -31,6 +31,10 @@ public sealed class CategoryRecord
     public string? Description { get; set; }
 
     public string? Subcategory { get; set; }
+
+    public string? Icon { get; set; }
+
+    public string? ColorHex { get; set; }
 }
 
 public sealed class InvestmentPortfolioRecord
@@ -72,8 +76,6 @@ public sealed class FinancialOperationRecord
     public DateTimeOffset RecordedAt { get; set; }
 
     public string? Description { get; set; }
-
-    public string? Notes { get; set; }
 
     public Guid? OriginalOperationId { get; set; }
 

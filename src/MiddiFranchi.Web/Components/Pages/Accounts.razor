@@ -1,5 +1,6 @@
 @page "/accounts"
 @rendermode InteractiveServer
+@using System.Globalization
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Financial
 @using MiddiFranchi.Domain.Shared
@@ -42,7 +43,7 @@ else
                             <h2 id="accounts-history-title"><MfIcon Name="chart" Size="18" /> Valore conti</h2>
                         </div>
                         <div class="overview-ranges" role="group" aria-label="Intervallo temporale">
-                            @foreach (var option in ChartRanges.Options)
+                            @foreach (var option in ChartRangeOptions)
                             {
                                 <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => _range = option.Key">@option.Label</button>
                             }
@@ -117,13 +118,6 @@ else
                                     <dd><AmountValue Value="@statistics.AverageAnnualChange" Signed="true" Tone="@Tone(statistics.AverageAnnualChange)" /></dd>
                                 </div>
                             </dl>
-                            <p class="table-hint">
-                                Statistiche calcolate sull'intervallo selezionato
-                                @if (AccountsWithoutBalanceCount > 0)
-                                {
-                                    <text>sui conti con saldo disponibile</text>
-                                }.
-                            </p>
                         }
                     }
                     else
@@ -137,8 +131,8 @@ else
         </div>
     }
 
-    <div class="bento">
-        <div class="sp-12">
+    <div class="bento compact-pie-row">
+        <div class="chart-panel">
             <section class="card" aria-labelledby="accounts-list-title">
                 <div class="section-head">
                     <div class="section-title-row">
@@ -217,6 +211,72 @@ else
                 }
             </section>
         </div>
+
+        <div class="pie-panel">
+            <section class="card accounts-distribution-card" aria-labelledby="accounts-distribution-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="accounts-distribution-title"><MfIcon Name="pie" Size="18" /> Distribuzione del totale</h2>
+                    </div>
+                </div>
+
+                @if (AccountSlices.Count > 0)
+                {
+                    <div class="alternative-pie-layout">
+                        <figure class="alternative-pie-figure">
+                            <div class="allocation-donut alternative-pie-donut">
+                                <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false" @onmouseleave="ClearAccountHover">
+                                    <circle class="allocation-track" cx="21" cy="21" r="15.9155" pathLength="100" />
+                                    @foreach (var slice in AccountSlices)
+                                    {
+                                        <circle class="expense-pie-segment alternative-pie-segment @(_accountHoverSlice?.Label == slice.Label ? "hovered" : "")"
+                                                cx="21" cy="21" r="15.9155"
+                                                pathLength="100" transform="rotate(-90 21 21)"
+                                                stroke="@slice.Color"
+                                                stroke-dasharray="@DashArray(slice.Share)"
+                                                stroke-dashoffset="@DashOffset(slice.Offset)"
+                                                @onmouseover="() => SetAccountHover(slice)">
+                                            <title>@slice.Label: @Format.Money(slice.Amount) (@Format.Percent(slice.Share))</title>
+                                        </circle>
+                                    }
+                                </svg>
+                                <div class="allocation-center alternative-pie-center">
+                                    @if (_accountHoverSlice is { } hover)
+                                    {
+                                        <span class="allocation-center-label" style="color: @hover.Color">@hover.Label</span>
+                                        <strong class="allocation-center-value">@Format.Money(hover.Amount)</strong>
+                                        <span class="allocation-center-sub">@Format.Percent(hover.Share)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="allocation-center-label">Totale</span>
+                                        <strong class="allocation-center-value">@Format.Money(AccountSlicesTotal.GetValueOrDefault())</strong>
+                                        <span class="allocation-center-sub">@AccountSlices.Count conti</span>
+                                    }
+                                </div>
+                            </div>
+                            <figcaption class="visually-hidden">@AccountDistributionDescription</figcaption>
+                        </figure>
+                    </div>
+
+                    @if (AccountsExcludedFromDistribution > 0)
+                    {
+                        <p class="account-note">
+                            <MfIcon Name="alert" Size="14" />
+                            @(AccountsExcludedFromDistribution == 1
+                                ? "1 conto senza saldo positivo è escluso dalla ripartizione."
+                                : $"{AccountsExcludedFromDistribution} conti senza saldo positivo sono esclusi dalla ripartizione.")
+                        </p>
+                    }
+                }
+                else
+                {
+                    <EmptyState Title="Ripartizione non disponibile"
+                                Hint="Registra almeno un saldo manuale positivo per visualizzare la distribuzione tra i conti."
+                                Icon="pie" />
+                }
+            </section>
+        </div>
     </div>
 
     @if (_rows is { Count: > 0 })
@@ -241,16 +301,104 @@ else
     private bool _readingDialogOpen;
     private string? _readingMessage;
     private string? _loadError;
+    private CategoryBreakdownItem? _accountHoverSlice;
 
     private int AccountsWithoutBalanceCount =>
         _rows?.Count(row => row.ManualBalance is null) ?? 0;
 
-    private IReadOnlyList<AccountOverviewRow> VisibleAccountRows =>
-        _rows is null
-            ? []
-            : _hideClosedAccounts
-                ? _rows.Where(row => row.Status == AccountStatus.Active).ToArray()
+    private IReadOnlyList<AccountOverviewRow> VisibleAccountRows
+    {
+        get
+        {
+            if (_rows is null)
+            {
+                return [];
+            }
+
+            var rows = _hideClosedAccounts
+                ? _rows.Where(row => row.Status == AccountStatus.Active)
                 : _rows;
+            return rows.OrderBy(row => AccountGroupOrder(row.Type)).ToArray();
+        }
+    }
+
+    private static int AccountGroupOrder(AccountType type) => type switch
+    {
+        AccountType.Cash => 1,
+        AccountType.Loans => 2,
+        _ => 0,
+    };
+
+    private string AccountChartColor(AccountOverviewRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.ColorHex))
+        {
+            return row.ColorHex;
+        }
+
+        var index = 0;
+        if (_rows is { } rows)
+        {
+            for (var position = 0; position < rows.Count; position++)
+            {
+                if (rows[position].AccountId == row.AccountId)
+                {
+                    index = position;
+                    break;
+                }
+            }
+        }
+
+        return ChartPalette.Colors[index % ChartPalette.Colors.Length];
+    }
+
+    private IReadOnlyList<CategoryBreakdownItem> AccountSlices
+    {
+        get
+        {
+            var rows = VisibleAccountRows
+                .Where(row => row.ManualBalance is { Amount: > 0m })
+                .ToArray();
+            var total = rows.Sum(row => row.ManualBalance!.Value.Amount);
+            if (total <= 0m)
+            {
+                return [];
+            }
+
+            var slices = new List<CategoryBreakdownItem>(rows.Length);
+            var offset = 0m;
+            for (var index = 0; index < rows.Length; index++)
+            {
+                var row = rows[index];
+                var amount = row.ManualBalance!.Value;
+                var share = amount.Amount / total;
+                slices.Add(new CategoryBreakdownItem(
+                    row.Name,
+                    amount,
+                    share,
+                    AccountChartColor(row),
+                    offset));
+                offset += share;
+            }
+
+            return slices;
+        }
+    }
+
+    private Money? AccountSlicesTotal => AccountSlices.Count == 0
+        ? null
+        : new Money(AccountSlices.Sum(slice => slice.Amount.Amount), AccountCurrency);
+
+    private int AccountsExcludedFromDistribution =>
+        VisibleAccountRows.Count(row => row.ManualBalance is not { Amount: > 0m });
+
+    private Currency AccountCurrency =>
+        _rows is { Count: > 0 } ? _rows[0].Currency : Currency.Euro;
+
+    private string AccountDistributionDescription => AccountSlices.Count == 0
+        ? string.Empty
+        : $"Distribuzione del totale tra i conti: {string.Join(", ", AccountSlices.Select(slice => $"{slice.Label} {Format.Money(slice.Amount)} ({Format.Percent(slice.Share)})"))}. " +
+          $"Totale {Format.Money(AccountSlicesTotal.GetValueOrDefault())}.";
 
     private string AccountCountLabel =>
         VisibleAccountRows.Count == 1 ? "1 conto" : $"{VisibleAccountRows.Count} conti";
@@ -333,8 +481,40 @@ else
         }
     }
 
-    private DateOnly? RangeStart =>
-        ChartRanges.Start(_range, DateOnly.FromDateTime(DateTime.UtcNow));
+    private IReadOnlyList<(string Key, string Label)> ChartRangeOptions
+    {
+        get
+        {
+            var years = _allReadings
+                .Select(reading => reading.ValidAt.Year)
+                .Distinct()
+                .OrderByDescending(year => year)
+                .ToArray();
+            var options = new List<(string Key, string Label)>
+            {
+                ("year", "Anno"),
+                ("max", "Max"),
+            };
+            options.AddRange(years.Select(year => (year.ToString(), year.ToString())));
+            return options;
+        }
+    }
+
+    private DateOnly? RangeStart
+    {
+        get
+        {
+            if (int.TryParse(_range, out var year))
+            {
+                return new DateOnly(year, 1, 1);
+            }
+
+            return ChartRanges.Start(_range, DateOnly.FromDateTime(DateTime.UtcNow));
+        }
+    }
+
+    private DateOnly? RangeEnd =>
+        int.TryParse(_range, out var year) ? new DateOnly(year, 12, 31) : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -347,6 +527,7 @@ else
         try
         {
             _loadError = null;
+            _accountHoverSlice = null;
             _allReadings = [];
             _rows = await Overview.ListAsync();
             _allReadings = await ManualBalanceSvc.ListAllAsync();
@@ -373,10 +554,12 @@ else
         }
 
         var start = RangeStart;
+        var end = RangeEnd;
         var months = MonthEnds(
                 _allReadings.Min(reading => reading.ValidAt),
                 _allReadings.Max(reading => reading.ValidAt))
             .Where(monthEnd => start is null || monthEnd >= start.Value)
+            .Where(monthEnd => end is null || monthEnd <= end.Value)
             .ToArray();
 
         if (months.Length == 0)
@@ -389,7 +572,6 @@ else
             row => _allReadings.Where(reading => reading.AccountId == row.AccountId).ToArray());
 
         var series = new List<TimeSeriesSeries>();
-        var colorIndex = 0;
         foreach (var row in _rows)
         {
             var readings = readingsByAccount[row.AccountId];
@@ -411,9 +593,8 @@ else
             series.Add(new TimeSeriesSeries(
                 row.Name,
                 points,
-                row.ColorHex ?? ChartPalette.Colors[colorIndex % ChartPalette.Colors.Length],
+                AccountChartColor(row),
                 TimeSeriesSeriesKind.Bar));
-            colorIndex++;
         }
 
         if (series.Count == 0)
@@ -468,6 +649,22 @@ else
     }
 
     private static string AriaPressed(bool value) => value ? "true" : "false";
+
+    private void SetAccountHover(CategoryBreakdownItem slice) => _accountHoverSlice = slice;
+
+    private void ClearAccountHover() => _accountHoverSlice = null;
+
+    private static string DashArray(decimal share)
+    {
+        var value = Math.Clamp(share, 0m, 1m) * 100m;
+        return $"{Invariant(value)} {Invariant(100m - value)}";
+    }
+
+    private static string DashOffset(decimal offset) =>
+        Invariant(-Math.Clamp(offset, 0m, 1m) * 100m);
+
+    private static string Invariant(decimal value) =>
+        value.ToString("0.###", CultureInfo.InvariantCulture);
 
     private void ToggleHideClosedAccounts() => _hideClosedAccounts = !_hideClosedAccounts;
 

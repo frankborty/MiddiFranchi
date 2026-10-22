@@ -154,17 +154,19 @@ public class ManualBalanceTests : PostgresTestBase
     }
 
     [PostgresFact]
-    public async Task DeletingAnAccountWithOperations_ShouldBeRejected()
+    public async Task DeletingAnAccountWithTransfers_ShouldBeRejected()
     {
-        var (account, category) = await AddOrdinaryContextAsync(CategoryType.Income);
+        var (account, _) = await AddOrdinaryContextAsync(CategoryType.Income);
+        var destination = await AddAccountAsync("Conto destinazione");
         var registration = new OperationRegistrationService(
             new AccountRepository(Context),
             new CategoryRepository(Context),
             new FinancialOperationRepository(Context));
-        await registration.IncomeAsync(new RegisterIncomeRequest(
+        await registration.TransferAsync(new RegisterTransferRequest(
             account.Id,
-            category.Id,
-            new PositiveMoney(new Money(100m, Currency.Euro)),
+            destination.Id,
+            new PositiveMoney(new Money(50m, Currency.Euro)),
+            new PositiveMoney(new Money(50m, Currency.Euro)),
             new DateOnly(2026, 4, 10)));
         ClearTracker();
 
@@ -225,10 +227,10 @@ public class ManualBalanceTests : PostgresTestBase
             account.Id, new Money(500m, Currency.Euro), new DateOnly(2026, 4, 1)));
 
         await registration.IncomeAsync(new RegisterIncomeRequest(
-            account.Id, category.Id,
+            category.Id,
             new PositiveMoney(new Money(100m, Currency.Euro)), new DateOnly(2026, 4, 10)));
         await registration.ExpenseAsync(new RegisterExpenseRequest(
-            account.Id, expenseCategory.Id,
+            expenseCategory.Id,
             new PositiveMoney(new Money(30m, Currency.Euro)), new DateOnly(2026, 4, 11)));
         await registration.TransferAsync(new RegisterTransferRequest(
             source.Id, account.Id,

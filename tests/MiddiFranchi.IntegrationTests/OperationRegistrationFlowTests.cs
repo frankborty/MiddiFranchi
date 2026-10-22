@@ -18,7 +18,7 @@ public class OperationRegistrationFlowTests : PostgresTestBase
     }
 
     [PostgresFact]
-    public async Task Registrations_ShouldUpdateTheMovementsViewAndLeaveManualReadingsUntouched()
+    public async Task Registrations_ShouldOnlyCreatePostingsForTransfers_AndLeaveManualReadingsUntouched()
     {
         var accountRepository = new AccountRepository(Context);
         var source = new Account(
@@ -46,10 +46,10 @@ public class OperationRegistrationFlowTests : PostgresTestBase
         var date = new DateOnly(2026, 4, 10);
 
         await registrations.IncomeAsync(new RegisterIncomeRequest(
-            source.Id, incomeCategory.Id,
+            incomeCategory.Id,
             new PositiveMoney(new Money(120m, Currency.Euro)), date));
         await registrations.ExpenseAsync(new RegisterExpenseRequest(
-            source.Id, expenseCategory.Id,
+            expenseCategory.Id,
             new PositiveMoney(new Money(30m, Currency.Euro)), date.AddDays(1)));
         await registrations.TransferAsync(new RegisterTransferRequest(
             source.Id, destination.Id,
@@ -60,11 +60,9 @@ public class OperationRegistrationFlowTests : PostgresTestBase
 
         var movements = await new AccountPostingRepository(Context).ListAsync(source.Id, null, null);
 
-        movements.Count.ShouldBe(3);
-        movements
-            .Select(posting => posting.SignedAmount)
-            .OrderBy(amount => amount)
-            .ShouldBe([-40m, -30m, 120m]);
+        // Entrate e uscite non hanno conto: l'unico posting sul conto è la gamba del trasferimento.
+        movements.Count.ShouldBe(1);
+        movements.ShouldHaveSingleItem().SignedAmount.ShouldBe(-40m);
 
         var destinationMovements = await new AccountPostingRepository(Context).ListAsync(destination.Id, null, null);
         destinationMovements.ShouldHaveSingleItem().SignedAmount.ShouldBe(40m);

@@ -34,6 +34,8 @@ internal static class PersistenceMapper
         Type = category.Type,
         Description = category.Description,
         Subcategory = category.Subcategory,
+        Icon = category.Icon,
+        ColorHex = category.ColorHex,
     };
 
     public static Category ToDomain(CategoryRecord record) => new(
@@ -41,7 +43,9 @@ internal static class PersistenceMapper
         record.Name,
         record.Type,
         record.Description,
-        record.Subcategory);
+        record.Subcategory,
+        record.Icon,
+        record.ColorHex);
 
     public static InvestmentPortfolioRecord ToRecord(InvestmentPortfolio portfolio) => new()
     {
@@ -133,7 +137,6 @@ internal static class PersistenceMapper
             OperationDate = operation.OperationDate,
             RecordedAt = operation.RecordedAt,
             Description = operation.Description,
-            Notes = operation.Notes,
             OriginalOperationId = operation.OriginalOperationId,
         };
 
@@ -141,13 +144,13 @@ internal static class PersistenceMapper
         {
             case Income income:
                 ApplyAmount(record, income.Amount);
-                record.AccountId = income.Account.Id;
+                record.AccountId = income.Account?.Id;
                 record.CategoryId = income.Category.Id;
                 break;
 
             case Expense expense:
                 ApplyAmount(record, expense.Amount);
-                record.AccountId = expense.Account.Id;
+                record.AccountId = expense.Account?.Id;
                 record.CategoryId = expense.Category.Id;
                 break;
 
@@ -252,7 +255,7 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes);
+                null);
         }
 
         return result.Values
@@ -274,22 +277,22 @@ internal static class PersistenceMapper
         {
             OperationKind.Income => new Income(
                 record.Id,
-                RequiredAccount(accounts, record.AccountId, record.Id),
+                OptionalAccount(accounts, record.AccountId, record.Id),
                 RequiredCategory(categories, record.CategoryId, record.Id),
                 RequiredAmount(record, record.Id),
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes),
+                null),
             OperationKind.Expense => new Expense(
                 record.Id,
-                RequiredAccount(accounts, record.AccountId, record.Id),
+                OptionalAccount(accounts, record.AccountId, record.Id),
                 RequiredCategory(categories, record.CategoryId, record.Id),
                 RequiredAmount(record, record.Id),
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes),
+                null),
             OperationKind.Transfer => new Transfer(
                 record.Id,
                 RequiredAccount(accounts, record.SourceAccountId, record.Id),
@@ -299,7 +302,7 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes),
+                null),
             OperationKind.Investment => ToDomainInvestment(record, accounts, portfolios, instruments, fees),
             _ => throw new InvalidOperationException(
                 $"Il tipo di operazione {record.Kind} non è supportato dalla persistenza."),
@@ -375,7 +378,7 @@ internal static class PersistenceMapper
                 record.RecordedAt,
                 instrument,
                 record.Description,
-                record.Notes),
+                null),
             _ => throw new InvalidOperationException(
                 $"Il tipo di operazione d'investimento {investmentKind} non è supportato dalla persistenza."),
         };
@@ -403,7 +406,7 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes)
+                null)
             : InvestmentOperation.Sell(
                 record.Id,
                 portfolio,
@@ -415,7 +418,7 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes);
+                null);
     }
 
     private static InvestmentOperation CreateDividendOrCoupon(
@@ -444,7 +447,7 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes)
+                null)
             : InvestmentOperation.Coupon(
                 record.Id,
                 portfolio,
@@ -454,7 +457,7 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                record.Notes);
+                null);
     }
 
     private static void ApplyAmount(FinancialOperationRecord record, PositiveMoney amount)
@@ -510,6 +513,22 @@ internal static class PersistenceMapper
         }
 
         return fees[0].Amount;
+    }
+
+    private static Account? OptionalAccount(
+        IReadOnlyDictionary<Guid, Account> accounts,
+        Guid? accountId,
+        Guid operationId)
+    {
+        if (accountId is null)
+        {
+            return null;
+        }
+
+        return accounts.TryGetValue(accountId.Value, out var account)
+            ? account
+            : throw new InvalidOperationException(
+                $"Il conto dell'operazione {operationId} non è stato caricato.");
     }
 
     private static Account RequiredAccount(

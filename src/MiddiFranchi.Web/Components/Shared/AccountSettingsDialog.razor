@@ -39,28 +39,34 @@
 
                 <div class="color-picker">
                     <span class="dialog-label">Colore nei grafici</span>
-                    <div class="color-row">
-                        <input type="color" @bind="_colorHex" disabled="@_useAutomaticColor" />
-                        <label>
-                            <input type="checkbox" @bind="_useAutomaticColor" />
-                            <span>Colore automatico</span>
-                        </label>
-                    </div>
+                    <label class="color-auto-row">
+                        <input type="checkbox" @bind="_useAutomaticColor" />
+                        <span>Colore automatico</span>
+                    </label>
+                    <ColorPicker Value="@_colorHex"
+                                 ValueChanged="OnColorSelected"
+                                 Label="Colore del conto nei grafici" />
                 </div>
 
                 <div class="icon-upload">
                     <span class="dialog-label">Icona</span>
-                    <div class="icon-upload-preview">
-                        <AccountAvatar Name="@_name" Type="@Type" IconDataUrl="@_iconDataUrl" />
-                        <div class="icon-upload-actions">
-                            <InputFile OnChange="OnIconSelected" accept="image/png,image/jpeg,image/webp" />
-                            @if (!string.IsNullOrWhiteSpace(_iconDataUrl))
-                            {
-                                <button type="button" class="secondary-button" disabled="@_saving" @onclick="RemoveIcon">Rimuovi icona</button>
-                            }
+                    <IconPicker Value="@SelectedAccountIcon"
+                                ValueChanged="OnAccountIconSelected"
+                                Label="Icona del conto" />
+                    <div class="icon-import-section">
+                        <span class="dialog-label">Importa un'immagine</span>
+                        <div class="icon-upload-preview">
+                            <AccountAvatar Name="@_name" Type="@Type" IconDataUrl="@_iconDataUrl" />
+                            <div class="icon-upload-actions">
+                                <InputFile OnChange="OnIconSelected" accept="image/png,image/jpeg,image/webp" />
+                                @if (!string.IsNullOrWhiteSpace(_iconDataUrl))
+                                {
+                                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="RemoveIcon">Rimuovi icona</button>
+                                }
+                            </div>
                         </div>
+                        <span class="table-hint">PNG, JPEG o WebP, massimo 512 KB. L'immagine ha priorità sull'icona selezionata e sul logo.</span>
                     </div>
-                    <span class="table-hint">PNG, JPEG o WebP, massimo 512 KB. L'icona ha priorità sul logo e sull'icona predefinita.</span>
                 </div>
 
                 <div class="form-actions">
@@ -95,7 +101,7 @@
                 }
                 else
                 {
-                    <button type="button" class="danger-button" disabled="@_saving" @onclick="StartDelete">
+                    <button type="button" class="delete-button" disabled="@_saving" @onclick="StartDelete">
                         <MfIcon Name="trash" Size="16" /> Elimina conto
                     </button>
                 }
@@ -141,6 +147,11 @@
     private string _colorHex = DefaultColor;
     private bool _useAutomaticColor = true;
     private string? _iconDataUrl;
+
+    private string SelectedAccountIcon =>
+        _iconDataUrl is { } icon && icon.StartsWith(Account.IconTokenPrefix, StringComparison.OrdinalIgnoreCase)
+            ? icon[Account.IconTokenPrefix.Length..]
+            : "";
 
     protected override void OnParametersSet()
     {
@@ -255,6 +266,18 @@
     }
 
     private void RemoveIcon() => _iconDataUrl = null;
+
+    private void OnAccountIconSelected(string icon)
+    {
+        _iconDataUrl = $"{Account.IconTokenPrefix}{icon}";
+        _error = null;
+    }
+
+    private void OnColorSelected(string color)
+    {
+        _colorHex = color;
+        _useAutomaticColor = false;
+    }
 
     private async Task SaveAsync()
     {

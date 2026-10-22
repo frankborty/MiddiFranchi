@@ -19,7 +19,9 @@ public sealed class CategoryService
             request.Name,
             request.Type,
             request.Description,
-            request.Subcategory);
+            request.Subcategory,
+            request.Icon,
+            request.ColorHex);
         await _categories.AddAsync(category, cancellationToken);
         return category;
     }
@@ -34,7 +36,9 @@ public sealed class CategoryService
             request.Name,
             request.Type,
             request.Description,
-            request.Subcategory);
+            request.Subcategory,
+            request.Icon,
+            request.ColorHex);
         await _categories.UpdateAsync(updated, cancellationToken);
         return updated;
     }

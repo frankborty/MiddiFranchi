@@ -119,8 +119,16 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ColorHex")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
                     b.Property<string>("Description")
                         .HasColumnType("text");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -236,9 +244,6 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
-                    b.Property<string>("Notes")
-                        .HasColumnType("text");
-
                     b.Property<DateOnly>("OperationDate")
                         .HasColumnType("date");
 
@@ -332,7 +337,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_FinancialOperations_NonTransferFields", "\"Kind\" = 'Transfer' OR (\"SourceAccountId\" IS NULL AND \"DestinationAccountId\" IS NULL AND \"SourceAmountAmount\" IS NULL AND \"SourceAmountCurrencyCode\" IS NULL AND \"DestinationAmountAmount\" IS NULL AND \"DestinationAmountCurrencyCode\" IS NULL)");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_OrdinaryFields", "\"Kind\" NOT IN ('Income', 'Expense') OR (\"AccountId\" IS NOT NULL AND \"CategoryId\" IS NOT NULL AND \"AmountAmount\" IS NOT NULL AND \"AmountCurrencyCode\" IS NOT NULL)");
+                            t.HasCheckConstraint("CK_FinancialOperations_OrdinaryFields", "\"Kind\" NOT IN ('Income', 'Expense') OR (\"CategoryId\" IS NOT NULL AND \"AmountAmount\" IS NOT NULL AND \"AmountCurrencyCode\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_FinancialOperations_Quantity", "\"QuantityValue\" IS NULL OR \"QuantityValue\" > 0");
 

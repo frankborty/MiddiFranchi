@@ -28,7 +28,19 @@ public static class OperationForm
         kind == OperationFormKind.Transfer
             ? []
             : categories.Where(category => category.Type == CategoryTypeFor(kind)).ToArray();
+
+    /// <summary>Raggruppa le categorie per nome, ordinando le sottocategorie: il menu le mostra come optgroup.</summary>
+    public static IReadOnlyList<CategoryGroup> GroupCategories(IReadOnlyList<Category> categories) =>
+        categories
+            .GroupBy(category => category.Name, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase)
+            .Select(group => new CategoryGroup(
+                group.Key,
+                group.OrderBy(category => category.Subcategory, StringComparer.CurrentCultureIgnoreCase).ToArray()))
+            .ToArray();
 }
+
+public sealed record CategoryGroup(string Name, IReadOnlyList<Category> Categories);
 
 /// <summary>
 /// Stato del modulo di registrazione delle operazioni. Contiene solo dati di presentazione:
@@ -37,8 +49,6 @@ public static class OperationForm
 public sealed record OperationFormModel
 {
     public OperationFormKind Kind { get; init; } = OperationFormKind.Income;
-
-    public Guid? AccountId { get; init; }
 
     public Guid? CategoryId { get; init; }
 
@@ -51,8 +61,6 @@ public sealed record OperationFormModel
     public DateOnly? ValidAt { get; init; }
 
     public string? Description { get; init; }
-
-    public string? Notes { get; init; }
 }
 
 public sealed record OperationFormResult(
@@ -80,6 +88,10 @@ public sealed class OperationFormDispatcher
         _registrations = registrations;
     }
 
+    /// <summary>Registra un'entrata o un'uscita senza conto. I trasferimenti non sono esposti dalla UI.</summary>
+    public Task<OperationFormResult> SubmitAsync(OperationFormModel model) =>
+        SubmitAsync(model, new Dictionary<Guid, Account>());
+
     /// <summary>
     /// Inoltra la richiesta al servizio corretto in base al tipo scelto. Restituisce un
     /// esito strutturato: gli errori dell'Application vengono riproposti senza stack trace.
@@ -98,8 +110,8 @@ public sealed class OperationFormDispatcher
         {
             return model.Kind switch
             {
-                OperationFormKind.Income => await SubmitIncomeAsync(model, accountsById),
-                OperationFormKind.Expense => await SubmitExpenseAsync(model, accountsById),
+                OperationFormKind.Income => await SubmitIncomeAsync(model),
+                OperationFormKind.Expense => await SubmitExpenseAsync(model),
                 OperationFormKind.Transfer => await SubmitTransferAsync(model, accountsById),
                 _ => OperationFormResult.Fail("Il tipo di operazione non è valido."),
             };
@@ -118,36 +130,26 @@ public sealed class OperationFormDispatcher
         }
     }
 
-    private async Task<OperationFormResult> SubmitIncomeAsync(
-        OperationFormModel model,
-        IReadOnlyDictionary<Guid, Account> accountsById)
+    private async Task<OperationFormResult> SubmitIncomeAsync(OperationFormModel model)
     {
-        var account = RequiredAccount(accountsById, model.AccountId, "conto destinatario");
         var amount = RequiredPositiveAmount(model.SourceAmountText, "importo");
         await _registrations.IncomeAsync(new RegisterIncomeRequest(
-            account.Id,
             model.CategoryId!.Value,
-            new PositiveMoney(new Money(amount, account.Currency)),
+            new PositiveMoney(new Money(amount, Currency.Euro)),
             model.ValidAt!.Value,
-            model.Description,
-            model.Notes));
-        return OperationFormResult.Ok($"Entrata di {Format.Money(new Money(amount, account.Currency))} su «{account.Name}» registrata.");
+            model.Description));
+        return OperationFormResult.Ok($"Entrata di {Format.Money(new Money(amount, Currency.Euro))} registrata.");
     }
 
-    private async Task<OperationFormResult> SubmitExpenseAsync(
-        OperationFormModel model,
-        IReadOnlyDictionary<Guid, Account> accountsById)
+    private async Task<OperationFormResult> SubmitExpenseAsync(OperationFormModel model)
     {
-        var account = RequiredAccount(accountsById, model.AccountId, "conto di addebito");
         var amount = RequiredPositiveAmount(model.SourceAmountText, "importo");
         await _registrations.ExpenseAsync(new RegisterExpenseRequest(
-            account.Id,
             model.CategoryId!.Value,
-            new PositiveMoney(new Money(amount, account.Currency)),
+            new PositiveMoney(new Money(amount, Currency.Euro)),
             model.ValidAt!.Value,
-            model.Description,
-            model.Notes));
-        return OperationFormResult.Ok($"Uscita di {Format.Money(new Money(amount, account.Currency))} su «{account.Name}» registrata.");
+            model.Description));
+        return OperationFormResult.Ok($"Uscita di {Format.Money(new Money(amount, Currency.Euro))} registrata.");
     }
 
     private async Task<OperationFormResult> SubmitTransferAsync(
@@ -169,8 +171,7 @@ public sealed class OperationFormDispatcher
             new PositiveMoney(new Money(amount, source.Currency)),
             new PositiveMoney(new Money(amount, destination.Currency)),
             model.ValidAt!.Value,
-            model.Description,
-            model.Notes));
+            model.Description));
         return OperationFormResult.Ok(
             $"Trasferimento di {Format.Money(new Money(amount, source.Currency))} da «{source.Name}» a «{destination.Name}» registrato.");
     }
@@ -182,19 +183,9 @@ public sealed class OperationFormDispatcher
             return "La data economica è obbligatoria.";
         }
 
-        if (model.Kind is not OperationFormKind.Transfer)
+        if (model.Kind is not OperationFormKind.Transfer && model.CategoryId is null)
         {
-            if (model.AccountId is null)
-            {
-                return model.Kind == OperationFormKind.Income
-                    ? "Il conto destinatario è obbligatorio."
-                    : "Il conto di addebito è obbligatorio.";
-            }
-
-            if (model.CategoryId is null)
-            {
-                return "La categoria è obbligatoria.";
-            }
+            return "La categoria è obbligatoria.";
         }
 
         return null;

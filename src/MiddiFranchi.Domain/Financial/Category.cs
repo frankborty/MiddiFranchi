@@ -2,7 +2,14 @@ namespace MiddiFranchi.Domain.Financial;
 
 public sealed class Category
 {
-    public Category(Guid id, string name, CategoryType type, string? description = null, string? subcategory = null)
+    public Category(
+        Guid id,
+        string name,
+        CategoryType type,
+        string? description = null,
+        string? subcategory = null,
+        string? icon = null,
+        string? colorHex = null)
     {
         if (id == Guid.Empty)
         {
@@ -19,6 +26,8 @@ public sealed class Category
         Type = type;
         Description = description;
         Subcategory = string.IsNullOrWhiteSpace(subcategory) ? null : subcategory.Trim();
+        Icon = string.IsNullOrWhiteSpace(icon) ? null : icon.Trim();
+        ColorHex = string.IsNullOrWhiteSpace(colorHex) ? null : colorHex.Trim();
     }
 
     public Guid Id { get; }
@@ -30,4 +39,10 @@ public sealed class Category
     public string? Description { get; }
 
     public string? Subcategory { get; }
+
+    /// <summary>Nome dell'icona MfIcon associata alla categoria.</summary>
+    public string? Icon { get; }
+
+    /// <summary>Colore esadecimale (#RRGGBB) della categoria.</summary>
+    public string? ColorHex { get; }
 }

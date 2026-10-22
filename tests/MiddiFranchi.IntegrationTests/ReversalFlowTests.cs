@@ -55,11 +55,15 @@ public class ReversalFlowTests : PostgresTestBase
     {
         var (account, incomeCategory, _) = await AddOrdinarySetupAsync();
         await AddManualReadingAsync(account, 500m);
-        var registrations = BuildRegistrationService();
-        var income = await registrations.IncomeAsync(new RegisterIncomeRequest(
-            account.Id, incomeCategory.Id,
+        // Movimento con conto costruito direttamente: serve il posting per verificare lo storno.
+        var income = new Income(
+            Guid.NewGuid(),
+            account,
+            incomeCategory,
             new PositiveMoney(new Money(120m, Currency.Euro)),
-            new DateOnly(2026, 4, 10)));
+            new DateOnly(2026, 4, 10),
+            DateTimeOffset.UtcNow);
+        await new FinancialOperationRepository(Context).AddAsync(income);
 
         var reversal = await BuildReversalService().ReverseAsync(income.Id);
         ClearTracker();
@@ -93,11 +97,14 @@ public class ReversalFlowTests : PostgresTestBase
     public async Task ReversingAnExpense_ShouldCompensateItsNegativePosting()
     {
         var (account, _, expenseCategory) = await AddOrdinarySetupAsync();
-        var registrations = BuildRegistrationService();
-        var expense = await registrations.ExpenseAsync(new RegisterExpenseRequest(
-            account.Id, expenseCategory.Id,
+        var expense = new Expense(
+            Guid.NewGuid(),
+            account,
+            expenseCategory,
             new PositiveMoney(new Money(30m, Currency.Euro)),
-            new DateOnly(2026, 4, 10)));
+            new DateOnly(2026, 4, 10),
+            DateTimeOffset.UtcNow);
+        await new FinancialOperationRepository(Context).AddAsync(expense);
 
         var accountService = new AccountService(
             new AccountRepository(Context),
@@ -163,9 +170,9 @@ public class ReversalFlowTests : PostgresTestBase
     [PostgresFact]
     public async Task DoubleReversal_ShouldBeRejectedAndLeaveOneReversalRow()
     {
-        var (account, incomeCategory, _) = await AddOrdinarySetupAsync();
+        var (_, incomeCategory, _) = await AddOrdinarySetupAsync();
         var income = await BuildRegistrationService().IncomeAsync(new RegisterIncomeRequest(
-            account.Id, incomeCategory.Id,
+            incomeCategory.Id,
             new PositiveMoney(new Money(120m, Currency.Euro)),
             new DateOnly(2026, 4, 10)));
         var service = BuildReversalService();
@@ -190,9 +197,9 @@ public class ReversalFlowTests : PostgresTestBase
     [PostgresFact]
     public async Task ReversingAReversal_ShouldBeRejected()
     {
-        var (account, incomeCategory, _) = await AddOrdinarySetupAsync();
+        var (_, incomeCategory, _) = await AddOrdinarySetupAsync();
         var income = await BuildRegistrationService().IncomeAsync(new RegisterIncomeRequest(
-            account.Id, incomeCategory.Id,
+            incomeCategory.Id,
             new PositiveMoney(new Money(120m, Currency.Euro)),
             new DateOnly(2026, 4, 10)));
         var reversal = await BuildReversalService().ReverseAsync(income.Id);
@@ -222,9 +229,9 @@ public class ReversalFlowTests : PostgresTestBase
         // Simula due richieste di storno sulla stessa operazione. La guardia del repository
         // e l'indice univoco su OriginalOperationId garantiscono un solo storno anche in
         // un'eventuale corsa reale tra due connessioni diverse.
-        var (account, incomeCategory, _) = await AddOrdinarySetupAsync();
+        var (_, incomeCategory, _) = await AddOrdinarySetupAsync();
         var income = await BuildRegistrationService().IncomeAsync(new RegisterIncomeRequest(
-            account.Id, incomeCategory.Id,
+            incomeCategory.Id,
             new PositiveMoney(new Money(120m, Currency.Euro)),
             new DateOnly(2026, 4, 10)));
         ClearTracker();
@@ -259,10 +266,14 @@ public class ReversalFlowTests : PostgresTestBase
         // operazioni attuali valide: uno storno corrente cambia anche la ricostruzione
         // di date precedenti, per la regola documentata del dominio (append-only).
         var (account, incomeCategory, _) = await AddOrdinarySetupAsync();
-        var income = await BuildRegistrationService().IncomeAsync(new RegisterIncomeRequest(
-            account.Id, incomeCategory.Id,
+        var income = new Income(
+            Guid.NewGuid(),
+            account,
+            incomeCategory,
             new PositiveMoney(new Money(120m, Currency.Euro)),
-            new DateOnly(2026, 4, 10)));
+            new DateOnly(2026, 4, 10),
+            DateTimeOffset.UtcNow);
+        await new FinancialOperationRepository(Context).AddAsync(income);
         await BuildReversalService().ReverseAsync(income.Id);
         ClearTracker();
 

@@ -19,7 +19,7 @@
         </figcaption>
     }
 
-    <div class="library-chart-canvas">
+    <div class="library-chart-canvas" style="@CanvasHeightStyle">
         <ApexChart @key="AxisKey" @ref="_chart" TItem="ApexTimePoint" Options="_options">
             @foreach (var series in Series)
             {
@@ -97,7 +97,13 @@
     private string? _labelMode;
     private string? _appliedAxisKey;
 
-    private string AxisKey => $"{_theme}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}";
+    private string AxisKey =>
+        $"{_theme}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|" +
+        $"{string.Join(",", Series.Select(series => series.Color ?? ""))}";
+
+    // L'altezza numerica è già applicata al grafico Apex; forzarla anche sul contenitore
+    // aggiungerebbe padding e bordo, creando una barra di scorrimento verticale.
+    private string? CanvasHeightStyle => Height is string value ? $"height:{value}" : null;
 
     [Parameter, EditorRequired]
     public string Title { get; set; } = "";
@@ -141,6 +147,10 @@
 
     [Parameter]
     public bool SharedTooltip { get; set; } = true;
+
+    /// <summary>Altezza del grafico: numero (px) oppure stringa CSS, es. "100%".</summary>
+    [Parameter]
+    public object Height { get; set; } = 320;
 
     /// <summary>Impila le serie marcate come barre; le serie di linea restano sovrapposte.</summary>
     [Parameter]
@@ -398,15 +408,15 @@
               return '<div class="apexcharts-tooltip-title">' + title + '</div>' + rows;
             }
             """;
-        // Etichette asse temporale lette al volo da window.mfAxisLabelMode ("short"/"hour"/"month"/"year").
+        // Etichette asse temporale lette al volo da window.mfAxisLabelMode ("short"/"hour"/"day"/"month"/"month-name"/"year").
         const string axisDateFormatter =
-            "function(value, timestamp) { var date = timestamp ? new Date(timestamp) : new Date(value); if (isNaN(date.getTime())) return value || ''; var mode = window.mfAxisLabelMode || 'short'; if (mode === 'hour') { return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date); } if (mode === 'year') { return date.getMonth() === 0 ? String(date.getFullYear()) : new Intl.DateTimeFormat('it-IT', { month: 'short', year: '2-digit' }).format(date); } var options = mode === 'month' ? { month: 'short', year: '2-digit' } : { day: '2-digit', month: 'short' }; return new Intl.DateTimeFormat('it-IT', options).format(date); }";
+            "function(value, timestamp) { var date = timestamp ? new Date(timestamp) : new Date(value); if (isNaN(date.getTime())) return value || ''; var mode = window.mfAxisLabelMode || 'short'; var month = new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(date); if (mode === 'hour') { return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date); } if (mode === 'day') { var day = date.getDate(); return day === 1 || day % 5 === 0 ? String(day) : ''; } if (mode === 'month-name') { return month; } if (mode === 'year') { return date.getMonth() === 0 ? String(date.getFullYear()) : new Intl.DateTimeFormat('it-IT', { month: 'short', year: '2-digit' }).format(date); } var options = mode === 'month' ? { month: 'short', year: '2-digit' } : { day: '2-digit', month: 'short' }; return new Intl.DateTimeFormat('it-IT', options).format(date); }";
         return new ApexChartOptions<ApexTimePoint>
         {
             Debug = false,
             Chart = new Chart
             {
-                Height = 320,
+                Height = Height,
                 Width = "100%",
                 Toolbar = new Toolbar { Show = false },
                 Zoom = new Zoom { Enabled = false },

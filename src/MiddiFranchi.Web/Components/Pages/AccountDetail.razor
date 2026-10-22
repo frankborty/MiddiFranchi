@@ -215,7 +215,9 @@ else
                             @Format.Money(pending.Amount)? L'operazione non è reversibile.
                         </div>
                         <div class="form-actions">
-                            <button type="button" class="danger-button" disabled="@_savingReading" @onclick="ConfirmDeleteReadingAsync">Elimina</button>
+                            <button type="button" class="danger-button" disabled="@_savingReading" @onclick="ConfirmDeleteReadingAsync">
+                                <MfIcon Name="trash" Size="16" /> Elimina
+                            </button>
                             <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="CancelDeleteReading">Annulla</button>
                         </div>
                     </div>
@@ -257,7 +259,9 @@ else
                                                 </label>
                                                 <div class="form-actions">
                                                     <button type="button" class="primary-button" disabled="@_savingReading" @onclick="SaveReadingAsync">Salva</button>
-                                                    <button type="button" class="danger-button" disabled="@_savingReading" @onclick="() => StartDeleteReading(reading)">Elimina</button>
+                                                    <button type="button" class="delete-button compact" disabled="@_savingReading" @onclick="() => StartDeleteReading(reading)">
+                                                        <MfIcon Name="trash" Size="14" /> Elimina
+                                                    </button>
                                                     <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="ClosePanel">Chiudi</button>
                                                 </div>
                                             </div>

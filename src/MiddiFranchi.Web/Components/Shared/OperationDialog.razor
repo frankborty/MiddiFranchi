@@ -1,0 +1,282 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@inject OperationRegistrationService Registrations
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card operation-dialog" role="dialog" aria-modal="true" aria-labelledby="operation-dialog-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="operation-dialog-title">Nuova operazione</h2>
+                    <p class="section-sub">Registra un'entrata o un'uscita.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            <div class="operation-kind-tabs two" role="group" aria-label="Tipo di operazione">
+                <button type="button" class="@KindTabClass(OperationFormKind.Income)" aria-pressed="@AriaPressed(_kind == OperationFormKind.Income)" @onclick="() => SelectKind(OperationFormKind.Income)">
+                    <MfIcon Name="trend" Size="16" /> Entrata
+                </button>
+                <button type="button" class="@KindTabClass(OperationFormKind.Expense)" aria-pressed="@AriaPressed(_kind == OperationFormKind.Expense)" @onclick="() => SelectKind(OperationFormKind.Expense)">
+                    <MfIcon Name="trend-down" Size="16" /> Uscita
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid operation-form" @onsubmit="SaveAsync">
+                @if (_kind == OperationFormKind.Income)
+                {
+                    <label class="operation-form-wide">
+                        <span>Categoria *</span>
+                        <select @bind="_categoryId" required aria-required="true">
+                            <option value="">Seleziona…</option>
+                            @foreach (var category in IncomeCategories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <label>
+                        <span>Categoria</span>
+                        <select @bind="_categoryName" @bind:after="OnCategoryGroupChanged">
+                            <option value="">Tutte le categorie</option>
+                            @foreach (var group in ExpenseGroups)
+                            {
+                                <option value="@group.Name">@group.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <label>
+                        <span>Sottocategoria *</span>
+                        <select @bind="_categoryId" @bind:after="OnSubcategoryChanged" required aria-required="true">
+                            <option value="">Seleziona…</option>
+                            @foreach (var group in VisibleExpenseGroups)
+                            {
+                                <optgroup label="@group.Name">
+                                    @foreach (var category in group.Categories)
+                                    {
+                                        <option value="@category.Id">@SubcategoryLabel(category)</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </label>
+                }
+                <label>
+                    <span>Importo *</span>
+                    <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00" required aria-required="true" @bind="_amountText" />
+                </label>
+                <label>
+                    <span>Data *</span>
+                    <input type="date" required aria-required="true" @bind="_validAt" />
+                </label>
+                <label class="operation-form-wide">
+                    <span>Descrizione / Nota</span>
+                    <input type="text" maxlength="200" placeholder="Es. Spesa settimanale" @bind="_description" />
+                </label>
+
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@(_saving || !CanRegister)">
+                        <MfIcon Name="plus" Size="18" /> Registra @(_kind == OperationFormKind.Income ? "entrata" : "uscita")
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
+                </div>
+            </form>
+
+            @if (CategoryChoices.Count == 0)
+            {
+                <p class="alert alert-warning" role="status">
+                    @(_kind == OperationFormKind.Income
+                        ? "Non ci sono categorie di tipo Entrate: la registrazione di un'entrata ne richiede una."
+                        : "Non ci sono categorie di tipo Uscite: la registrazione di un'uscita ne richiede una.")
+                    <a class="primary-link" href="settings">Crea una categoria nella pagina Configurazione.</a>
+                </p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public IReadOnlyList<Category> Categories { get; set; } = [];
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private bool _wasOpen;
+    private bool _saving;
+    private string? _error;
+    private OperationFormKind _kind = OperationFormKind.Income;
+    private string _categoryId = "";
+    private string _categoryName = "";
+    private bool _filterByCategory;
+    private string _amountText = "";
+    private DateOnly? _validAt;
+    private string? _description;
+
+    private IReadOnlyList<Category> CategoryChoices => OperationForm.CategoriesFor(_kind, Categories);
+
+    private IReadOnlyList<Category> IncomeCategories => CategoryChoices
+        .OrderBy(category => category.Name, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
+    private IReadOnlyList<CategoryGroup> ExpenseGroups => OperationForm.GroupCategories(CategoryChoices);
+
+    private IReadOnlyList<CategoryGroup> VisibleExpenseGroups =>
+        !_filterByCategory || string.IsNullOrWhiteSpace(_categoryName)
+            ? ExpenseGroups
+            : ExpenseGroups
+                .Where(group => string.Equals(group.Name, _categoryName, StringComparison.CurrentCultureIgnoreCase))
+                .ToArray();
+
+    private bool CanRegister => CategoryChoices.Count > 0 && !string.IsNullOrWhiteSpace(_categoryId);
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _saving = false;
+        _error = null;
+        _kind = OperationFormKind.Income;
+        _categoryId = "";
+        _categoryName = "";
+        _filterByCategory = false;
+        _amountText = "";
+        _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+        _description = null;
+    }
+
+    private void SelectKind(OperationFormKind kind)
+    {
+        if (_kind == kind)
+        {
+            return;
+        }
+
+        _kind = kind;
+        _categoryId = "";
+        _categoryName = "";
+        _filterByCategory = false;
+        _error = null;
+    }
+
+    private void OnCategoryGroupChanged()
+    {
+        _filterByCategory = !string.IsNullOrWhiteSpace(_categoryName);
+        if (string.IsNullOrWhiteSpace(_categoryName))
+        {
+            _categoryId = "";
+            return;
+        }
+
+        var selected = CategoryChoices.FirstOrDefault(category => category.Id.ToString() == _categoryId);
+        if (selected is null ||
+            !string.Equals(selected.Name, _categoryName, StringComparison.CurrentCultureIgnoreCase))
+        {
+            _categoryId = "";
+        }
+    }
+
+    private void OnSubcategoryChanged()
+    {
+        if (!Guid.TryParse(_categoryId, out var id))
+        {
+            return;
+        }
+
+        var selected = CategoryChoices.FirstOrDefault(category => category.Id == id);
+        if (selected is not null)
+        {
+            _categoryName = selected.Name;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || !CanRegister)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var dispatcher = new OperationFormDispatcher(Registrations);
+            var result = await dispatcher.SubmitAsync(
+                new OperationFormModel
+                {
+                    Kind = _kind,
+                    CategoryId = ParseOptionalGuid(_categoryId),
+                    SourceAmountText = _amountText,
+                    ValidAt = _validAt,
+                    Description = string.IsNullOrWhiteSpace(_description) ? null : _description,
+                });
+
+            if (result.Succeeded)
+            {
+                await OnSaved.InvokeAsync(result.SuccessMessage);
+                await OnClose.InvokeAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private static string SubcategoryLabel(Category category) =>
+        string.IsNullOrWhiteSpace(category.Subcategory) ? "Generale" : category.Subcategory;
+
+    private string KindTabClass(OperationFormKind kind)
+    {
+        var tone = kind == OperationFormKind.Income ? "income" : "expense";
+        return _kind == kind
+            ? $"operation-kind-tab {tone} active"
+            : $"operation-kind-tab {tone}";
+    }
+
+    private static string AriaPressed(bool value) => value ? "true" : "false";
+
+    private static Guid? ParseOptionalGuid(string value) =>
+        Guid.TryParse(value, out var parsed) ? parsed : null;
+}

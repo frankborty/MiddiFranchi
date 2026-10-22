@@ -6,7 +6,7 @@ public sealed class Expense : FinancialOperation
 {
     public Expense(
         Guid id,
-        Account account,
+        Account? account,
         Category category,
         PositiveMoney amount,
         DateOnly operationDate,
@@ -15,13 +15,23 @@ public sealed class Expense : FinancialOperation
         string? notes = null)
         : base(id, operationDate, recordedAt, description, notes)
     {
-        ValidateOperationCurrency(amount.Value, account);
+        if (account is not null)
+        {
+            ValidateOperationCurrency(amount.Value, account);
+        }
+        else if (amount.Value.Currency != Currency.Euro)
+        {
+            throw new ArgumentException(
+                "Le uscite senza conto devono essere in EUR.",
+                nameof(amount));
+        }
+
         Account = account;
         Category = category;
         Amount = amount;
     }
 
-    public Account Account { get; }
+    public Account? Account { get; }
 
     public Category Category { get; }
 
@@ -30,12 +40,15 @@ public sealed class Expense : FinancialOperation
     public override OperationKind Kind => OperationKind.Expense;
 
     protected override IReadOnlyList<AccountPosting> CreatePostings() =>
-    [
-        new AccountPosting(
-            this,
-            Account.Id,
-            PostingKind.Capital,
-            Account.Currency,
-            SignedAmount(Amount.Value, Account, credit: false)),
-    ];
+        Account is null
+            ? []
+            :
+            [
+                new AccountPosting(
+                    this,
+                    Account.Id,
+                    PostingKind.Capital,
+                    Account.Currency,
+                    SignedAmount(Amount.Value, Account, credit: false)),
+            ];
 }

@@ -1,0 +1,1029 @@
+@page "/settings/categories"
+@rendermode InteractiveServer
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Web.Components.Shared
+@inject CategoryService Categories
+@inject CategoryAdminService Admin
+@inject OperationHistoryService History
+
+<PageTitle>Categorie</PageTitle>
+
+<a class="section-link settings-back" href="/settings">
+    <MfIcon Name="arrow-left" Size="16" /> Configurazione
+</a>
+
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar amber" aria-hidden="true"><MfIcon Name="tag" Size="18" /></span>
+            Categorie
+        </h1>
+    </div>
+    @if (!_loading && _loadError is null)
+    {
+        <div class="dashboard-header-meta">
+            <StatusBadge Tone="brand">@(_incomeGroups.Count + _expenseGroups.Count) categorie</StatusBadge>
+        </div>
+    }
+</div>
+
+@if (_loading)
+{
+    <p class="page-status" role="status">Caricamento delle categorie…</p>
+}
+else if (_loadError is not null)
+{
+    <p class="alert alert-error" role="alert">@_loadError</p>
+}
+else
+{
+    @if (_message is not null)
+    {
+        <p class="alert alert-success" role="status">@_message</p>
+    }
+
+    <section class="card category-admin-section" id="income" aria-labelledby="income-categories-title">
+        <div class="section-head">
+            <div>
+                <h2 id="income-categories-title"><MfIcon Name="trend" Size="18" /> Entrate</h2>
+                <p class="section-sub">Categorie senza sottocategorie, usate per stipendio, rimborsi e altre entrate.</p>
+            </div>
+            <button type="button" class="primary-button" @onclick="() => OpenCreate(CategoryType.Income)">
+                <MfIcon Name="plus" Size="18" /> Nuova categoria
+            </button>
+        </div>
+
+        @if (_incomeGroups.Count == 0)
+        {
+            <EmptyState Title="Nessuna categoria di entrata"
+                        Hint="Crea la prima categoria per classificare le entrate."
+                        Icon="tag" />
+        }
+        else
+        {
+            <div class="category-admin-list">
+                @foreach (var group in _incomeGroups)
+                {
+                    <CategoryAdminGroupCard Group="group"
+                                            OnEdit="OpenEditGroup"
+                                            OnMove="OpenMoveGroup"
+                                            OnDelete="OpenDeleteGroup" />
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card category-admin-section" id="expense" aria-labelledby="expense-categories-title">
+        <div class="section-head">
+            <div>
+                <h2 id="expense-categories-title"><MfIcon Name="trend-down" Size="18" /> Uscite</h2>
+                <p class="section-sub">Ogni categoria raggruppa più sottocategorie; le operazioni sono collegate alla singola sottocategoria.</p>
+            </div>
+            <button type="button" class="primary-button" @onclick="() => OpenCreate(CategoryType.Expense)">
+                <MfIcon Name="plus" Size="18" /> Nuova categoria
+            </button>
+        </div>
+
+        @if (_expenseGroups.Count == 0)
+        {
+            <EmptyState Title="Nessuna categoria di uscita"
+                        Hint="Crea la prima categoria con almeno una sottocategoria."
+                        Icon="tag" />
+        }
+        else
+        {
+            <div class="category-admin-list">
+                @foreach (var group in _expenseGroups)
+                {
+                    <CategoryAdminGroupCard Group="group"
+                                            OnEdit="OpenEditGroup"
+                                            OnAddSubcategory="OpenAddSubcategory"
+                                            OnMove="OpenMoveGroup"
+                                            OnDelete="OpenDeleteGroup"
+                                            OnEditSubcategory="OpenEditSubcategory"
+                                            OnMoveSubcategory="OpenMoveSubcategory"
+                                            OnDeleteSubcategory="OpenDeleteSubcategory" />
+                }
+            </div>
+        }
+    </section>
+}
+
+@if (_editorOpen)
+{
+    <div class="modal-backdrop" @onclick="CloseEditor">
+        <div class="modal-card category-admin-modal" role="dialog" aria-modal="true" aria-labelledby="category-editor-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="category-editor-title">@EditorTitle</h2>
+                    <p class="section-sub">@EditorSubtitle</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_working" @onclick="CloseEditor">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_editorError is not null)
+            {
+                <p class="alert alert-error" role="alert">@_editorError</p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveEditorAsync">
+                @if (_editorMode is EditorMode.CreateCategory or EditorMode.EditGroup)
+                {
+                    <label>
+                        <span>Nome categoria *</span>
+                        <input type="text" maxlength="200" required aria-required="true" @bind="_editName" @bind:after="ClearDuplicateSuggestion" />
+                    </label>
+                    <label>
+                        <span>Descrizione</span>
+                        <input type="text" maxlength="200" @bind="_editDescription" />
+                    </label>
+                    <div class="icon-picker-field">
+                        <span>Icona</span>
+                        <IconPicker @bind-Value="_editIcon" Label="Icona della categoria" />
+                        <p class="table-hint">Serve a riconoscere la categoria a colpo d’occhio.</p>
+                    </div>
+                    <div class="color-picker-field">
+                        <span>Colore</span>
+                        <ColorPicker @bind-Value="_editColor" Label="Colore della categoria" />
+                    </div>
+                }
+
+                @if (_editorMode == EditorMode.CreateCategory && _editorType == CategoryType.Expense)
+                {
+                    <label>
+                        <span>Prima sottocategoria *</span>
+                        <input type="text" maxlength="200" required aria-required="true" @bind="_editSubcategory" @bind:after="ClearDuplicateSuggestion" />
+                    </label>
+                }
+
+                @if (_editorMode is EditorMode.AddSubcategory or EditorMode.EditSubcategory)
+                {
+                    <label>
+                        <span>Sottocategoria *</span>
+                        <input type="text" maxlength="200" required aria-required="true" @bind="_editSubcategory" @bind:after="ClearDuplicateSuggestion" />
+                    </label>
+                    <label>
+                        <span>Descrizione</span>
+                        <input type="text" maxlength="200" @bind="_editDescription" />
+                    </label>
+                }
+
+                <DuplicateNamePrompt Suggestion="@_duplicateSuggestion"
+                                     Disabled="@_working"
+                                     OnAccept="ConfirmDuplicateEditorAsync"
+                                     OnCancel="ClearDuplicateSuggestion" />
+
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@_working">
+                        @if (_working) { <text>Salvataggio…</text> } else { <text>Salva</text> }
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_working" @onclick="CloseEditor">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@if (_moveOpen)
+{
+    <div class="modal-backdrop" @onclick="CloseMove">
+        <div class="modal-card category-admin-modal" role="dialog" aria-modal="true" aria-labelledby="category-move-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="category-move-title">Sposta operazioni</h2>
+                    <p class="section-sub">@MoveDescription</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_working" @onclick="CloseMove">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_moveError is not null)
+            {
+                <p class="alert alert-error" role="alert">@_moveError</p>
+            }
+
+            @if (!_moveGroupMode)
+            {
+                <label class="form-field">
+                    <span>Sottocategoria di destinazione</span>
+                    <select @bind="_moveDestinationRowId" disabled="@_working">
+                        @foreach (var row in MoveSubcategoryDestinations)
+                        {
+                            <option value="@row.Category.Id">@MoveRowLabel(row)</option>
+                        }
+                    </select>
+                </label>
+            }
+            else if (_moveGroup is { } group)
+            {
+                <label class="form-field">
+                    <span>Categoria di destinazione</span>
+                    <select @bind="_moveDestinationGroup" @bind:after="OnMoveGroupChanged" disabled="@_working">
+                        @foreach (var destination in MoveGroupDestinations)
+                        {
+                            <option value="@destination.Name">@destination.Name</option>
+                        }
+                    </select>
+                </label>
+
+                @if (group.Type == CategoryType.Expense)
+                {
+                    <label class="form-field">
+                        <span>Sottocategoria di destinazione</span>
+                        <select @bind="_moveDestinationRowId" disabled="@_working">
+                            @foreach (var row in MoveDestinationRows)
+                            {
+                                <option value="@row.Category.Id">@row.Category.Subcategory</option>
+                            }
+                        </select>
+                    </label>
+                }
+            }
+
+            @if (_moveError is null && !CanConfirmMove)
+            {
+                <p class="table-hint">Crea prima una categoria o sottocategoria di destinazione.</p>
+            }
+
+            <div class="form-actions">
+                <button type="button" class="primary-button" disabled="@(_working || !CanConfirmMove)" @onclick="ConfirmMoveAsync">
+                    Sposta operazioni
+                </button>
+                <button type="button" class="secondary-button" disabled="@_working" @onclick="CloseMove">Annulla</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_deleteOpen)
+{
+    <div class="modal-backdrop" @onclick="CloseDelete">
+        <div class="modal-card category-admin-modal" role="dialog" aria-modal="true" aria-labelledby="category-delete-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="category-delete-title">Elimina @(_deleteGroupMode ? "categoria" : "sottocategoria")</h2>
+                    <p class="section-sub">@DeleteDescription</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_working" @onclick="CloseDelete">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_deleteError is not null)
+            {
+                <p class="alert alert-error" role="alert">@_deleteError</p>
+            }
+
+            @if (DeleteOperationCount > 0)
+            {
+                <p class="alert alert-warning" role="alert">
+                    Ci sono @DeleteOperationCount operazioni collegate. Scegli dove spostarle prima di eliminare.
+                </p>
+
+                @if (!_deleteGroupMode)
+                {
+                    <label class="form-field">
+                        <span>Sposta le operazioni in</span>
+                        <select @bind="_deleteDestinationRowId" disabled="@_working">
+                            @foreach (var row in DeleteSubcategoryDestinations)
+                            {
+                                <option value="@row.Category.Id">@DeleteRowLabel(row)</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else if (_deleteGroup is { } group)
+                {
+                    <label class="form-field">
+                        <span>Categoria di destinazione</span>
+                        <select @bind="_deleteDestinationGroup" @bind:after="OnDeleteGroupChanged" disabled="@_working">
+                            @foreach (var destination in DeleteGroupDestinations)
+                            {
+                                <option value="@destination.Name">@destination.Name</option>
+                            }
+                        </select>
+                    </label>
+
+                    @if (group.Type == CategoryType.Expense)
+                    {
+                        <label class="form-field">
+                            <span>Sottocategoria di destinazione</span>
+                            <select @bind="_deleteDestinationRowId" disabled="@_working">
+                                @foreach (var row in DeleteDestinationRows)
+                                {
+                                    <option value="@row.Category.Id">@row.Category.Subcategory</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                }
+
+                @if (!CanConfirmDelete)
+                {
+                    <p class="table-hint">Crea prima una destinazione disponibile.</p>
+                }
+            }
+            else
+            {
+                <p class="table-hint">Non ci sono operazioni collegate: puoi eliminare senza spostamenti.</p>
+            }
+
+            <div class="form-actions">
+                <button type="button" class="danger-button" disabled="@(_working || !CanConfirmDelete)" @onclick="ConfirmDeleteAsync">
+                    <MfIcon Name="trash" Size="16" />
+                    @if (DeleteOperationCount > 0) { <text>Sposta e elimina</text> } else { <text>Elimina</text> }
+                </button>
+                <button type="button" class="secondary-button" disabled="@_working" @onclick="CloseDelete">Annulla</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _working;
+    private string? _loadError;
+    private string? _message;
+    private IReadOnlyList<Category> _categories = [];
+    private IReadOnlyDictionary<Guid, int> _operationCounts = new Dictionary<Guid, int>();
+    private IReadOnlyList<CategoryAdminGroup> _incomeGroups = [];
+    private IReadOnlyList<CategoryAdminGroup> _expenseGroups = [];
+
+    private bool _editorOpen;
+    private EditorMode _editorMode;
+    private CategoryType _editorType;
+    private CategoryAdminGroup? _editorGroup;
+    private CategoryAdminRow? _editorRow;
+    private string _editName = "";
+    private string _editSubcategory = "";
+    private string _editDescription = "";
+    private string _editIcon = CategoryAppearance.DefaultIcon;
+    private string _editColor = CategoryAppearance.DefaultColor;
+    private string? _editorError;
+    private string? _duplicateSuggestion;
+
+    private bool _moveOpen;
+    private bool _moveGroupMode;
+    private CategoryAdminGroup? _moveGroup;
+    private CategoryAdminRow? _moveRow;
+    private string? _moveDestinationGroup;
+    private Guid? _moveDestinationRowId;
+    private string? _moveError;
+
+    private bool _deleteOpen;
+    private bool _deleteGroupMode;
+    private CategoryAdminGroup? _deleteGroup;
+    private CategoryAdminRow? _deleteRow;
+    private string? _deleteDestinationGroup;
+    private Guid? _deleteDestinationRowId;
+    private string? _deleteError;
+
+    private enum EditorMode
+    {
+        CreateCategory,
+        EditGroup,
+        AddSubcategory,
+        EditSubcategory,
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _categories = await Categories.ListAsync();
+            var history = await History.ListAsync();
+            _operationCounts = history
+                .Where(row => row.CategoryId is not null)
+                .GroupBy(row => row.CategoryId!.Value)
+                .ToDictionary(group => group.Key, group => group.Count());
+            _incomeGroups = BuildGroups(CategoryType.Income);
+            _expenseGroups = BuildGroups(CategoryType.Expense);
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile caricare le categorie. Verificare la connessione al database e riprovare.";
+        }
+    }
+
+    private IReadOnlyList<CategoryAdminGroup> BuildGroups(CategoryType type) => _categories
+        .Where(category => category.Type == type)
+        .GroupBy(category => category.Name, StringComparer.CurrentCultureIgnoreCase)
+        .Select(group =>
+        {
+            var rows = group
+                .OrderBy(category => category.Subcategory ?? "", StringComparer.CurrentCultureIgnoreCase)
+                .Select(category => new CategoryAdminRow(
+                    category,
+                    _operationCounts.GetValueOrDefault(category.Id)))
+                .ToArray();
+            return new CategoryAdminGroup(group.Key, type, rows, rows.Sum(row => row.OperationCount));
+        })
+        .OrderBy(group => group.Name, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
+    private string EditorTitle => _editorMode switch
+    {
+        EditorMode.CreateCategory => $"Nuova categoria di {(_editorType == CategoryType.Income ? "entrata" : "uscita")}",
+        EditorMode.EditGroup => "Modifica categoria",
+        EditorMode.AddSubcategory => "Nuova sottocategoria",
+        _ => "Modifica sottocategoria",
+    };
+
+    private string EditorSubtitle => _editorMode switch
+    {
+        EditorMode.AddSubcategory => $"Aggiungi una sottocategoria a «{_editorGroup?.Name}».",
+        EditorMode.EditSubcategory => $"Aggiorna la sottocategoria di «{_editorGroup?.Name}».",
+        EditorMode.EditGroup => "La modifica si applica a tutte le sottocategorie della categoria.",
+        _ => "Compila i dati della nuova categoria.",
+    };
+
+    private void OpenCreate(CategoryType type)
+    {
+        _moveOpen = false;
+        _deleteOpen = false;
+        _editorMode = EditorMode.CreateCategory;
+        _editorType = type;
+        _editorGroup = null;
+        _editorRow = null;
+        _editName = "";
+        _editSubcategory = "";
+        _editDescription = "";
+        _editIcon = CategoryAppearance.DefaultIcon;
+        _editColor = CategoryAppearance.DefaultColor;
+        _editorError = null;
+        _duplicateSuggestion = null;
+        _editorOpen = true;
+    }
+
+    private void OpenEditGroup(CategoryAdminGroup group)
+    {
+        _moveOpen = false;
+        _deleteOpen = false;
+        _editorMode = EditorMode.EditGroup;
+        _editorType = group.Type;
+        _editorGroup = group;
+        _editorRow = null;
+        _editName = group.Name;
+        _editSubcategory = "";
+        _editDescription = group.Primary.Description ?? "";
+        _editIcon = CategoryAppearance.IconFor(group.Primary.Icon);
+        _editColor = CategoryAppearance.ColorFor(group.Primary.ColorHex);
+        _editorError = null;
+        _duplicateSuggestion = null;
+        _editorOpen = true;
+    }
+
+    private void OpenAddSubcategory(CategoryAdminGroup group)
+    {
+        _moveOpen = false;
+        _deleteOpen = false;
+        _editorMode = EditorMode.AddSubcategory;
+        _editorType = group.Type;
+        _editorGroup = group;
+        _editorRow = null;
+        _editName = group.Name;
+        _editSubcategory = "";
+        _editDescription = "";
+        _editorError = null;
+        _duplicateSuggestion = null;
+        _editorOpen = true;
+    }
+
+    private void OpenEditSubcategory(CategoryAdminRow row)
+    {
+        _moveOpen = false;
+        _deleteOpen = false;
+        _editorMode = EditorMode.EditSubcategory;
+        _editorType = row.Category.Type;
+        _editorGroup = FindGroup(row);
+        _editorRow = row;
+        _editName = "";
+        _editSubcategory = row.Category.Subcategory ?? "";
+        _editDescription = row.Category.Description ?? "";
+        _editorError = null;
+        _duplicateSuggestion = null;
+        _editorOpen = true;
+    }
+
+    private void CloseEditor()
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _editorOpen = false;
+        _editorError = null;
+        _duplicateSuggestion = null;
+    }
+
+    private Task SaveEditorAsync() => SaveEditorCoreAsync(null);
+
+    private Task ConfirmDuplicateEditorAsync() =>
+        _duplicateSuggestion is { } name ? SaveEditorCoreAsync(name) : Task.CompletedTask;
+
+    private void ClearDuplicateSuggestion() => _duplicateSuggestion = null;
+
+    private async Task SaveEditorCoreAsync(string? confirmedName)
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _editorError = null;
+        if (_editorMode is EditorMode.CreateCategory or EditorMode.EditGroup &&
+            string.IsNullOrWhiteSpace(_editName))
+        {
+            _editorError = "Il nome della categoria è obbligatorio.";
+            return;
+        }
+
+        if (_editorMode == EditorMode.CreateCategory && _editorType == CategoryType.Expense &&
+            string.IsNullOrWhiteSpace(_editSubcategory))
+        {
+            _editorError = "Inserisci la prima sottocategoria.";
+            return;
+        }
+
+        if (_editorMode is EditorMode.AddSubcategory or EditorMode.EditSubcategory &&
+            string.IsNullOrWhiteSpace(_editSubcategory))
+        {
+            _editorError = "Il nome della sottocategoria è obbligatorio.";
+            return;
+        }
+
+        if (confirmedName is null && SuggestDuplicateEditorName() is { } suggestion)
+        {
+            _duplicateSuggestion = suggestion;
+            return;
+        }
+
+        _duplicateSuggestion = null;
+        _working = true;
+        try
+        {
+            switch (_editorMode)
+            {
+                case EditorMode.CreateCategory:
+                    var categoryName = confirmedName ?? _editName.Trim();
+                    var created = await Admin.CreateCategoryAsync(new NewCategory(
+                        categoryName,
+                        _editorType,
+                        Clean(_editDescription),
+                        _editorType == CategoryType.Expense ? _editSubcategory.Trim() : null,
+                        _editIcon,
+                        _editColor));
+                    _message = $"Categoria «{created.Name}» creata.";
+                    break;
+                case EditorMode.EditGroup when _editorGroup is not null:
+                    await Admin.UpdateGroupAsync(
+                        _editorGroup.Type,
+                        _editorGroup.Name,
+                        _editName.Trim(),
+                        Clean(_editDescription),
+                        _editIcon,
+                        _editColor);
+                    _message = $"Categoria «{_editName.Trim()}» aggiornata.";
+                    break;
+                case EditorMode.AddSubcategory when _editorGroup is not null:
+                    var subcategoryName = confirmedName ?? _editSubcategory.Trim();
+                    var createdSubcategory = await Admin.AddSubcategoryAsync(
+                        _editorGroup.Rows[0].Category.Id,
+                        subcategoryName,
+                        Clean(_editDescription));
+                    _message = $"Sottocategoria «{createdSubcategory.Subcategory}» aggiunta.";
+                    break;
+                case EditorMode.EditSubcategory when _editorRow is not null:
+                    await Admin.UpdateSubcategoryAsync(
+                        _editorRow.Category.Id,
+                        _editSubcategory.Trim(),
+                        Clean(_editDescription));
+                    _message = $"Sottocategoria «{_editSubcategory.Trim()}» aggiornata.";
+                    break;
+            }
+
+            _editorOpen = false;
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _editorError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _editorError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _editorError = "Salvataggio non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private string? SuggestDuplicateEditorName()
+    {
+        if (_editorMode == EditorMode.CreateCategory)
+        {
+            return NameUniqueness.SuggestIfDuplicate(
+                _editName,
+                _categories
+                    .Where(category => category.Type == _editorType)
+                    .Select(category => category.Name));
+        }
+
+        if (_editorMode == EditorMode.AddSubcategory && _editorGroup is not null)
+        {
+            return NameUniqueness.SuggestIfDuplicate(
+                _editSubcategory,
+                _editorGroup.Rows
+                    .Select(row => row.Category.Subcategory)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Select(name => name!));
+        }
+
+        return null;
+    }
+
+    private void OpenMoveGroup(CategoryAdminGroup group)
+    {
+        _editorOpen = false;
+        _deleteOpen = false;
+        _moveGroupMode = true;
+        _moveGroup = group;
+        _moveRow = null;
+        _moveError = null;
+        _moveDestinationGroup = null;
+        _moveDestinationRowId = null;
+        var destinations = GroupsOf(group.Type)
+            .Where(candidate => !Same(candidate.Name, group.Name))
+            .ToArray();
+        if (destinations.Length == 0)
+        {
+            _moveError = "Non ci sono altre categorie di destinazione. Creane prima una.";
+        }
+        else
+        {
+            _moveDestinationGroup = destinations[0].Name;
+            _moveDestinationRowId = destinations[0].Rows[0].Category.Id;
+        }
+
+        _moveOpen = true;
+    }
+
+    private void OpenMoveSubcategory(CategoryAdminRow row)
+    {
+        _editorOpen = false;
+        _deleteOpen = false;
+        _moveGroupMode = false;
+        _moveGroup = FindGroup(row);
+        _moveRow = row;
+        _moveError = null;
+        _moveDestinationGroup = null;
+        _moveDestinationRowId = null;
+        var destinations = MoveSubcategoryDestinations.ToArray();
+        if (destinations.Length == 0)
+        {
+            _moveError = "Non ci sono altre sottocategorie di destinazione. Creane prima una.";
+        }
+        else
+        {
+            _moveDestinationRowId = destinations[0].Category.Id;
+        }
+
+        _moveOpen = true;
+    }
+
+    private void CloseMove()
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _moveOpen = false;
+        _moveError = null;
+    }
+
+    private void OnMoveGroupChanged()
+    {
+        var destination = MoveGroupDestinations
+            .FirstOrDefault(candidate => Same(candidate.Name, _moveDestinationGroup));
+        _moveDestinationRowId = destination?.Rows[0].Category.Id;
+    }
+
+    private async Task ConfirmMoveAsync()
+    {
+        if (_working || !CanConfirmMove)
+        {
+            return;
+        }
+
+        _working = true;
+        _moveError = null;
+        try
+        {
+            var moved = _moveGroupMode && _moveGroup is not null
+                ? await Admin.MoveCategoryOperationsAsync(
+                    _moveGroup.Type,
+                    _moveGroup.Name,
+                    ResolveMoveDestinationRow()!.Category.Id)
+                : await Admin.MoveSubcategoryOperationsAsync(
+                    _moveRow!.Category.Id,
+                    ResolveMoveDestinationRow()!.Category.Id);
+            _message = moved == 1 ? "1 operazione spostata." : $"{moved} operazioni spostate.";
+            _moveOpen = false;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _moveError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _moveError = "Spostamento non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private bool CanConfirmMove => _moveGroupMode
+        ? _moveGroup is not null &&
+          ResolveMoveDestinationRow() is not null
+        : _moveRow is not null && ResolveMoveDestinationRow() is not null;
+
+    private CategoryAdminRow? ResolveMoveDestinationRow()
+    {
+        if (!_moveGroupMode)
+        {
+            return _moveDestinationRowId is { } id
+                ? MoveSubcategoryDestinations.FirstOrDefault(row => row.Category.Id == id)
+                : null;
+        }
+
+        if (_moveGroup is { Type: CategoryType.Income })
+        {
+            return _moveDestinationGroup is null
+                ? null
+                : MoveGroupDestinations
+                    .FirstOrDefault(group => Same(group.Name, _moveDestinationGroup))
+                    ?.Rows[0];
+        }
+
+        return _moveDestinationRowId is { } rowId
+            ? MoveDestinationRows.FirstOrDefault(row => row.Category.Id == rowId)
+            : null;
+    }
+
+    private string MoveDescription => _moveGroupMode && _moveGroup is not null
+        ? $"Sposta tutte le operazioni di «{_moveGroup.Name}» in un'altra categoria."
+        : $"Sposta tutte le operazioni di «{_moveRow?.Category.Subcategory}» in un'altra sottocategoria.";
+
+    private IReadOnlyList<CategoryAdminGroup> MoveGroupDestinations => _moveGroup is null
+        ? []
+        : GroupsOf(_moveGroup.Type)
+            .Where(group => !Same(group.Name, _moveGroup.Name))
+            .ToArray();
+
+    private IReadOnlyList<CategoryAdminRow> MoveDestinationRows
+    {
+        get
+        {
+            var group = MoveGroupDestinations.FirstOrDefault(candidate => Same(candidate.Name, _moveDestinationGroup));
+            return group?.Rows ?? [];
+        }
+    }
+
+    private IReadOnlyList<CategoryAdminRow> MoveSubcategoryDestinations => _moveRow is null
+        ? []
+        : _expenseGroups
+            .SelectMany(group => group.Rows)
+            .Where(row => row.Category.Id != _moveRow.Category.Id)
+            .OrderBy(row => row.Category.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(row => row.Category.Subcategory, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+    private static string MoveRowLabel(CategoryAdminRow row) =>
+        $"{row.Category.Name} · {row.Category.Subcategory}";
+
+    private void OpenDeleteGroup(CategoryAdminGroup group)
+    {
+        _editorOpen = false;
+        _moveOpen = false;
+        _deleteGroupMode = true;
+        _deleteGroup = group;
+        _deleteRow = null;
+        _deleteError = null;
+        _deleteDestinationGroup = null;
+        _deleteDestinationRowId = null;
+
+        if (group.OperationCount > 0)
+        {
+            var destinations = DeleteGroupDestinations;
+            if (destinations.Count == 0)
+            {
+                _deleteError = "Non ci sono categorie di destinazione disponibili. Creane una prima di eliminare.";
+            }
+            else
+            {
+                _deleteDestinationGroup = destinations[0].Name;
+                _deleteDestinationRowId = destinations[0].Rows[0].Category.Id;
+            }
+        }
+
+        _deleteOpen = true;
+    }
+
+    private void OpenDeleteSubcategory(CategoryAdminRow row)
+    {
+        _editorOpen = false;
+        _moveOpen = false;
+        _deleteGroupMode = false;
+        _deleteRow = row;
+        _deleteGroup = FindGroup(row);
+        _deleteError = null;
+        _deleteDestinationGroup = null;
+        _deleteDestinationRowId = null;
+
+        if (row.OperationCount > 0)
+        {
+            var destinations = DeleteSubcategoryDestinations;
+            if (destinations.Count == 0)
+            {
+                _deleteError = "Non ci sono sottocategorie di destinazione disponibili. Creane una prima di eliminare.";
+            }
+            else
+            {
+                _deleteDestinationRowId = destinations[0].Category.Id;
+            }
+        }
+
+        _deleteOpen = true;
+    }
+
+    private void CloseDelete()
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _deleteOpen = false;
+        _deleteError = null;
+    }
+
+    private void OnDeleteGroupChanged()
+    {
+        var destination = DeleteGroupDestinations
+            .FirstOrDefault(candidate => Same(candidate.Name, _deleteDestinationGroup));
+        _deleteDestinationRowId = destination?.Rows[0].Category.Id;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_working || !CanConfirmDelete)
+        {
+            return;
+        }
+
+        _working = true;
+        _deleteError = null;
+        try
+        {
+            var destinationRow = ResolveDeleteDestinationRow();
+            var moved = _deleteGroupMode && _deleteGroup is not null
+                ? await Admin.DeleteCategoryGroupAsync(
+                    _deleteGroup.Type,
+                    _deleteGroup.Name,
+                    destinationRow?.Category.Id)
+                : await Admin.DeleteSubcategoryAsync(
+                    _deleteRow!.Category.Id,
+                    destinationRow?.Category.Id);
+
+            _message = moved > 0
+                ? $"{moved} operazioni spostate e {(_deleteGroupMode ? "categoria" : "sottocategoria")} eliminata."
+                : $"{(_deleteGroupMode ? "Categoria" : "Sottocategoria")} eliminata.";
+            _deleteOpen = false;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _deleteError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _deleteError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private bool CanConfirmDelete
+    {
+        get
+        {
+            if (DeleteOperationCount == 0)
+            {
+                return true;
+            }
+
+            return ResolveDeleteDestinationRow() is not null;
+        }
+    }
+
+    private int DeleteOperationCount => _deleteGroupMode
+        ? _deleteGroup?.OperationCount ?? 0
+        : _deleteRow?.OperationCount ?? 0;
+
+    private string DeleteDescription => _deleteGroupMode
+        ? $"Stai eliminando la categoria «{_deleteGroup?.Name}» e tutte le sue sottocategorie."
+        : $"Stai eliminando la sottocategoria «{_deleteRow?.Category.Subcategory}».";
+
+    private IReadOnlyList<CategoryAdminGroup> DeleteGroupDestinations => _deleteGroup is null
+        ? []
+        : GroupsOf(_deleteGroup.Type)
+            .Where(group => !Same(group.Name, _deleteGroup.Name))
+            .ToArray();
+
+    private IReadOnlyList<CategoryAdminRow> DeleteDestinationRows
+    {
+        get
+        {
+            var group = DeleteGroupDestinations.FirstOrDefault(candidate => Same(candidate.Name, _deleteDestinationGroup));
+            return group?.Rows ?? [];
+        }
+    }
+
+    private IReadOnlyList<CategoryAdminRow> DeleteSubcategoryDestinations => _deleteRow is null
+        ? []
+        : _expenseGroups
+            .SelectMany(group => group.Rows)
+            .Where(row => row.Category.Id != _deleteRow.Category.Id)
+            .OrderBy(row => row.Category.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(row => row.Category.Subcategory, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+    private CategoryAdminRow? ResolveDeleteDestinationRow()
+    {
+        if (!_deleteGroupMode)
+        {
+            return _deleteDestinationRowId is { } id
+                ? DeleteSubcategoryDestinations.FirstOrDefault(row => row.Category.Id == id)
+                : null;
+        }
+
+        if (_deleteGroup is { Type: CategoryType.Income })
+        {
+            return _deleteDestinationGroup is null
+                ? null
+                : DeleteGroupDestinations
+                    .FirstOrDefault(group => Same(group.Name, _deleteDestinationGroup))
+                    ?.Rows[0];
+        }
+
+        return _deleteDestinationRowId is { } rowId
+            ? DeleteDestinationRows.FirstOrDefault(row => row.Category.Id == rowId)
+            : null;
+    }
+
+    private static string DeleteRowLabel(CategoryAdminRow row) =>
+        $"{row.Category.Name} · {row.Category.Subcategory}";
+
+    private IReadOnlyList<CategoryAdminGroup> GroupsOf(CategoryType type) =>
+        type == CategoryType.Income ? _incomeGroups : _expenseGroups;
+
+    private CategoryAdminGroup? FindGroup(CategoryAdminRow row) =>
+        GroupsOf(row.Category.Type)
+            .FirstOrDefault(group => Same(group.Name, row.Category.Name));
+
+    private static string? Clean(string value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool Same(string? left, string? right) =>
+        string.Equals(left, right, StringComparison.CurrentCultureIgnoreCase);
+}

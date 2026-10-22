@@ -1,0 +1,28 @@
+@namespace MiddiFranchi.Web.Components.Shared
+
+@if (!string.IsNullOrWhiteSpace(Suggestion))
+{
+    <div class="alert alert-warning duplicate-name-prompt" role="alert">
+        <span>
+            Esiste già un nome uguale. Vuoi creare <strong>«@Suggestion»</strong>?
+        </span>
+        <span class="duplicate-name-actions">
+            <button type="button" class="primary-button" disabled="@Disabled" @onclick="OnAccept">
+                Crea «@Suggestion»
+            </button>
+            <button type="button" class="secondary-button" disabled="@Disabled" @onclick="OnCancel">
+                Annulla
+            </button>
+        </span>
+    </div>
+}
+
+@code {
+    [Parameter] public string? Suggestion { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public EventCallback OnAccept { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

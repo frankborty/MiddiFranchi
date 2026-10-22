@@ -201,9 +201,9 @@ public class ManualBalanceServiceTests
         await _service.RecordAsync(new NewManualBalance(account.Id, new Money(500m, Euro), ValidAt));
 
         await registration.IncomeAsync(new RegisterIncomeRequest(
-            account.Id, category.Id, new PositiveMoney(new Money(100m, Euro)), new DateOnly(2026, 4, 15)));
+            category.Id, new PositiveMoney(new Money(100m, Euro)), new DateOnly(2026, 4, 15)));
         await registration.ExpenseAsync(new RegisterExpenseRequest(
-            account.Id, expenseCategory.Id, new PositiveMoney(new Money(30m, Euro)), new DateOnly(2026, 4, 16)));
+            expenseCategory.Id, new PositiveMoney(new Money(30m, Euro)), new DateOnly(2026, 4, 16)));
 
         var current = await _service.GetCurrentBalanceAsync(account.Id);
 

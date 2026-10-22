@@ -1,0 +1,81 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Domain.Financial
+
+<div class="category-admin-group">
+    <div class="category-admin-head">
+        <div class="category-admin-identity">
+            <span class="category-mark" style="--mf-category-color: @CategoryAppearance.ColorFor(Group.Primary.ColorHex)" aria-hidden="true">
+                <MfIcon Name="@CategoryAppearance.IconFor(Group.Primary.Icon)" Size="16" />
+            </span>
+            <div>
+                <h3>@Group.Name</h3>
+                <p class="category-admin-meta">@Group.Meta</p>
+            </div>
+        </div>
+
+        <div class="category-admin-actions">
+            @if (Group.Type == CategoryType.Expense)
+            {
+                <button type="button" class="category-action" @onclick="() => OnAddSubcategory.InvokeAsync(Group)">
+                    <MfIcon Name="plus" Size="14" /> Sottocategoria
+                </button>
+            }
+            <button type="button" class="category-action" @onclick="() => OnEdit.InvokeAsync(Group)">
+                <MfIcon Name="settings" Size="14" /> Modifica
+            </button>
+            <button type="button" class="category-action" @onclick="() => OnMove.InvokeAsync(Group)">
+                <MfIcon Name="transfer" Size="14" /> Sposta
+            </button>
+            <button type="button" class="delete-button compact" @onclick="() => OnDelete.InvokeAsync(Group)">
+                <MfIcon Name="trash" Size="14" /> Elimina
+            </button>
+        </div>
+    </div>
+
+    @if (Group.Type == CategoryType.Expense)
+    {
+        <details class="category-subcategories">
+            <summary>
+                <span>Sottocategorie</span>
+                <span class="category-op-count">@Group.SubcategoryCount</span>
+            </summary>
+            <div class="category-subcategory-list">
+                @foreach (var row in Group.Rows.OrderBy(row => row.Category.Subcategory, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    <div class="category-subcategory-row">
+                        <div class="category-subcategory-main">
+                            <span>@row.Category.Subcategory</span>
+                            <span class="category-op-count">@row.OperationCount operazioni</span>
+                        </div>
+                        <div class="category-subcategory-actions">
+                            <button type="button" class="table-link" @onclick="() => OnEditSubcategory.InvokeAsync(row)">Modifica</button>
+                            <button type="button" class="table-link" @onclick="() => OnMoveSubcategory.InvokeAsync(row)">Sposta operazioni</button>
+                            <button type="button" class="delete-button compact" @onclick="() => OnDeleteSubcategory.InvokeAsync(row)">
+                                <MfIcon Name="trash" Size="14" /> Elimina
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </details>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public CategoryAdminGroup Group { get; set; } = null!;
+
+    [Parameter] public EventCallback<CategoryAdminGroup> OnEdit { get; set; }
+
+    [Parameter] public EventCallback<CategoryAdminGroup> OnAddSubcategory { get; set; }
+
+    [Parameter] public EventCallback<CategoryAdminGroup> OnMove { get; set; }
+
+    [Parameter] public EventCallback<CategoryAdminGroup> OnDelete { get; set; }
+
+    [Parameter] public EventCallback<CategoryAdminRow> OnEditSubcategory { get; set; }
+
+    [Parameter] public EventCallback<CategoryAdminRow> OnMoveSubcategory { get; set; }
+
+    [Parameter] public EventCallback<CategoryAdminRow> OnDeleteSubcategory { get; set; }
+}

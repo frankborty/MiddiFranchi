@@ -29,8 +29,8 @@
                     <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
                 </label>
                 <label>
-                    <span>Sottocategoria *</span>
-                    <input type="text" maxlength="200" required aria-required="true" @bind="_subcategory" />
+                    <span>@(IsExpenseType ? "Sottocategoria *" : "Sottocategoria")</span>
+                    <input type="text" maxlength="200" aria-required="@AriaRequired(IsExpenseType)" @bind="_subcategory" />
                 </label>
                 <label>
                     <span>Tipo *</span>
@@ -43,6 +43,19 @@
                     <span>Descrizione</span>
                     <input type="text" maxlength="200" @bind="_description" />
                 </label>
+                <label>
+                    <span>Icona</span>
+                    <select @bind="_icon">
+                        @foreach (var option in CategoryAppearance.Icons)
+                        {
+                            <option value="@option.Name">@option.Label</option>
+                        }
+                    </select>
+                </label>
+                <div class="color-picker-field">
+                    <span>Colore</span>
+                    <ColorPicker @bind-Value="_color" Label="Colore della categoria" />
+                </div>
                 <div class="form-actions">
                     <button type="submit" class="primary-button" disabled="@_saving">Salva impostazioni</button>
                     <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
@@ -65,6 +78,10 @@
 
     [Parameter] public string? Description { get; set; }
 
+    [Parameter] public string? Icon { get; set; }
+
+    [Parameter] public string? ColorHex { get; set; }
+
     [Parameter] public EventCallback OnClose { get; set; }
 
     [Parameter] public EventCallback<Category> OnSaved { get; set; }
@@ -76,6 +93,12 @@
     private string _subcategory = "";
     private string _type = nameof(CategoryType.Income);
     private string? _description;
+    private string _icon = CategoryAppearance.DefaultIcon;
+    private string _color = CategoryAppearance.DefaultColor;
+
+    private bool IsExpenseType => _type == nameof(CategoryType.Expense);
+
+    private static string AriaRequired(bool value) => value ? "true" : "false";
 
     protected override void OnParametersSet()
     {
@@ -97,6 +120,8 @@
         _subcategory = Subcategory ?? "";
         _type = Type.ToString();
         _description = Description;
+        _icon = CategoryAppearance.IconFor(Icon);
+        _color = CategoryAppearance.ColorFor(ColorHex);
     }
 
     private async Task CloseAsync()
@@ -124,9 +149,10 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_subcategory))
+        var type = Enum.Parse<CategoryType>(_type);
+        if (type == CategoryType.Expense && string.IsNullOrWhiteSpace(_subcategory))
         {
-            _error = "La sottocategoria è obbligatoria.";
+            _error = "La sottocategoria è obbligatoria per le uscite.";
             return;
         }
 
@@ -137,9 +163,11 @@
                 CategoryId,
                 new NewCategory(
                     _name.Trim(),
-                    Enum.Parse<CategoryType>(_type),
+                    type,
                     string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
-                    _subcategory.Trim()));
+                    string.IsNullOrWhiteSpace(_subcategory) ? null : _subcategory.Trim(),
+                    _icon,
+                    _color));
             await OnSaved.InvokeAsync(updated);
             await OnClose.InvokeAsync();
         }

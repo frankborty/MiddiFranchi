@@ -1,3 +1,4 @@
+using MiddiFranchi.Application.Persistence;
 using MiddiFranchi.Domain.Financial;
 using MiddiFranchi.Domain.Portfolio;
 using MiddiFranchi.Domain.Shared;
@@ -7,6 +8,7 @@ namespace MiddiFranchi.Application.Financial;
 /// <summary>
 /// Compone la dashboard riutilizzando i servizi esistenti. Non introduce un secondo calcolatore
 /// del patrimonio: la valorizzazione resta responsabilità di <see cref="NetWorthOverviewService"/>.
+/// I movimenti ordinari non dipendono più dai posting: entrate e uscite non hanno conto.
 /// </summary>
 public sealed class FinancialDashboardService
 {
@@ -14,18 +16,18 @@ public sealed class FinancialDashboardService
 
     private readonly NetWorthOverviewService _netWorth;
     private readonly AccountOverviewService _accounts;
-    private readonly MovementService _movements;
+    private readonly IFinancialOperationRepository _operations;
     private readonly Func<DateOnly> _currentUtcDate;
 
     public FinancialDashboardService(
         NetWorthOverviewService netWorth,
         AccountOverviewService accounts,
-        MovementService movements,
+        IFinancialOperationRepository operations,
         Func<DateOnly>? currentUtcDateProvider = null)
     {
         _netWorth = netWorth;
         _accounts = accounts;
-        _movements = movements;
+        _operations = operations;
         _currentUtcDate = currentUtcDateProvider ?? (() => DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
@@ -36,150 +38,110 @@ public sealed class FinancialDashboardService
 
         var netWorth = await _netWorth.SummarizeAsync(today, cancellationToken);
         var accounts = await _accounts.ListAsync(cancellationToken);
-        var postings = await _movements.ListAsync(null, null, today, cancellationToken);
-        var monthPostings = postings
-            .Where(posting => posting.OperationDate >= monthStart)
-            .ToArray();
+        var operations = await _operations.ListAsync(cancellationToken);
 
         return new FinancialDashboard(
             netWorth,
             accounts,
-            BuildMonthSummary(monthStart, today, monthPostings),
-            BuildRecentMovements(postings, accounts),
+            BuildMonthSummary(monthStart, today, operations),
+            BuildRecentMovements(operations),
             BuildInvestments(netWorth));
     }
 
     private static DashboardMonthSummary BuildMonthSummary(
         DateOnly periodStart,
         DateOnly periodEnd,
-        IReadOnlyList<AccountPosting> monthPostings)
+        IReadOnlyList<FinancialOperation> operations)
     {
-        var operations = monthPostings
-            .GroupBy(posting => posting.OperationId)
-            .Select(group => new
-            {
-                Kind = group.First().Operation.Kind,
-                Currency = group.First().Currency,
-                SignedAmount = group.Sum(posting => posting.SignedAmount),
-            })
+        var monthOperations = operations
+            .Where(operation => operation.Status == OperationStatus.Registered)
+            .Where(operation => operation.OperationDate >= periodStart && operation.OperationDate <= periodEnd)
             .ToArray();
 
-        var flows = operations
-            .Where(operation => operation.Kind is OperationKind.Income or OperationKind.Expense)
-            .GroupBy(operation => operation.Currency)
+        var flows = monthOperations
+            .Where(operation => operation is Income or Expense)
+            .GroupBy(CurrencyOf)
             .Select(group => new DashboardCurrencyFlow(
                 group.Key,
-                group.Where(operation => operation.SignedAmount > 0m).Sum(operation => operation.SignedAmount),
-                group.Where(operation => operation.SignedAmount < 0m).Sum(operation => -operation.SignedAmount),
+                group.OfType<Income>().Sum(income => income.Amount.Value.Amount),
+                group.OfType<Expense>().Sum(expense => expense.Amount.Value.Amount),
                 group.Count()))
             .OrderBy(flow => flow.Currency.Code != "EUR")
             .ThenBy(flow => flow.Currency.Code, StringComparer.Ordinal)
             .ToArray();
 
-        var incomeExpenseCount = operations.Count(operation =>
-            operation.Kind is OperationKind.Income or OperationKind.Expense);
+        var incomeExpenseCount = monthOperations.Count(operation =>
+            operation is Income or Expense);
 
         return new DashboardMonthSummary(
             periodStart,
             periodEnd,
             flows,
-            operations.Length,
+            monthOperations.Length,
             incomeExpenseCount,
-            operations.Length - incomeExpenseCount);
+            monthOperations.Length - incomeExpenseCount);
     }
 
     private static IReadOnlyList<DashboardMovement> BuildRecentMovements(
-        IReadOnlyList<AccountPosting> postings,
-        IReadOnlyList<AccountOverviewRow> accounts)
-    {
-        var accountNames = accounts.ToDictionary(account => account.AccountId, account => account.Name);
-
-        return postings
-            .GroupBy(posting => posting.OperationId)
-            .Select(group => new
-            {
-                Movement = BuildMovement(group, accountNames),
-                RecordedAt = group.First().Operation.RecordedAt,
-            })
-            .OrderByDescending(item => item.Movement.Date)
-            .ThenByDescending(item => item.RecordedAt)
-            .ThenByDescending(item => item.Movement.OperationId)
+        IReadOnlyList<FinancialOperation> operations) =>
+        operations
+            .Where(operation => operation.Status == OperationStatus.Registered)
+            .Where(operation => operation.Kind is OperationKind.Income or OperationKind.Expense or OperationKind.Transfer)
+            .OrderByDescending(operation => operation.OperationDate)
+            .ThenByDescending(operation => operation.RecordedAt)
+            .ThenByDescending(operation => operation.Id)
             .Take(RecentMovementsCount)
-            .Select(item => item.Movement)
+            .Select(ToDashboardMovement)
             .ToArray();
-    }
 
-    private static DashboardMovement BuildMovement(
-        IGrouping<Guid, AccountPosting> postings,
-        IReadOnlyDictionary<Guid, string> accountNames)
+    private static DashboardMovement ToDashboardMovement(FinancialOperation operation) => operation switch
     {
-        var operation = postings.First().Operation;
+        Income income => new DashboardMovement(
+            income.Id,
+            income.OperationDate,
+            OperationKind.Income,
+            income.Description,
+            income.Category.Name,
+            income.Category.Subcategory,
+            income.Category.Icon,
+            income.Category.ColorHex,
+            income.Account?.Name,
+            income.Amount.Value,
+            null),
+        Expense expense => new DashboardMovement(
+            expense.Id,
+            expense.OperationDate,
+            OperationKind.Expense,
+            expense.Description,
+            expense.Category.Name,
+            expense.Category.Subcategory,
+            expense.Category.Icon,
+            expense.Category.ColorHex,
+            expense.Account?.Name,
+            new Money(-expense.Amount.Value.Amount, expense.Amount.Value.Currency),
+            null),
+        Transfer transfer => new DashboardMovement(
+            transfer.Id,
+            transfer.OperationDate,
+            OperationKind.Transfer,
+            transfer.Description,
+            null,
+            null,
+            "transfer",
+            null,
+            $"{transfer.SourceAccount.Name} → {transfer.DestinationAccount.Name}",
+            new Money(-transfer.SourceAmount.Value.Amount, transfer.SourceAmount.Value.Currency),
+            transfer.DestinationAmount.Value),
+        _ => throw new InvalidOperationException(
+            $"Il tipo di operazione {operation.Kind} non è supportato dalla dashboard."),
+    };
 
-        return operation switch
-        {
-            Income income => new DashboardMovement(
-                income.Id,
-                income.OperationDate,
-                OperationKind.Income,
-                income.Description,
-                income.Category.Name,
-                income.Account.Name,
-                new Money(postings.Sum(posting => posting.SignedAmount), income.Account.Currency),
-                null),
-            Expense expense => new DashboardMovement(
-                expense.Id,
-                expense.OperationDate,
-                OperationKind.Expense,
-                expense.Description,
-                expense.Category.Name,
-                expense.Account.Name,
-                new Money(postings.Sum(posting => posting.SignedAmount), expense.Account.Currency),
-                null),
-            Transfer transfer => new DashboardMovement(
-                transfer.Id,
-                transfer.OperationDate,
-                OperationKind.Transfer,
-                transfer.Description,
-                null,
-                $"{transfer.SourceAccount.Name} → {transfer.DestinationAccount.Name}",
-                new Money(-transfer.SourceAmount.Value.Amount, transfer.SourceAmount.Value.Currency),
-                new Money(
-                    transfer.DestinationAmount.Value.Amount,
-                    transfer.DestinationAmount.Value.Currency)),
-            InvestmentOperation investment => new DashboardMovement(
-                investment.Id,
-                investment.OperationDate,
-                OperationKind.Investment,
-                investment.Description,
-                CategoryLabel(investment),
-                investment.SettlementAccount.Name,
-                InvestmentAmount(postings),
-                null),
-            _ => new DashboardMovement(
-                operation.Id,
-                operation.OperationDate,
-                operation.Kind,
-                operation.Description,
-                CategoryLabel(operation),
-                accountNames.GetValueOrDefault(postings.First().AccountId, "Conto"),
-                new Money(postings.Sum(posting => posting.SignedAmount), postings.First().Currency),
-                null),
-        };
-    }
-
-    private static Money? InvestmentAmount(IEnumerable<AccountPosting> postings)
+    private static Currency CurrencyOf(FinancialOperation operation) => operation switch
     {
-        var list = postings.ToArray();
-        if (list.Length == 0)
-        {
-            return null;
-        }
-
-        var currency = list[0].Currency;
-        return new Money(
-            list.Where(posting => posting.Currency == currency).Sum(posting => posting.SignedAmount),
-            currency);
-    }
+        Income income => income.Amount.Value.Currency,
+        Expense expense => expense.Amount.Value.Currency,
+        _ => Currency.Euro,
+    };
 
     private static DashboardInvestments BuildInvestments(NetWorthSummary summary)
     {
@@ -237,13 +199,4 @@ public sealed class FinancialDashboardService
             positions,
             distribution);
     }
-
-    private static string? CategoryLabel(FinancialOperation operation) => operation switch
-    {
-        Income income => income.Category.Name,
-        Expense expense => expense.Category.Name,
-        InvestmentOperation { InvestmentKind: InvestmentOperationKind.StandaloneFee } => "Commissione",
-        InvestmentOperation investment => investment.Instrument?.Name,
-        _ => null,
-    };
 }

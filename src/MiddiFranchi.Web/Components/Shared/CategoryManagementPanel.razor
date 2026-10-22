@@ -51,12 +51,17 @@ else
                                 {
                                     <tr>
                                         <td>
-                                            <button type="button"
-                                                    class="table-link"
-                                                    title="Apri impostazioni categoria"
-                                                    @onclick="() => OpenSettings(category)">
-                                                @category.Name
-                                            </button>
+                                            <span class="category-name-cell">
+                                                <span class="category-mark" style="--mf-category-color: @CategoryAppearance.ColorFor(category.ColorHex)" aria-hidden="true">
+                                                    <MfIcon Name="@CategoryAppearance.IconFor(category.Icon)" Size="14" />
+                                                </span>
+                                                <button type="button"
+                                                        class="table-link"
+                                                        title="Apri impostazioni categoria"
+                                                        @onclick="() => OpenSettings(category)">
+                                                    @category.Name
+                                                </button>
+                                            </span>
                                         </td>
                                         <td>@(string.IsNullOrWhiteSpace(category.Subcategory) ? "-" : category.Subcategory)</td>
                                         <td>
@@ -91,8 +96,8 @@ else
                         <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
                     </label>
                     <label>
-                        <span>Sottocategoria *</span>
-                        <input type="text" maxlength="200" required aria-required="true" @bind="_subcategory" />
+                        <span>@(IsExpenseType ? "Sottocategoria *" : "Sottocategoria")</span>
+                        <input type="text" maxlength="200" aria-required="@AriaRequired(IsExpenseType)" @bind="_subcategory" />
                     </label>
                     <label>
                         <span>Tipo *</span>
@@ -105,6 +110,19 @@ else
                         <span>Descrizione</span>
                         <input type="text" maxlength="200" @bind="_description" />
                     </label>
+                    <label>
+                        <span>Icona</span>
+                        <select @bind="_icon">
+                            @foreach (var option in CategoryAppearance.Icons)
+                            {
+                                <option value="@option.Name">@option.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="color-picker-field">
+                        <span>Colore</span>
+                        <ColorPicker @bind-Value="_color" Label="Colore della categoria" />
+                    </div>
                     <div class="form-actions">
                         <button type="submit" class="primary-button" disabled="@_saving"><MfIcon Name="plus" Size="18" /> Crea categoria</button>
                         @if (_saving)
@@ -125,6 +143,8 @@ else
                                 Subcategory="@selected.Subcategory"
                                 Type="@selected.Type"
                                 Description="@selected.Description"
+                                Icon="@selected.Icon"
+                                ColorHex="@selected.ColorHex"
                                 OnClose="CloseSettings"
                                 OnSaved="OnSettingsSaved" />
     }
@@ -141,11 +161,17 @@ else
     private string _subcategory = "";
     private string _type = nameof(CategoryType.Income);
     private string? _description;
+    private string _icon = CategoryAppearance.DefaultIcon;
+    private string _color = CategoryAppearance.DefaultColor;
     private Category? _settingsCategory;
     private bool _settingsOpen;
 
     private string CategoryCountLabel =>
         _categories.Count == 1 ? "1 categoria" : $"{_categories.Count} categorie";
+
+    private bool IsExpenseType => _type == nameof(CategoryType.Expense);
+
+    private static string AriaRequired(bool value) => value ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {
@@ -186,9 +212,10 @@ else
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_subcategory))
+        var type = Enum.Parse<CategoryType>(_type);
+        if (type == CategoryType.Expense && string.IsNullOrWhiteSpace(_subcategory))
         {
-            _createError = "La sottocategoria è obbligatoria.";
+            _createError = "La sottocategoria è obbligatoria per le uscite.";
             return;
         }
 
@@ -198,13 +225,17 @@ else
             var category = await CategoriesService.CreateAsync(
                 new NewCategory(
                     _name.Trim(),
-                    Enum.Parse<CategoryType>(_type),
+                    type,
                     string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
-                    _subcategory.Trim()));
+                    string.IsNullOrWhiteSpace(_subcategory) ? null : _subcategory.Trim(),
+                    _icon,
+                    _color));
             _createdMessage = $"Categoria «{category.Name}» registrata.";
             _name = "";
             _subcategory = "";
             _description = null;
+            _icon = CategoryAppearance.DefaultIcon;
+            _color = CategoryAppearance.DefaultColor;
             await ReloadAsync();
         }
         catch (ArgumentException exception)

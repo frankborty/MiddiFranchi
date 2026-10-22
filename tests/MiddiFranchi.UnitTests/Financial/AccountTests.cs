@@ -89,6 +89,20 @@ public class AccountTests
     }
 
     [Fact]
+    public void Construction_ShouldAcceptAnIconToken()
+    {
+        var account = new Account(
+            Guid.NewGuid(),
+            "Conto corrente",
+            AccountType.Checking,
+            Euro,
+            AccountStatus.Active,
+            iconDataUrl: "icon:Cart");
+
+        account.IconDataUrl.ShouldBe("icon:cart");
+    }
+
+    [Fact]
     public void Construction_ShouldRejectANonImageIcon()
     {
         Should.Throw<ArgumentException>(() => new Account(

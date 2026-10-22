@@ -72,7 +72,7 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
                 "\"PortfolioId\" IS NOT NULL AND \"SettlementAccountId\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_FinancialOperations_OrdinaryFields",
-                "\"Kind\" NOT IN ('Income', 'Expense') OR (\"AccountId\" IS NOT NULL AND " +
+                "\"Kind\" NOT IN ('Income', 'Expense') OR (" +
                 "\"CategoryId\" IS NOT NULL AND \"AmountAmount\" IS NOT NULL AND \"AmountCurrencyCode\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_FinancialOperations_TransferFields",
@@ -135,7 +135,6 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
         builder.Property(operation => operation.OperationDate).HasColumnType("date").IsRequired();
         builder.Property(operation => operation.RecordedAt).HasColumnType("timestamptz").IsRequired();
         builder.Property(operation => operation.Description).IsOptionalText();
-        builder.Property(operation => operation.Notes).IsOptionalText();
         builder.Property(operation => operation.OriginalOperationId);
         builder.Property(operation => operation.AmountAmount).IsOptionalNumeric();
         builder.Property(operation => operation.AmountCurrencyCode).IsOptionalCurrencyCode();

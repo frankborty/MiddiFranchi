@@ -161,7 +161,7 @@ public class FinancialDashboardServiceTests
                 Operations,
                 Prices),
             new AccountOverviewService(Accounts, Readings, _postings),
-            new MovementService(_postings),
+            Operations,
             () => Today);
 
         public Account AddAccount(string name, Currency currency)

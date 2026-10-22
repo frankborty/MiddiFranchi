@@ -31,6 +31,16 @@ public class CategoryServiceTests
     }
 
     [Fact]
+    public async Task Create_ShouldPersistIconAndColor()
+    {
+        var created = await _service.CreateAsync(
+            new NewCategory("Casa", CategoryType.Expense, null, "Affitto", "home", "#2563eb"));
+
+        created.Icon.ShouldBe("home");
+        created.ColorHex.ShouldBe("#2563eb");
+    }
+
+    [Fact]
     public async Task Update_ShouldReplaceTheCategoryFields()
     {
         var created = await _service.CreateAsync(

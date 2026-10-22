@@ -1,0 +1,109 @@
+@namespace MiddiFranchi.Web.Components.Shared
+
+<div class="color-picker-control">
+    <div class="color-swatches" role="group" aria-label="@Label">
+        @foreach (var color in Palette)
+        {
+            <button type="button"
+                    class="@(IsSelected(color.Hex) ? "color-swatch selected" : "color-swatch")"
+                    style="--swatch: @color.Hex"
+                    title="@color.Label"
+                    aria-label="@color.Label"
+                    aria-pressed="@(IsSelected(color.Hex) ? "true" : "false")"
+                    disabled="@Disabled"
+                    @onclick="() => SelectAsync(color.Hex)">
+                @if (IsSelected(color.Hex))
+                {
+                    <MfIcon Name="check" Size="14" />
+                }
+            </button>
+        }
+    </div>
+
+    <div class="color-custom-row">
+        <span class="color-custom-preview" style="--swatch: @Normalized" aria-hidden="true"></span>
+        <input class="color-hex-input" type="text" maxlength="7" spellcheck="false"
+               @bind="_hexDraft" @bind:event="oninput" @bind:after="OnHexDraftChanged"
+               disabled="@Disabled" aria-label="Codice colore esadecimale" />
+    </div>
+</div>
+
+@code {
+    private static readonly (string Hex, string Label)[] Palette =
+    [
+        ("#64748b", "Ardesia"),
+        ("#475569", "Grigio scuro"),
+        ("#ef4444", "Rosso"),
+        ("#f43f5e", "Rosa"),
+        ("#f97316", "Arancione"),
+        ("#f59e0b", "Ambra"),
+        ("#eab308", "Giallo"),
+        ("#84cc16", "Lime"),
+        ("#22c55e", "Verde"),
+        ("#10b981", "Smeraldo"),
+        ("#14b8a6", "Verde acqua"),
+        ("#06b6d4", "Ciano"),
+        ("#0ea5e9", "Azzurro"),
+        ("#3b82f6", "Blu"),
+        ("#6366f1", "Indaco"),
+        ("#8b5cf6", "Viola"),
+        ("#a855f7", "Porpora"),
+        ("#d946ef", "Fucsia"),
+        ("#ec4899", "Rosa acceso"),
+        ("#9f1239", "Bordeaux"),
+        ("#a16207", "Marrone"),
+        ("#166534", "Verde bosco"),
+        ("#1e3a8a", "Blu navy"),
+        ("#78716c", "Pietra"),
+    ];
+
+    private string _hexDraft = "#64748b";
+
+    [Parameter] public string Value { get; set; } = "#64748b";
+
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Colore";
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private string Normalized => Normalize(Value);
+
+    protected override void OnParametersSet() => _hexDraft = Normalized;
+
+    private bool IsSelected(string color) =>
+        string.Equals(Normalized, color, StringComparison.OrdinalIgnoreCase);
+
+    private async Task SelectAsync(string color)
+    {
+        if (!Disabled)
+        {
+            await ValueChanged.InvokeAsync(color);
+        }
+    }
+
+    private async Task OnHexDraftChanged()
+    {
+        if (Disabled)
+        {
+            return;
+        }
+
+        var value = _hexDraft.Trim();
+        if (value.Length > 0 && !value.StartsWith('#'))
+        {
+            value = "#" + value;
+        }
+
+        if (IsHex(value))
+        {
+            await ValueChanged.InvokeAsync(Normalize(value));
+        }
+    }
+
+    private static bool IsHex(string? value) =>
+        value is { Length: 7 } && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
+
+    private static string Normalize(string? value) =>
+        IsHex(value) ? value!.ToLowerInvariant() : "#64748b";
+}

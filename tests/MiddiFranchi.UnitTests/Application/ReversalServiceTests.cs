@@ -129,6 +129,10 @@ public class ReversalServiceTests
         before.IsReversible.ShouldBeTrue();
         before.IsReversed.ShouldBeFalse();
         before.IsReversal.ShouldBeFalse();
+        before.Amount.ShouldNotBeNull();
+        before.Amount!.Value.Amount.ShouldBe(120m);
+        before.AccountLabel.ShouldBe("Conto corrente");
+        before.CategoryLabel.ShouldBe("Stipendio");
 
         await _service.ReverseAsync(income.Id);
 
@@ -140,6 +144,21 @@ public class ReversalServiceTests
         reversalRow.OriginalOperationId.ShouldBe(income.Id);
         reversalRow.IsReversed.ShouldBeFalse();
         reversalRow.IsReversible.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task History_ShouldExposeTransferAccountsAndAmount()
+    {
+        WithRegisteredTransfer();
+        var historyService = new OperationHistoryService(_operations);
+
+        var row = (await historyService.ListAsync()).ShouldHaveSingleItem();
+
+        row.Kind.ShouldBe(OperationKind.Transfer);
+        row.Amount.ShouldNotBeNull();
+        row.Amount!.Value.Amount.ShouldBe(100m);
+        row.AccountLabel.ShouldBe("Conto EUR → Conto destinazione");
+        row.CategoryLabel.ShouldBeNull();
     }
 
     [Fact]

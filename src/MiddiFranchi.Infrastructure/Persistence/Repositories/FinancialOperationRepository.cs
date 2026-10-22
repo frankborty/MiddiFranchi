@@ -138,6 +138,101 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateAsync(FinancialOperation operation, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        var record = await _context.FinancialOperations
+            .SingleOrDefaultAsync(candidate => candidate.Id == operation.Id, cancellationToken)
+            ?? throw new InvalidOperationException("Operazione non trovata.");
+
+        if (record.Kind is not (OperationKind.Income or OperationKind.Expense))
+        {
+            throw new InvalidOperationException("Solo le entrate e le uscite possono essere modificate.");
+        }
+
+        switch (operation)
+        {
+            case Income income:
+                record.CategoryId = income.Category.Id;
+                record.AmountAmount = income.Amount.Value.Amount;
+                record.AmountCurrencyCode = income.Amount.Value.Currency.Code;
+                break;
+            case Expense expense:
+                record.CategoryId = expense.Category.Id;
+                record.AmountAmount = expense.Amount.Value.Amount;
+                record.AmountCurrencyCode = expense.Amount.Value.Currency.Code;
+                break;
+            default:
+                throw new InvalidOperationException("Solo le entrate e le uscite possono essere modificate.");
+        }
+
+        record.OperationDate = operation.OperationDate;
+        record.Description = operation.Description;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var operation = await _context.FinancialOperations
+            .SingleOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
+        if (operation is null)
+        {
+            return;
+        }
+
+        var reversal = await _context.FinancialOperations
+            .SingleOrDefaultAsync(candidate => candidate.OriginalOperationId == id, cancellationToken);
+
+        var operationIds = reversal is null
+            ? new[] { id }
+            : new[] { id, reversal.Id };
+
+        var ownsTransaction = _context.Database.CurrentTransaction is null;
+        var transaction = ownsTransaction
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        try
+        {
+            // I posting hanno una FK Restrict verso l'operazione: vanno rimossi per primi.
+            var postings = await _context.AccountPostings
+                .Where(posting => operationIds.Contains(posting.FinancialOperationId))
+                .ToListAsync(cancellationToken);
+            _context.AccountPostings.RemoveRange(postings);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (reversal is not null)
+            {
+                _context.FinancialOperations.Remove(reversal);
+            }
+
+            _context.FinancialOperations.Remove(operation);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
+    }
+
     public Task<bool> AnyReferencingAccountAsync(
         Guid accountId,
         CancellationToken cancellationToken = default) =>

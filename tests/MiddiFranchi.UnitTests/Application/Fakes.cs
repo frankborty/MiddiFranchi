@@ -306,6 +306,13 @@ public sealed class FakeCategoryRepository : ICategoryRepository
         _categories[index] = category;
         return Task.CompletedTask;
     }
+
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        _categories.RemoveAll(category => category.Id == id);
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeFinancialOperationRepository : IFinancialOperationRepository
@@ -347,6 +354,37 @@ public sealed class FakeFinancialOperationRepository : IFinancialOperationReposi
     {
         ReceivedTokens.Add(cancellationToken);
         _operations.Add(operation);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateAsync(FinancialOperation operation, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var index = _operations.FindIndex(candidate => candidate.Id == operation.Id);
+        if (index < 0)
+        {
+            throw new InvalidOperationException("Operazione non trovata.");
+        }
+
+        _operations[index] = operation;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var operation = _operations.FirstOrDefault(candidate => candidate.Id == id);
+        if (operation is not null)
+        {
+            var reversal = _operations.FirstOrDefault(candidate => candidate.OriginalOperationId == id);
+            if (reversal is not null)
+            {
+                _operations.Remove(reversal);
+            }
+
+            _operations.Remove(operation);
+        }
+
         return Task.CompletedTask;
     }
 

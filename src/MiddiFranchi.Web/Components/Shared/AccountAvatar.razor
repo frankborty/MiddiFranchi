@@ -2,7 +2,11 @@
 @using MiddiFranchi.Domain.Financial
 
 <span class="account-avatar" aria-hidden="true">
-    @if (!string.IsNullOrWhiteSpace(IconDataUrl))
+    @if (SelectedIcon is { } selectedIcon)
+    {
+        <MfIcon Name="@selectedIcon" Size="18" />
+    }
+    else if (!string.IsNullOrWhiteSpace(IconDataUrl))
     {
         <img class="account-logo custom" src="@IconDataUrl" alt="" />
     }
@@ -26,6 +30,11 @@
     /// <summary>Icona caricata dall'utente come data URL; ha priorità sul logo e sull'icona del tipo.</summary>
     [Parameter]
     public string? IconDataUrl { get; set; }
+
+    private string? SelectedIcon =>
+        IconDataUrl is { } icon && icon.StartsWith(Account.IconTokenPrefix, StringComparison.OrdinalIgnoreCase)
+            ? icon[Account.IconTokenPrefix.Length..]
+            : null;
 
     // Loghi reali in wwwroot/logos, abbinati al nome del conto (case-insensitive, match su prefisso).
     private static readonly (string Prefix, string Path)[] Logos =

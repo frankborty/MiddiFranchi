@@ -71,15 +71,6 @@ public static class Format
         _ => type.ToString(),
     };
 
-    public static string PostingKindLabel(PostingKind kind) => kind switch
-    {
-        PostingKind.Income => "Entrata",
-        PostingKind.Capital => "Uscita",
-        PostingKind.TransferLeg => "Trasferimento",
-        PostingKind.Fee => "Commissione",
-        _ => kind.ToString(),
-    };
-
     public static string OperationKindLabel(OperationKind kind) => kind switch
     {
         OperationKind.Income => "Entrata",

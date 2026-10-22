@@ -21,36 +21,32 @@ public sealed class OperationRegistrationService
 
     public async Task<Income> IncomeAsync(RegisterIncomeRequest request, CancellationToken cancellationToken = default)
     {
-        var account = await RequireAccountAsync(request.AccountId, cancellationToken);
         var category = await RequireCategoryAsync(
             request.CategoryId, CategoryType.Income, "un'entrata", cancellationToken);
         var income = new Income(
             Guid.NewGuid(),
-            account,
+            account: null,
             category,
             request.Amount,
             request.OperationDate,
             DateTimeOffset.UtcNow,
-            request.Description,
-            request.Notes);
+            request.Description);
         await _operations.AddAsync(income, cancellationToken);
         return income;
     }
 
     public async Task<Expense> ExpenseAsync(RegisterExpenseRequest request, CancellationToken cancellationToken = default)
     {
-        var account = await RequireAccountAsync(request.AccountId, cancellationToken);
         var category = await RequireCategoryAsync(
             request.CategoryId, CategoryType.Expense, "un'uscita", cancellationToken);
         var expense = new Expense(
             Guid.NewGuid(),
-            account,
+            account: null,
             category,
             request.Amount,
             request.OperationDate,
             DateTimeOffset.UtcNow,
-            request.Description,
-            request.Notes);
+            request.Description);
         await _operations.AddAsync(expense, cancellationToken);
         return expense;
     }
@@ -67,8 +63,7 @@ public sealed class OperationRegistrationService
             request.DestinationAmount,
             request.OperationDate,
             DateTimeOffset.UtcNow,
-            request.Description,
-            request.Notes);
+            request.Description);
         await _operations.AddAsync(transfer, cancellationToken);
         return transfer;
     }

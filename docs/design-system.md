@@ -44,7 +44,8 @@ Il tema scuro riusa gli stessi token: chiave `data-theme="dark"` su `<html>`
 | `NewLoanDialog` | modale per aggiungere un prestito al conto Prestiti (debitore, importo iniziale, data) |
 | `LoanReadingDialog` | modale per aggiungere una rilevazione a un singolo prestito |
 | `AccountSettingsDialog` | impostazioni del conto: nome, tipo, stato, colore dei grafici e icona caricata |
-| `CategoryManagementPanel` | elenco e creazione categorie, riusato da `/categories` e dalla Configurazione |
+| `CategoryManagementPanel` | elenco e creazione categorie con icona e colore, riusato da `/categories` e dalla Configurazione |
+| `CategoryBreakdownDialog` | modale con il donut delle sottocategorie di una categoria di spesa, aperto dal pie chart della pagina Movimenti |
 
 Classi strutturali: `.page` (shell), `.app-sidebar` (rail di icone, vedi "Sidebar" sotto), `.topbar`, `.page-body`,
 `.bento` (griglia 12 colonne con `.sp-3…sp-12`), `.card`, `.data-table` (con `.num` per importi
@@ -64,16 +65,13 @@ La Home usa classi dedicate, tutte costruite sui token esistenti, per non altera
 |---|---|
 | `.dashboard-overview` | Vedi "Panoramica dashboard": il totale patrimonio vive qui, non in una card separata. |
 | `.section-head` | Titolo di sezione con icona e link contestuale. |
-| `.dashboard-movements-card` | Card unica "Movimenti": header con periodo e link a tutti i movimenti; `.movements-summary` con saldo, entrate e uscite ordinarie del mese in EUR (trasferimenti e investimenti esclusi e conteggiati a parte); a seguire `.movements-recent` con badge del conteggio mensile e `.activity-list` compatta (una riga per operazione, massimo 6; i trasferimenti mostrano entrambi gli importi). La sintesi del mese è orizzontale su desktop e si impila sotto 980px. |
-| `.dashboard-accounts` | In testa `.accounts-total` con il totale conti (chip "Parziale" se manca qualche saldo); poi righe `.account-summary-row` con tipo e saldo manuale. Un saldo assente è testo esplicito, non zero. |
-| `.dashboard-investments` | Valore complessivo e `.investment-performance-line` con rendimento assoluto e percentuale in EUR; tabella `.investment-assets` con ticker e valore attuale per posizione (le posizioni senza quotazione mostrano "Non disponibile"). |
+| `.dashboard-movements-card` | Card unica "Movimenti": header con periodo e link a tutti i movimenti; `.movements-summary` con saldo, entrate e uscite ordinarie del mese in EUR (trasferimenti e investimenti esclusi e conteggiati a parte); a seguire `.movements-recent` con badge del conteggio mensile e `.activity-list` compatta (una riga per operazione, massimo 6). Le righe mostrano categoria · sottocategoria, icona/colore della categoria, data e importo: il segno/colore dell'importo distingue entrata e uscita e non viene ripetuto il tipo. La sintesi del mese è orizzontale su desktop e si impila sotto 980px. |
+| `.dashboard-allocation` | Card «Ripartizione del patrimonio», sopra i Movimenti: donut SVG investimenti/conti con totale al centro, percentuali e importi nella legenda; barra superiore bicolore. Le righe sono link a `/investments` e `/accounts`, con freccia e focus visibile. Chip "Parziale" se una categoria non è completa e stato esplicito se la ripartizione non è calcolabile (con link alle due pagine). |
 
-Responsive: la dashboard usa `.bento` con righe a 12 e 6/6 colonne; `.bento-even` allinea le card
-all'inizio e le lascia crescere per contenuto (Conti e Investimenti hanno la stessa larghezza senza
-altezze forzate). Sotto 980px le sezioni si impilano.
-Sotto 640px le righe di conti e attività passano a due colonne con l'importo sotto il testo; sotto
-420px i totali mensili passano a una colonna. Gli importi usano `tabular-nums` e non vengono mai
-sovrapposti o tagliati.
+Responsive: la dashboard usa `.bento` a 12 colonne con card a piena larghezza; le card si impilano
+sotto 980px. Sotto 640px le righe delle attività passano a due colonne con l'importo sotto il testo;
+sotto 520px le righe della ripartizione portano importo e freccia sotto la barra. Gli importi usano
+`tabular-nums` e non vengono mai sovrapposti o tagliati.
 
 Accessibilità della dashboard: i motivi dell'incompletezza sono un elenco testuale, le posizioni
 non valorizzate usano `<details>/<summary>` con focus visibile, ogni stato ha un'etichetta scritta
@@ -107,8 +105,46 @@ colore.
   non è più mostrata separatamente. I conti senza rilevazione non vengono trattati come zero.
 - Per gli investimenti la variazione mostrata è quella corrente rispetto al capitale investito; i
   punti storici senza quotazioni non vengono interpolati.
+- La card «Ripartizione del patrimonio», subito sopra i Movimenti, usa un donut SVG senza
+  dipendenze aggiuntive: quota di investimenti e conti sul totale disponibile, totale al centro,
+  percentuali e importi nella legenda. Ogni riga è un link: Investimenti apre `/investments`,
+  Conti apre `/accounts`. Se un valore manca, il totale è nullo o negativo, la card mostra uno
+  stato esplicito («Ripartizione non calcolabile») con i link alle due pagine e non stima la parte
+  mancante.
 - Responsive: tab e intervalli vanno a capo, il valore usa una dimensione fluida e il grafico resta
   dentro la card senza overflow.
+
+## Movimenti (`/operations`)
+
+- La pagina si chiama **Movimenti** (la voce di sidebar precedente «Operazioni» è stata
+  rinominata); niente introduzione, header con icona e periodo corrente.
+- Il pulsante flottante `+` apre il modale `OperationDialog`: solo **Entrata** o **Uscita**
+  (nessun trasferimento), senza conto. Per le entrate c'è un unico menu categoria (nessuna
+  sottocategoria); per le uscite ci sono due menu: **Categoria** e **Sottocategoria**. Se si
+  sceglie solo la sottocategoria dalla lista completa, la categoria si popola automaticamente.
+  Un solo campo **Descrizione / Nota** (il vecchio campo Note è stato unificato e rimosso dal
+  database con `MergeOperationDescriptionAndNotes`). Entrate e uscite non generano posting: i
+  saldi dei conti restano quelli manuali.
+- `.operations-history-card` è a piena larghezza ed è la card **Lista**: i tre pulsanti
+  **Tutti / Entrate / Uscite** sono allineati a destra sulla stessa riga del titolo. La tabella
+  ha colonne fisse **Data, Categoria, Sottocategoria, Descrizione, Importo** (le celle vuote
+  restano vuote, senza «-») e una riga di filtri per ogni colonna: data, categoria,
+  sottocategoria, testo della descrizione e importo.
+- Cliccando una riga si apre `OperationEditDialog`: categoria/sottocategoria, importo, data e
+  descrizione modificabili. L'eliminazione è nella zona pericolosa in fondo al modale (stesso
+  stile del pannello conti, con icona cestino e conferma) e usa `OperationDeletionService`. La
+  vecchia pagina `/movements` è stata rimossa: il link della Dashboard punta qui.
+- In fondo, `.operations-trend-card` mostra un istogramma impilato mensile di Entrate e Uscite con
+  la linea del Saldo e selettore 6M/12M/Max. `.operations-pie-card` raggruppa le uscite **solo per
+  categoria** (prime 6 + «Altre categorie»); cliccando una categoria si apre
+  `CategoryBreakdownDialog`, che mostra lo stesso donut limitato alle sue **sottocategorie**.
+- La migration `AddHistoricalDemoMovements` inserisce movimenti dimostrativi dal 2023 al 2026 per
+  rendere leggibili i grafici storici.
+- `DefaultCategoriesSeeder` inserisce all'avvio, in modo idempotente, le categorie di spesa di
+  esempio (con icona e colore) e le categorie di entrata senza sottocategorie (Stipendio, Regali,
+  ExtraStipendio, Patto, Concorrenza, Premio Produzione, Rimborsi, AltroIncome), ciascuna con la
+  propria icona e colore. Lo stesso elenco è usato dalle migration di reset per il database
+  esistente.
 
 ## Investimenti (`/investments`)
 
@@ -190,9 +226,16 @@ colore.
   corrente; il tipo non è modificabile dalla UI. I loghi sono in `wwwroot/logos`. Dopo la creazione
   nome, stato, colore e icona si configurano dall'ingranaggio.
 - **Categorie**: `CategoryManagementPanel` in layout bento (elenco + nuova categoria), con le
-  colonne Categoria, Sottocategoria, Tipo e Descrizione. Ogni categoria ha una sottocategoria
-  obbligatoria in creazione e modifica; il nome apre `CategorySettingsDialog` per aggiornarla. La
-  stessa pagina `/categories` resta disponibile e usa lo stesso pannello.
+  colonne Categoria, Sottocategoria, Tipo e Descrizione; icone e colori (`.category-mark`) sono
+  mostrati nell'elenco e modificabili da `CategorySettingsDialog`. Le categorie di uscita hanno
+  una sottocategoria obbligatoria in creazione e modifica; le categorie di entrata possono non
+  averla. Il nome apre `CategorySettingsDialog` per aggiornarla. Le categorie di spesa di esempio
+  sono raggruppate in Abitazione & Utenze,
+  Trasporti, Auto, Fees, Fun & Shopping, Salute & Benessere, Alimentazione, Streaming e Varie,
+  ciascuna con un'icona e un colore univoco. La migration
+  `AddCategoryAppearanceAndResetExpenseCategories` ha sostituito le vecchie categorie di spesa
+  riassegnando le operazioni esistenti. La stessa pagina `/categories` resta disponibile e usa lo
+  stesso pannello.
 - Il conteggio dei conti è affiancato al titolo «Conti».
 
 ## Conto Prestiti e singolo prestito
@@ -217,7 +260,7 @@ colore.
 - Rail di icone da 68px, compressa per default. Il pulsante circolare a cavallo del bordo la
   espande a 252px con etichette e nome dell'app; lo stato è salvato in `mf-sidebar-collapsed`.
   Il marchio usa la stessa icona da 20px delle voci, centrata nella rail.
-- Ordine senza titoli di gruppo: in alto Dashboard e Conti, seguiti da Operazioni e Movimenti;
+- Ordine senza titoli di gruppo: in alto Dashboard, Conti e Movimenti;
   poi Investimenti e Patrimonio netto; in fondo **Configurazione** (ingranaggio), separata da un
   divisore. La pagina Configurazione include anche la gestione delle categorie.
 - Ogni voce ha un'accento proprio (`--mf-nav-*`, varianti scure dei token semantici: blu per la
@@ -246,18 +289,18 @@ colore.
 
 | Route | Contenuto |
 |---|---|
-| `/` | Dashboard: panoramica interattiva Investimenti/Conti con intervalli, patrimonio, card Movimenti (entrate/uscite del mese in EUR e ultime operazioni), conti con totale, investimenti per ticker, note sui limiti |
+| `/` | Dashboard: panoramica interattiva Investimenti/Conti con intervalli e patrimonio, card Ripartizione del patrimonio (donut con accesso a Conti e Investimenti) e card Movimenti (entrate/uscite del mese in EUR e ultime operazioni) |
 | `/accounts`, `/accounts/{id}` | elenco con istogramma mensile impilato e linea del totale, range temporale e modale di registrazione; dettaglio con saldo, data e grafico, storico apribile cliccando la riga ed eliminazione dal modale del conto. Per il conto Prestiti: elenco prestiti e gestione aggregata |
 | `/accounts/{id}/loans/{loanId}` | dettaglio del singolo prestito con grafico dell'importo, rilevazioni modificabili/eliminabili ed eliminazione del prestito |
-| `/operations` | form a 3 tipologie, storico con eliminazione in due passi, movimenti |
-| `/movements` | vista economica con filtri |
+| `/operations` | pagina Movimenti: riepilogo del mese, card Lista a piena larghezza con filtri per colonna e modale di modifica/eliminazione per riga, dialog `+` per entrate/uscite, grafico mensile impilato e donut delle uscite per categoria con dettaglio per sottocategoria |
 | `/categories` | categorie entrata/uscita (stesso pannello della Configurazione) |
 | `/settings` | configurazione generale: conti (aggiunta, impostazioni, eliminazione) e categorie |
 | `/investments` | grafico temporale ApexCharts, capitale investito, rendimento per portafoglio e card asset |
 | `/net-worth` | riepilogo patrimonio alla data selezionata |
 
-Limitazioni dichiarate in pagina: i trasferimenti non sono conteggiati come entrate o uscite; tutti
-i valori sono in EUR; nessuna evoluzione storica del patrimonio (nessuno snapshot nel modello);
+Limitazioni dichiarate in pagina: le operazioni registrabili sono solo entrate e uscite (i
+trasferimenti non sono esposti dalla UI); tutti i valori sono in EUR; nessuna evoluzione storica
+del patrimonio (nessuno snapshot nel modello);
 posizioni non valorizzate senza quotazione valida. La pagina Investimenti mostra "Sigla non
 disponibile" per gli strumenti senza `Symbol`: la sigla non viene dedotta dal nome. I grafici
 temporali usano Blazor-ApexCharts 7.0.0 (MIT), solo le date con dati registrati, e non interpolano;

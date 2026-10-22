@@ -172,6 +172,21 @@ public sealed class CategoryRepository : ICategoryRepository
         record.Type = category.Type;
         record.Description = category.Description;
         record.Subcategory = category.Subcategory;
+        record.Icon = category.Icon;
+        record.ColorHex = category.ColorHex;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var record = await _context.Categories
+            .SingleOrDefaultAsync(category => category.Id == id, cancellationToken);
+        if (record is null)
+        {
+            return;
+        }
+
+        _context.Categories.Remove(record);
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

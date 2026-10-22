@@ -46,6 +46,7 @@ public sealed record DashboardCurrencyFlow(
 /// <summary>
 /// Ultima operazione registrata, una riga per operazione. Per i trasferimenti
 /// <see cref="CounterAmount"/> riporta l'importo accreditato sul conto di destinazione.
+/// Categoria, sottocategoria, icona e colore descrivono il movimento senza ripetere il tipo.
 /// </summary>
 public sealed record DashboardMovement(
     Guid OperationId,
@@ -53,9 +54,19 @@ public sealed record DashboardMovement(
     OperationKind OperationKind,
     string? Description,
     string? Category,
-    string AccountLabel,
+    string? Subcategory,
+    string? CategoryIcon,
+    string? CategoryColor,
+    string? AccountLabel,
     Money? Amount,
-    Money? CounterAmount);
+    Money? CounterAmount)
+{
+    public string? CategoryLabel => string.IsNullOrWhiteSpace(Category)
+        ? null
+        : string.IsNullOrWhiteSpace(Subcategory)
+            ? Category
+            : $"{Category} · {Subcategory}";
+}
 
 /// <summary>
 /// Valore complessivo degli investimenti solo quando il servizio del patrimonio lo rende

@@ -4,202 +4,534 @@
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Financial
 @using MiddiFranchi.Domain.Shared
-@inject AccountService AccountsService
 @inject CategoryService CategoriesService
-@inject MovementService MovementsService
-@inject OperationRegistrationService Registrations
-@inject ReversalService Reversals
 @inject OperationHistoryService History
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
-<PageTitle>Operazioni</PageTitle>
-<h1>Operazioni</h1>
-<p class="page-intro">
-    Registrazione di entrate, uscite e trasferimenti, con storia operativa e vista economica
-    corrente dei movimenti.
-</p>
+<PageTitle>Movimenti</PageTitle>
 
-@if (_loadError is not null)
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar amber" aria-hidden="true"><MfIcon Name="list" Size="18" /></span>
+            Movimenti
+        </h1>
+    </div>
+    <div class="dashboard-header-meta">
+        <StatusBadge Tone="amber">@PeriodLabel</StatusBadge>
+    </div>
+</div>
+
+@if (_loading)
 {
-    <p class="alert alert-error" role="alert">@_loadError</p>
+    <section class="card dashboard-loading" aria-live="polite">
+        <p class="page-status" role="status">Caricamento delle operazioni…</p>
+    </section>
+}
+else if (_loadError is not null)
+{
+    <section class="card">
+        <p class="alert alert-error" role="alert">@_loadError</p>
+        <div class="form-actions">
+            <button type="button" class="secondary-button" @onclick="LoadAsync">Riprova</button>
+        </div>
+    </section>
 }
 else
 {
+    <section class="period-bar" aria-label="Seleziona il periodo">
+        <div class="period-year">
+            <button type="button" class="period-arrow" disabled="@(_periodYear <= MinPeriodYear)"
+                    @onclick="() => ChangePeriodYear(-1)" aria-label="Anno precedente">
+                <MfIcon Name="arrow-left" Size="16" />
+            </button>
+            <button type="button" class="period-year-label @(_periodMode == PeriodMode.Year ? "active" : "")"
+                    @onclick="SelectYear" title="Mostra tutto il @_periodYear">
+                @_periodYear
+            </button>
+            <button type="button" class="period-arrow" disabled="@(_periodYear >= MaxPeriodYear)"
+                    @onclick="() => ChangePeriodYear(1)" aria-label="Anno successivo">
+                <MfIcon Name="arrow-right" Size="16" />
+            </button>
+        </div>
+
+        <div class="period-months" @ref="_periodMonthsRef" role="group" aria-label="Mesi">
+            @for (var month = 1; month <= 12; month++)
+            {
+                var currentMonth = month;
+                <button type="button"
+                        class="period-month @(_periodMode == PeriodMode.Month && _periodMonth == currentMonth ? "active" : "")"
+                        @onclick="() => SelectMonth(currentMonth)"
+                        title="@MonthButtonTitle(currentMonth)">
+                    <span class="period-month-name">@MonthShortName(currentMonth)</span>
+                    @if (_periodMode == PeriodMode.Month && _periodMonth == currentMonth)
+                    {
+                        <span class="period-month-amount">@MonthNetLabel(currentMonth)</span>
+                    }
+                </button>
+            }
+        </div>
+
+        <button type="button" class="period-all @(_periodMode == PeriodMode.All ? "active" : "")"
+                @onclick="SelectAll" title="Mostra tutti i movimenti senza filtro sulla data">
+            Tutti
+        </button>
+    </section>
+
     <div class="bento">
-        <div class="sp-5">
-            <section class="card">
-                <h2><MfIcon Name="swap" Size="18" /> Registra operazione</h2>
-                @if (_savedMessage is not null)
-                {
-                    <p class="alert alert-success" role="status">@_savedMessage</p>
-                }
-                @if (_saveError is not null)
-                {
-                    <p class="alert alert-error" role="alert">@_saveError</p>
-                }
+        <div class="sp-4">
+            <div class="stat-tile operation-stat income">
+                <span class="stat-label">@IncomeCardLabel</span>
+                <span class="operation-stat-value">
+                    <AmountValue Value="@_periodIncome" Tone="income" />
+                </span>
+                <span class="stat-hint">@PeriodIncomeHint</span>
+            </div>
+        </div>
+        <div class="sp-4">
+            <div class="stat-tile operation-stat expense">
+                <span class="stat-label">@ExpenseCardLabel</span>
+                <span class="operation-stat-value">
+                    <AmountValue Value="@_periodExpense" Tone="expense" />
+                </span>
+                <span class="stat-hint">@PeriodExpenseHint</span>
+            </div>
+        </div>
+        <div class="sp-4">
+            <div class="stat-tile operation-stat balance">
+                <span class="stat-label">@BalanceCardLabel</span>
+                <span class="operation-stat-value">
+                    <AmountValue Value="@_periodNet" Signed="true" Tone="@Tone(_periodNet)" />
+                </span>
+                <span class="stat-hint">Entrate meno uscite</span>
+            </div>
+        </div>
+    </div>
 
-                <form class="form-grid" @onsubmit="RegisterAsync">
-                    <label>
-                        <span>Tipo di operazione *</span>
-                        <select @bind="_kind" @bind:after="OnKindChanged" required aria-required="true">
-                            <option value="@nameof(OperationFormKind.Income)">Entrata</option>
-                            <option value="@nameof(OperationFormKind.Expense)">Uscita</option>
-                            <option value="@nameof(OperationFormKind.Transfer)">Trasferimento</option>
-                        </select>
-                    </label>
+    @if (_savedMessage is not null)
+    {
+        <p class="alert alert-success" role="status">@_savedMessage</p>
+    }
 
-                    @if (IsTransfer)
-                    {
-                        <label>
-                            <span>Conto di origine *</span>
-                            <select @bind="_sourceAccountId" required aria-required="true">
-                                <option value="">Seleziona…</option>
-                                @foreach (var account in _accounts)
-                                {
-                                    if (account.Id != ParseOptionalGuid(_destinationAccountId))
-                                    {
-                                        <option value="@account.Id">@account.Name</option>
-                                    }
-                                }
-                            </select>
-                        </label>
-                        <label>
-                            <span>Conto di destinazione *</span>
-                            <select @bind="_destinationAccountId" required aria-required="true">
-                                <option value="">Seleziona…</option>
-                                @foreach (var account in _accounts)
-                                {
-                                    if (account.Id != ParseOptionalGuid(_sourceAccountId))
-                                    {
-                                        <option value="@account.Id">@account.Name</option>
-                                    }
-                                }
-                            </select>
-                        </label>
-                    }
-                    else
-                    {
-                        <label>
-                            <span>@(IsIncome ? "Conto destinatario *" : "Conto di addebito *")</span>
-                            <select @bind="_accountId" required aria-required="true">
-                                <option value="">Seleziona…</option>
-                                @foreach (var account in _accounts)
-                                {
-                                    <option value="@account.Id">@account.Name</option>
-                                }
-                            </select>
-                        </label>
-                        <label>
-                            <span>Categoria (@(IsIncome ? "entrate" : "uscite")) *</span>
-                            <select @bind="_categoryId" required aria-required="true">
-                                <option value="">Seleziona…</option>
-                                @foreach (var category in _categoryChoices)
-                                {
-                                    <option value="@category.Id">@CategoryLabel(category)</option>
-                                }
-                            </select>
-                        </label>
-                    }
+    @if (_periodMode != PeriodMode.Month)
+    {
+        <div class="bento">
+            <div class="sp-4">
+                <div class="stat-tile operation-stat income">
+                    <span class="stat-label">@AverageIncomeLabel</span>
+                    <span class="operation-stat-value">
+                        <AmountValue Value="@_averageIncome" Tone="income" />
+                    </span>
+                    <span class="stat-hint">@AverageHint</span>
+                </div>
+            </div>
+            <div class="sp-4">
+                <div class="stat-tile operation-stat expense">
+                    <span class="stat-label">@AverageExpenseLabel</span>
+                    <span class="operation-stat-value">
+                        <AmountValue Value="@_averageExpense" Tone="expense" />
+                    </span>
+                    <span class="stat-hint">@AverageHint</span>
+                </div>
+            </div>
+            <div class="sp-4">
+                <div class="stat-tile operation-stat balance">
+                    <span class="stat-label">@AverageBalanceLabel</span>
+                    <span class="operation-stat-value">
+                        <AmountValue Value="@_averageNet" Signed="true" Tone="@Tone(_averageNet)" />
+                    </span>
+                    <span class="stat-hint">@AverageHint</span>
+                </div>
+            </div>
+        </div>
+    }
 
-                    <label>
-                        <span>Importo *</span>
-                        <input type="number" step="any" min="0" required aria-required="true" @bind="_sourceAmountText" />
-                    </label>
+    
 
-                    <label>
-                        <span>Data economica (ValidAt) *</span>
-                        <input type="date" required aria-required="true" @bind="_validAt" />
-                    </label>
-                    <label>
-                        <span>Descrizione</span>
-                        <input type="text" maxlength="200" @bind="_description" />
-                    </label>
-                    <label>
-                        <span>Note</span>
-                        <input type="text" maxlength="200" @bind="_notes" />
-                    </label>
-
-                    <div class="form-actions">
-                        <button type="submit" class="primary-button" disabled="@_saving"><MfIcon Name="plus" Size="18" /> Registra @KindLabel</button>
-                        @if (_saving)
-                        {
-                            <span class="page-status">Registrazione in corso…</span>
-                        }
+    <div class="bento compact-pie-row">
+        <div class="chart-panel">
+            <section class="@TrendCardClass" aria-labelledby="trend-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="trend-title"><MfIcon Name="chart" Size="18" /> @TrendTitle</h2>
+                        <p class="section-sub">@TrendSubtitle</p>
                     </div>
-                </form>
+                    <div class="trend-toggle" role="group" aria-label="Tipo di grafico">
+                        <button type="button" class="@TrendToggleClass(TrendKind.Income)"
+                                aria-pressed="@(_trendKind == TrendKind.Income)" @onclick="() => SelectTrend(TrendKind.Income)">
+                            Entrate
+                        </button>
+                        <button type="button" class="@TrendToggleClass(TrendKind.Expense)"
+                                aria-pressed="@(_trendKind == TrendKind.Expense)" @onclick="() => SelectTrend(TrendKind.Expense)">
+                            Uscite
+                        </button>
+                    </div>
+                </div>
 
-                @if (_missingAccountsWarning is not null)
+                @if (TrendHasData)
                 {
-                    <p class="alert alert-warning" role="status">@_missingAccountsWarning</p>
+                    <ApexTimeSeriesChart Title="@TrendTitle"
+                                         Currency="@Currency.Euro"
+                                         Series="@TrendSeries"
+                                         Stacked="true"
+                                         ShowStackedTotal="false"
+                                         ShowHeader="false"
+                                         ShowFooter="false"
+                                         ShowDataTable="false"
+                                         ShowMarkers="false"
+                                         Height="@("100%")"
+                                         XAxisLabelMode="@TrendLabelMode" />
                 }
-                @if (_missingCategoriesWarning is not null)
+                else
                 {
-                    <p class="alert alert-warning" role="status">@_missingCategoriesWarning <a class="primary-link" href="settings">Crea una categoria nella pagina Configurazione.</a></p>
+                    <EmptyState Title="Nessun dato nel periodo"
+                                Hint="Registra un'entrata o un'uscita per popolare il grafico."
+                                Icon="chart" />
                 }
             </section>
         </div>
 
-        <div class="sp-7">
-            <section class="card">
-                <h2><MfIcon Name="clock" Size="18" /> Operazioni registrate</h2>
-                <p class="table-hint">Eliminare un'operazione non porta ripercussioni retroattive: l'operazione non sarà più visibile e i suoi effetti (posting) saranno annullati una sola volta.</p>
+        <div class="pie-panel">
+            <section class="card operations-pie-card" aria-labelledby="pie-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="pie-title"><MfIcon Name="pie" Size="18" /> Uscite per categoria</h2>
+                        <p class="section-sub">@PeriodLabel</p>
+                    </div>
+                </div>
+
+                @if (ExpenseSlices.Count > 0)
+                {
+                    <div class="alternative-pie-layout">
+                        <figure class="alternative-pie-figure">
+                            <div class="allocation-donut alternative-pie-donut">
+                                <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false" @onmouseleave="ClearAlternativeHover">
+                                    <circle class="allocation-track" cx="21" cy="21" r="15.9155" pathLength="100" />
+                                    @foreach (var slice in ExpenseSlices)
+                                    {
+                                        <circle class="expense-pie-segment alternative-pie-segment @(_altHoverSlice?.Label == slice.Label ? "hovered" : "")"
+                                                cx="21" cy="21" r="15.9155"
+                                                pathLength="100" transform="rotate(-90 21 21)"
+                                                stroke="@slice.Color"
+                                                stroke-dasharray="@DashArray(slice.Share)"
+                                                stroke-dashoffset="@DashOffset(slice.Offset)"
+                                                @onmouseover="() => SetAlternativeHover(slice)"
+                                                @onclick="() => OpenCategoryBreakdown(slice)">
+                                            <title>@slice.Label: @Format.Money(slice.Amount) (@Format.Percent(slice.Share))</title>
+                                        </circle>
+                                    }
+                                </svg>
+                                <div class="allocation-center alternative-pie-center">
+                                    @if (_altHoverSlice is { } hover)
+                                    {
+                                        <span class="allocation-center-label" style="color: @hover.Color">@hover.Label</span>
+                                        <strong class="allocation-center-value">@Format.Money(hover.Amount)</strong>
+                                        <span class="allocation-center-sub">@Format.Percent(hover.Share)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="allocation-center-label">Totale</span>
+                                        <strong class="allocation-center-value">@Format.Money(ExpenseTotal.GetValueOrDefault())</strong>
+                                        <span class="allocation-center-sub">@ExpenseSlices.Count categorie</span>
+                                    }
+                                </div>
+                            </div>
+                            <figcaption class="visually-hidden">@ExpensePieDescription</figcaption>
+                        </figure>
+                    </div>
+                }
+                else
+                {
+                    <EmptyState Title="Nessuna uscita nel periodo"
+                                Hint="Le uscite registrate e categorizzate compaiono qui."
+                                Icon="pie" />
+                }
+            </section>
+        </div>
+    </div>
+
+    <div class="bento">
+        <div class="sp-12">
+            <section class="card operations-history-card" aria-labelledby="history-title">
+                <div class="section-head movements-list-head">
+                    <div class="section-title-row">
+                        <h2 id="history-title"><MfIcon Name="list" Size="18" /> Lista</h2>
+                        <StatusBadge Tone="brand">@FilteredHistory.Count di @PeriodHistory.Count</StatusBadge>
+                    </div>
+                </div>
+
+                @if (_openFilterMenu is not null)
+                {
+                    <div class="filter-scrim" @onclick="CloseFilterMenus"></div>
+                }
+
+                <div class="movement-filter-bar">
+                    <label class="movement-search">
+                        <MfIcon Name="search" Size="16" />
+                        <input type="search" value="@_filterSearch" @oninput="OnSearchInput"
+                               placeholder="Cerca descrizione, categoria, data o importo"
+                               aria-label="Cerca movimenti" />
+                    </label>
+
+                    <div class="movement-filter-actions">
+                        <div class="filter-menu-wrap">
+                            <button type="button" class="filter-trigger @(HasDateFilter ? "active" : "")"
+                                    @onclick="() => ToggleFilterMenu(FilterMenu.Period)"
+                                    aria-expanded="@(_openFilterMenu == FilterMenu.Period)">
+                                <MfIcon Name="calendar" Size="15" />
+                                <span>@DateFilterLabel</span>
+                                <MfIcon Name="chevron-down" Size="13" />
+                            </button>
+                            @if (_openFilterMenu == FilterMenu.Period)
+                            {
+                                <div class="filter-panel period-panel">
+                                    <p class="filter-panel-title">Periodo</p>
+                                    <button type="button" class="filter-option @(_periodMode == PeriodMode.All ? "selected" : "")"
+                                            @onclick='() => SetDatePreset("all")'>Tutto il periodo</button>
+                                    <button type="button" class="filter-option @(_datePreset == "7d" ? "selected" : "")"
+                                            @onclick='() => SetDatePreset("7d")'>Ultimi 7 giorni</button>
+                                    <button type="button" class="filter-option @(_datePreset == "30d" ? "selected" : "")"
+                                            @onclick='() => SetDatePreset("30d")'>Ultimi 30 giorni</button>
+                                    <button type="button" class="filter-option @(IsCurrentMonthSelected ? "selected" : "")"
+                                            @onclick='() => SetDatePreset("currentMonth")'>Questo mese</button>
+                                    <button type="button" class="filter-option @(IsLastMonthSelected ? "selected" : "")"
+                                            @onclick='() => SetDatePreset("lastMonth")'>Mese scorso</button>
+                                    <button type="button" class="filter-option @(IsCurrentYearSelected ? "selected" : "")"
+                                            @onclick='() => SetDatePreset("currentYear")'>Quest'anno</button>
+                                    <div class="filter-panel-separator"></div>
+                                    <p class="filter-panel-title">Intervallo preciso</p>
+                                    <div class="filter-range-grid">
+                                        <label>
+                                            <span>Da</span>
+                                            <input type="date" @bind="_filterFrom" @bind:after="OnCustomDateChanged" />
+                                        </label>
+                                        <label>
+                                            <span>A</span>
+                                            <input type="date" @bind="_filterTo" @bind:after="OnCustomDateChanged" />
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="filter-menu-wrap">
+                            <button type="button" class="filter-trigger @(_historyFilter != FilterAll ? "active" : "")"
+                                    @onclick="() => ToggleFilterMenu(FilterMenu.Type)"
+                                    aria-expanded="@(_openFilterMenu == FilterMenu.Type)">
+                                <MfIcon Name="filter" Size="15" />
+                                <span>Tipo</span>
+                                <MfIcon Name="chevron-down" Size="13" />
+                            </button>
+                            @if (_openFilterMenu == FilterMenu.Type)
+                            {
+                                <div class="filter-panel">
+                                    <p class="filter-panel-title">Tipo</p>
+                                    <button type="button" class="filter-option @(_historyFilter == FilterAll ? "selected" : "")"
+                                            @onclick="() => SetTypeFilter(FilterAll)">Tutti</button>
+                                    <button type="button" class="filter-option @(_historyFilter == FilterIncome ? "selected" : "")"
+                                            @onclick="() => SetTypeFilter(FilterIncome)">Entrate</button>
+                                    <button type="button" class="filter-option @(_historyFilter == FilterExpense ? "selected" : "")"
+                                            @onclick="() => SetTypeFilter(FilterExpense)">Uscite</button>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="filter-menu-wrap">
+                            <button type="button" class="filter-trigger @(CategoryFilterCount > 0 ? "active" : "")"
+                                    @onclick="() => ToggleFilterMenu(FilterMenu.Categories)"
+                                    aria-expanded="@(_openFilterMenu == FilterMenu.Categories)">
+                                <MfIcon Name="grid" Size="15" />
+                                <span>Categorie</span>
+                                @if (CategoryFilterCount > 0)
+                                {
+                                    <span class="filter-count">@CategoryFilterCount</span>
+                                }
+                                <MfIcon Name="chevron-down" Size="13" />
+                            </button>
+                            @if (_openFilterMenu == FilterMenu.Categories)
+                            {
+                                <div class="filter-panel categories-panel">
+                                    <div class="filter-panel-head">
+                                        <p class="filter-panel-title">Categorie</p>
+                                        @if (CategoryFilterCount > 0)
+                                        {
+                                            <button type="button" class="filter-link" @onclick="ClearCategoryFilters">Azzera</button>
+                                        }
+                                    </div>
+                                    <div class="filter-check-list">
+                                        @if (CategoryFilterOptions.Count == 0)
+                                        {
+                                            <p class="filter-empty-text">Nessuna categoria nel periodo.</p>
+                                        }
+                                        @foreach (var category in CategoryFilterOptions)
+                                        {
+                                            <label class="filter-check">
+                                                <input type="checkbox" checked="@_filterCategories.Contains(category)"
+                                                       @onchange="args => ToggleCategoryFilter(category, args)" />
+                                                <span>@category</span>
+                                            </label>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="filter-menu-wrap">
+                            <button type="button" class="filter-trigger @(SubcategoryFilterCount > 0 ? "active" : "")"
+                                    @onclick="() => ToggleFilterMenu(FilterMenu.Subcategory)"
+                                    aria-expanded="@(_openFilterMenu == FilterMenu.Subcategory)">
+                                <MfIcon Name="tag" Size="15" />
+                                <span>Sottocategorie</span>
+                                @if (SubcategoryFilterCount > 0)
+                                {
+                                    <span class="filter-count">@SubcategoryFilterCount</span>
+                                }
+                                <MfIcon Name="chevron-down" Size="13" />
+                            </button>
+                            @if (_openFilterMenu == FilterMenu.Subcategory)
+                            {
+                                <div class="filter-panel categories-panel">
+                                    <div class="filter-panel-head">
+                                        <p class="filter-panel-title">Sottocategorie</p>
+                                        @if (SubcategoryFilterCount > 0)
+                                        {
+                                            <button type="button" class="filter-link" @onclick="ClearSubcategoryFilters">Azzera</button>
+                                        }
+                                    </div>
+                                    @if (_filterCategories.Count > 0)
+                                    {
+                                        <p class="filter-hint">Mostro solo le sottocategorie delle categorie selezionate.</p>
+                                    }
+                                    <div class="filter-check-list">
+                                        @if (SubcategoryFilterOptions.Count == 0)
+                                        {
+                                            <p class="filter-empty-text">Nessuna sottocategoria nel periodo.</p>
+                                        }
+                                        @foreach (var subcategory in SubcategoryFilterOptions)
+                                        {
+                                            <label class="filter-check">
+                                                <input type="checkbox" checked="@_filterSubcategories.Contains(subcategory)"
+                                                       @onchange="args => ToggleSubcategoryFilter(subcategory, args)" />
+                                                <span>@subcategory</span>
+                                            </label>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="filter-menu-wrap">
+                            <button type="button" class="filter-trigger @(HasAmountFilter ? "active" : "")"
+                                    @onclick="() => ToggleFilterMenu(FilterMenu.Amount)"
+                                    aria-expanded="@(_openFilterMenu == FilterMenu.Amount)">
+                                <MfIcon Name="coin" Size="15" />
+                                <span>Importo</span>
+                                <MfIcon Name="chevron-down" Size="13" />
+                            </button>
+                            @if (_openFilterMenu == FilterMenu.Amount)
+                            {
+                                <div class="filter-panel amount-panel">
+                                    <p class="filter-panel-title">Importo</p>
+                                    <div class="filter-range-grid">
+                                        <label>
+                                            <span>Da</span>
+                                            <input type="text" value="@_filterAmountMin" @oninput="OnAmountMinInput" placeholder="0" />
+                                        </label>
+                                        <label>
+                                            <span>A</span>
+                                            <input type="text" value="@_filterAmountMax" @oninput="OnAmountMaxInput" placeholder="0" />
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @if (HasActiveFilters)
+                        {
+                            <button type="button" class="filter-reset" @onclick="ResetFilters">Azzera</button>
+                        }
+                    </div>
+                </div>
 
                 @if (_historyError is not null)
                 {
                     <p class="alert alert-error" role="alert">@_historyError</p>
                 }
-                else if (_visibleRows.Count == 0)
+                else if (_visibleHistory.Count == 0)
                 {
-                    <EmptyState Title="Nessuna operazione registrata"
-                                Hint="Registra la prima operazione col modulo accanto."
-                                Icon="doc" />
+                    <EmptyState Title="Nessun movimento registrato"
+                                Hint="Usa il pulsante + per registrare la prima entrata o uscita."
+                                Icon="list" />
+                }
+                else if (PeriodHistory.Count == 0)
+                {
+                    <EmptyState Title="Nessun movimento nel periodo"
+                                Hint="Seleziona un altro mese, un anno o Tutti dalla barra del periodo."
+                                Icon="list" />
                 }
                 else
                 {
-                    @if (_pendingReversalRow is not null)
-                    {
-                        <div class="alert alert-warning" role="alert">
-                            <div>
-                                Eliminare l'operazione «@_pendingReversalRow.Description» (@HistoryKindLabel(_pendingReversalRow.Kind) del @Format.Date(_pendingReversalRow.OperationDate))?
-                                Non sarà più visibile né riutilizzabile: il saldo ricostruito tornerà come se non fosse mai esistita e il saldo manuale non cambia.
-                            </div>
-                            <div class="form-actions">
-                                <button type="button" class="secondary-button" disabled="@_saving" @onclick="ConfirmReversalAsync">Elimina</button>
-                                <button type="button" class="secondary-button" disabled="@_saving" @onclick="CancelReversal">Annulla</button>
-                            </div>
-                        </div>
-                    }
-                    @if (_reversalError is not null)
-                    {
-                        <p class="alert alert-error" role="alert">@_reversalError</p>
-                    }
                     <div class="table-scroll history-list" tabindex="0">
-                        <table class="data-table">
-                            <caption class="table-hint">Le operazioni eliminate restano nella storia: sono mostrate con stato "Eliminata".</caption>
+                        <table class="data-table operations-history-table">
+                            <colgroup>
+                                <col class="col-date" />
+                                <col class="col-category" />
+                                <col class="col-subcategory" />
+                                <col class="col-description" />
+                                <col class="col-amount" />
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th scope="col">Data</th>
-                                    <th scope="col">Tipo</th>
+                                    <th scope="col">Categoria</th>
+                                    <th scope="col">Sottocategoria</th>
                                     <th scope="col">Descrizione</th>
-                                    <th scope="col">Stato</th>
-                                    <th scope="col">Azioni</th>
+                                    <th scope="col" class="num">Importo</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in _visibleRows)
+                                @if (PagedHistory.Count == 0)
                                 {
                                     <tr>
-                                        <td>@Format.Date(row.OperationDate)</td>
-                                        <td>@HistoryKindLabel(row.Kind)</td>
-                                        <td>@(row.Description ?? "-")</td>
-                                        <td>
-                                            <StatusBadge Tone="@(row.IsReversed ? "expense" : "neutral")">
-                                                @(row.IsReversed ? "Eliminata" : "Attiva")
-                                            </StatusBadge>
+                                        <td colspan="5" class="filter-empty">
+                                            <EmptyState Title="@EmptyFilterTitle"
+                                                        Hint="Modifica o azzera i filtri per vedere i movimenti."
+                                                        Icon="list" />
+                                            <div class="filter-empty-actions">
+                                                <button type="button" class="secondary-button" @onclick="ResetFilters">Azzera filtri</button>
+                                            </div>
                                         </td>
+                                    </tr>
+                                }
+                                @foreach (var row in PagedHistory)
+                                {
+                                    <tr class="movement-row" tabindex="0"
+                                        title="Apri e modifica"
+                                        @onclick="() => OpenEdit(row)"
+                                        @onkeydown="args => OnRowKeyDown(args, row)">
+                                        <td>@Format.Date(row.OperationDate)</td>
                                         <td>
-                                            @if (row.IsReversible)
+                                            @if (!string.IsNullOrWhiteSpace(row.CategoryName))
                                             {
-                                                <button type="button" class="secondary-button" aria-label="@($"Elimina l'operazione del {Format.Date(row.OperationDate)}")" disabled="@(_saving || _pendingReversalRow is not null)" @onclick="() => StartReversal(row)">Elimina</button>
+                                                <span class="category-chip" style="--mf-category-color: @CategoryAppearance.ColorFor(row.CategoryColor)">
+                                                    <span class="category-chip-icon" aria-hidden="true">
+                                                        <MfIcon Name="@CategoryAppearance.IconFor(row.CategoryIcon)" Size="14" />
+                                                    </span>
+                                                    @row.CategoryName
+                                                </span>
+                                            }
+                                        </td>
+                                        <td>@row.Subcategory</td>
+                                        <td>@row.Description</td>
+                                        <td class="num">
+                                            @if (row.Amount is { } amount)
+                                            {
+                                                <AmountValue Value="@amount" Signed="true" Tone="@AmountTone(row.Kind)" />
+                                            }
+                                            else
+                                            {
+                                                <span class="amount amount-neutral">Non disponibile</span>
                                             }
                                         </td>
                                     </tr>
@@ -207,115 +539,831 @@ else
                             </tbody>
                         </table>
                     </div>
+
+                    <nav class="pagination" aria-label="Paginazione dei movimenti">
+                        <span class="pagination-info">@PageSummary</span>
+                        <div class="pagination-actions">
+                            <label class="page-size">
+                                <span>Per pagina</span>
+                                <select @bind="_pageSize" @bind:after="OnPageSizeChanged" aria-label="Movimenti per pagina">
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </label>
+                            @if (PageCount > 1)
+                            {
+                                <button type="button" class="secondary-button" disabled="@(CurrentPage <= 1)" @onclick="PreviousPage" aria-label="Pagina precedente">
+                                    <MfIcon Name="arrow-left" Size="16" />
+                                </button>
+                                <span class="pagination-page">@CurrentPage / @PageCount</span>
+                                <button type="button" class="secondary-button" disabled="@(CurrentPage >= PageCount)" @onclick="NextPage" aria-label="Pagina successiva">
+                                    <MfIcon Name="arrow-right" Size="16" />
+                                </button>
+                            }
+                        </div>
+                    </nav>
                 }
             </section>
         </div>
     </div>
 
-    <section class="card">
-        <h2><MfIcon Name="list" Size="18" /> Movimenti della vista economica corrente</h2>
-        <p class="table-hint">
-            Le operazioni eliminate sono escluse. Ordine deterministico: data, operazione, posting.
-            @if (_movements.Count > 10)
-            {
-                <text>Mostrate le ultime 10 voci di @_movements.Count. </text>
-                <a class="primary-link" href="movements">Vedi tutti i movimenti</a>
-            }
-        </p>
-        @if (_movementError is not null)
-        {
-            <p class="alert alert-error" role="alert">@_movementError</p>
-        }
-        else if (_movements.Count == 0)
-        {
-            <EmptyState Title="Nessun movimento registrato"
-                        Hint="Le operazioni registrate qui alimentano la vista economica dei movimenti."
-                        Icon="list" />
-        }
-        else
-        {
-            <div class="table-scroll" tabindex="0">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Data</th>
-                            <th scope="col">Conto</th>
-                            <th scope="col">Tipo</th>
-                            <th scope="col">Descrizione</th>
-                            <th scope="col" class="num">Importo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in RecentMovements)
-                        {
-                            <tr>
-                                <td>@Format.Date(row.Posting.OperationDate)</td>
-                                <td>@row.AccountLabel</td>
-                                <td>@Format.PostingKindLabel(row.Posting.Kind)</td>
-                                <td>@(row.Posting.Operation.Description ?? "-")</td>
-                                <td class="num">
-                                    <AmountValue Value="@(new Money(row.Posting.SignedAmount, row.Posting.Currency))" Signed="true" />
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </section>
+<button type="button" class="fab-add" aria-label="Nuova operazione" @onclick="OpenDialog">
+        <MfIcon Name="plus" Size="24" />
+    </button>
+
+    <OperationDialog Open="_dialogOpen"
+                     Categories="_categories"
+                     OnClose="CloseDialog"
+                     OnSaved="OnOperationSaved" />
+
+    <OperationEditDialog Open="_editDialogOpen"
+                         Operation="_editingRow"
+                         Categories="_categories"
+                         OnClose="CloseEdit"
+                         OnSaved="OnOperationSaved" />
+
+    <CategoryBreakdownDialog Open="_categoryDialogOpen"
+                             CategoryName="@(_selectedCategory ?? "")"
+                             CategoryColor="@_selectedCategoryColor"
+                             Items="SelectedCategorySlices"
+                             RangeLabel="@PeriodLabel"
+                             OnClose="CloseCategoryBreakdown" />
 }
 
 @code {
-    private sealed record MovementRow(AccountPosting Posting, string AccountLabel);
+    private const string FilterAll = "all";
+    private const string FilterIncome = "income";
+    private const string FilterExpense = "expense";
+    private const string IncomeColor = "#14713c";
+    private const string ExpenseColor = "#b53a4a";
 
-    private IReadOnlyList<Account> _accounts = [];
+    private enum PeriodMode
+    {
+        Month,
+        Year,
+        All,
+    }
+
+    private enum FilterMenu
+    {
+        Period,
+        Type,
+        Categories,
+        Subcategory,
+        Amount,
+    }
+
+    private enum TrendKind
+    {
+        Income,
+        Expense,
+    }
+
     private IReadOnlyList<Category> _categories = [];
-    private List<MovementRow> _movements = [];
     private IReadOnlyList<OperationHistoryRow> _history = [];
-    private IReadOnlyList<OperationHistoryRow> _visibleRows => _history
-        .Where(row => !row.IsReversal)
-        .ToArray();
-    private IReadOnlyList<MovementRow> RecentMovements => _movements.Count <= 10
-        ? _movements
-        : _movements.Skip(_movements.Count - 10).ToArray();
-    private OperationHistoryRow? _pendingReversalRow;
-    private string? _historyError;
-    private string? _reversalError;
+    private IReadOnlyList<OperationHistoryRow> _visibleHistory = [];
+    private bool _loading = true;
+    private bool _dialogOpen;
+    private bool _editDialogOpen;
+    private OperationHistoryRow? _editingRow;
     private string? _loadError;
-    private string? _saveError;
+    private string? _historyError;
     private string? _savedMessage;
-    private string? _movementError;
-    private string? _missingAccountsWarning;
-    private string? _missingCategoriesWarning;
-    private bool _saving;
-    private bool _loaded;
+    private string _historyFilter = FilterAll;
+    private PeriodMode _periodMode = PeriodMode.Month;
+    private int _periodYear = DateTime.UtcNow.Year;
+    private int _periodMonth = DateTime.UtcNow.Month;
+    private DateOnly? _filterFrom;
+    private DateOnly? _filterTo;
+    private readonly HashSet<string> _filterCategories = new(StringComparer.CurrentCultureIgnoreCase);
+    private readonly HashSet<string> _filterSubcategories = new(StringComparer.CurrentCultureIgnoreCase);
+    private string _filterSearch = "";
+    private string _datePreset = "none";
+    private string _filterAmountMin = "";
+    private string _filterAmountMax = "";
+    private FilterMenu? _openFilterMenu;
+    private int _page = 1;
+    private int _pageSize = 20;
+    private string? _selectedCategory;
+    private string _selectedCategoryColor = CategoryAppearance.DefaultColor;
+    private bool _categoryDialogOpen;
+    private CategoryBreakdownItem? _altHoverSlice;
+    private ElementReference _periodMonthsRef;
+    private TrendKind _trendKind = TrendKind.Income;
 
-    private string _kind = nameof(OperationFormKind.Income);
-    private string _accountId = "";
-    private string _categoryId = "";
-    private string _sourceAccountId = "";
-    private string _destinationAccountId = "";
-    private string _sourceAmountText = "";
-    private DateOnly? _validAt;
-    private string? _description;
-    private string? _notes;
+    private Money? _periodIncome;
+    private Money? _periodExpense;
+    private Money? _periodNet;
+    private Money? _averageIncome;
+    private Money? _averageExpense;
+    private Money? _averageNet;
+    private int _averageDivisor = 1;
+    private int _periodIncomeCount;
+    private int _periodExpenseCount;
 
-    private OperationFormKind Kind => Enum.Parse<OperationFormKind>(_kind);
-    private bool IsIncome => Kind == OperationFormKind.Income;
-    private bool IsExpense => Kind == OperationFormKind.Expense;
-    private bool IsTransfer => Kind == OperationFormKind.Transfer;
-    private string KindLabel => IsIncome ? "entrata" : IsExpense ? "uscita" : "trasferimento";
-    private IReadOnlyList<Category> _categoryChoices => OperationForm.CategoriesFor(Kind, _categories);
+    private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
+
+    private DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
+
+    private string PeriodLabel => _periodMode switch
+    {
+        PeriodMode.Month => ItalianCulture.TextInfo.ToTitleCase(
+            new DateOnly(_periodYear, _periodMonth, 1).ToString("MMMM yyyy", ItalianCulture)),
+        PeriodMode.Year => _periodYear.ToString(),
+        _ => "Tutti i movimenti",
+    };
+
+    private string IncomeCardLabel => _periodMode switch
+    {
+        PeriodMode.Month => "Entrate del mese",
+        PeriodMode.Year => "Entrate dell'anno",
+        _ => "Entrate totali",
+    };
+
+    private string ExpenseCardLabel => _periodMode switch
+    {
+        PeriodMode.Month => "Uscite del mese",
+        PeriodMode.Year => "Uscite dell'anno",
+        _ => "Uscite totali",
+    };
+
+    private string BalanceCardLabel => _periodMode switch
+    {
+        PeriodMode.Month => "Saldo del mese",
+        PeriodMode.Year => "Saldo dell'anno",
+        _ => "Saldo totale",
+    };
+
+    private string AverageIncomeLabel =>
+        _periodMode == PeriodMode.Year ? "Media entrate / mese" : "Media entrate / anno";
+
+    private string AverageExpenseLabel =>
+        _periodMode == PeriodMode.Year ? "Media uscite / mese" : "Media uscite / anno";
+
+    private string AverageBalanceLabel =>
+        _periodMode == PeriodMode.Year ? "Media saldo / mese" : "Media saldo / anno";
+
+    private string AverageHint => _periodMode == PeriodMode.Year
+        ? $"Calcolata su {_averageDivisor} {(_averageDivisor == 1 ? "mese" : "mesi")}"
+        : $"Calcolata su {_averageDivisor} {(_averageDivisor == 1 ? "anno" : "anni")}";
+
+    private string PeriodIncomeHint => _periodIncomeCount switch
+    {
+        0 => "Nessuna entrata registrata",
+        1 => "1 entrata registrata",
+        _ => $"{_periodIncomeCount} entrate registrate",
+    };
+
+    private string PeriodExpenseHint => _periodExpenseCount switch
+    {
+        0 => "Nessuna uscita registrata",
+        1 => "1 uscita registrata",
+        _ => $"{_periodExpenseCount} uscite registrate",
+    };
+
+    private IReadOnlyList<int> PeriodYears => _visibleHistory
+        .Select(row => row.OperationDate.Year)
+        .Append(Today.Year)
+        .Distinct()
+        .OrderBy(year => year)
+        .ToArray();
+
+    private int MinPeriodYear => PeriodYears.Count > 0 ? PeriodYears[0] : Today.Year;
+
+    private int MaxPeriodYear => PeriodYears.Count > 0 ? PeriodYears[^1] : Today.Year;
+
+    private DateOnly PeriodStart => _periodMode switch
+    {
+        PeriodMode.Month => new DateOnly(_periodYear, _periodMonth, 1),
+        PeriodMode.Year => new DateOnly(_periodYear, 1, 1),
+        _ => _visibleHistory.Count == 0 ? Today : _visibleHistory.Min(row => row.OperationDate),
+    };
+
+    private DateOnly PeriodEnd => _periodMode switch
+    {
+        PeriodMode.Month => new DateOnly(
+            _periodYear, _periodMonth, DateTime.DaysInMonth(_periodYear, _periodMonth)),
+        PeriodMode.Year => new DateOnly(_periodYear, 12, 31),
+        _ => _visibleHistory.Count == 0 ? Today : _visibleHistory.Max(row => row.OperationDate),
+    };
+
+    private IReadOnlyList<OperationHistoryRow> PeriodHistory => _periodMode == PeriodMode.All
+        ? _visibleHistory
+        : _visibleHistory
+            .Where(row => row.OperationDate >= PeriodStart && row.OperationDate <= PeriodEnd)
+            .ToArray();
+
+    private IReadOnlyList<OperationHistoryRow> FilteredHistory
+    {
+        get
+        {
+            IEnumerable<OperationHistoryRow> rows = _historyFilter switch
+            {
+                FilterIncome => PeriodHistory.Where(row => row.Kind == OperationKind.Income),
+                FilterExpense => PeriodHistory.Where(row => row.Kind == OperationKind.Expense),
+                _ => PeriodHistory,
+            };
+
+            if (_filterFrom is { } from)
+            {
+                rows = rows.Where(row => row.OperationDate >= from);
+            }
+
+            if (_filterTo is { } to)
+            {
+                rows = rows.Where(row => row.OperationDate <= to);
+            }
+
+            if (_filterCategories.Count > 0)
+            {
+                rows = rows.Where(row => row.CategoryName is not null && _filterCategories.Contains(row.CategoryName));
+            }
+
+            if (_filterSubcategories.Count > 0)
+            {
+                rows = rows.Where(row => row.Subcategory is not null && _filterSubcategories.Contains(row.Subcategory));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_filterSearch))
+            {
+                var search = _filterSearch.Trim();
+                rows = rows.Where(row =>
+                    (row.Description ?? string.Empty).Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                    (row.CategoryName ?? string.Empty).Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                    (row.Subcategory ?? string.Empty).Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                    Format.Date(row.OperationDate).Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                    row.OperationDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        .Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                    row.OperationDate.ToString("MMMM yyyy", ItalianCulture)
+                        .Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                    (row.Amount is { } amount &&
+                     (Format.Money(amount).Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                      amount.Amount.ToString("0.##", ItalianCulture)
+                          .Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                      amount.Amount.ToString("0.##", CultureInfo.InvariantCulture)
+                          .Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                      Math.Abs(amount.Amount).ToString("0.##", CultureInfo.InvariantCulture)
+                          .Contains(search, StringComparison.CurrentCultureIgnoreCase))));
+            }
+
+            if (TryParseAmount(_filterAmountMin, out var minAmount))
+            {
+                rows = rows.Where(row => Math.Abs(row.Amount.GetValueOrDefault().Amount) >= minAmount);
+            }
+
+            if (TryParseAmount(_filterAmountMax, out var maxAmount))
+            {
+                rows = rows.Where(row => Math.Abs(row.Amount.GetValueOrDefault().Amount) <= maxAmount);
+            }
+
+            return rows.ToArray();
+        }
+    }
+
+    private IReadOnlyList<OperationHistoryRow> PagedHistory
+    {
+        get
+        {
+            var page = CurrentPage;
+            return FilteredHistory.Skip((page - 1) * _pageSize).Take(_pageSize).ToArray();
+        }
+    }
+
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(FilteredHistory.Count / (double)_pageSize));
+
+    private int CurrentPage => Math.Clamp(_page, 1, PageCount);
+
+    private string PageSummary
+    {
+        get
+        {
+            var count = FilteredHistory.Count;
+            if (count == 0)
+            {
+                return "0 movimenti";
+            }
+
+            var start = ((CurrentPage - 1) * _pageSize) + 1;
+            var end = Math.Min(CurrentPage * _pageSize, count);
+            return $"{start}–{end} di {count} movimenti";
+        }
+    }
+
+    private bool HasActiveFilters =>
+        _periodMode != PeriodMode.Month ||
+        _periodYear != Today.Year ||
+        _periodMonth != Today.Month ||
+        _historyFilter != FilterAll ||
+        _filterFrom is not null ||
+        _filterTo is not null ||
+        _filterCategories.Count > 0 ||
+        _filterSubcategories.Count > 0 ||
+        !string.IsNullOrWhiteSpace(_filterSearch) ||
+        !string.IsNullOrWhiteSpace(_filterAmountMin) ||
+        !string.IsNullOrWhiteSpace(_filterAmountMax);
+
+    private IReadOnlyList<string> CategoryFilterOptions => PeriodHistory
+        .Select(row => row.CategoryName)
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Select(name => name!)
+        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+        .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
+    private IReadOnlyList<string> SubcategoryFilterOptions => PeriodHistory
+        .Where(row => _filterCategories.Count == 0 ||
+                      (row.CategoryName is not null && _filterCategories.Contains(row.CategoryName)))
+        .Select(row => row.Subcategory)
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Select(name => name!)
+        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+        .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
+    private bool HasDateFilter => _datePreset != "none";
+
+    private bool HasAmountFilter =>
+        !string.IsNullOrWhiteSpace(_filterAmountMin) || !string.IsNullOrWhiteSpace(_filterAmountMax);
+
+    private int CategoryFilterCount => _filterCategories.Count;
+
+    private int SubcategoryFilterCount => _filterSubcategories.Count;
+
+    private string DateFilterLabel => _datePreset switch
+    {
+        "7d" => "Ultimi 7 giorni",
+        "30d" => "Ultimi 30 giorni",
+        "currentMonth" => "Questo mese",
+        "lastMonth" => "Mese scorso",
+        "currentYear" => "Quest'anno",
+        "custom" => "Periodo personalizzato",
+        "all" => "Tutto il periodo",
+        _ => "Periodo",
+    };
+
+    private bool IsCurrentMonthSelected =>
+        _periodMode == PeriodMode.Month && _periodYear == Today.Year && _periodMonth == Today.Month;
+
+    private bool IsLastMonthSelected
+    {
+        get
+        {
+            if (_periodMode != PeriodMode.Month)
+            {
+                return false;
+            }
+
+            var previous = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-1);
+            return _periodYear == previous.Year && _periodMonth == previous.Month;
+        }
+    }
+
+    private bool IsCurrentYearSelected =>
+        _periodMode == PeriodMode.Year && _periodYear == Today.Year;
+
+    private void ToggleFilterMenu(FilterMenu menu) =>
+        _openFilterMenu = _openFilterMenu == menu ? null : menu;
+
+    private void CloseFilterMenus() => _openFilterMenu = null;
+
+    private void SetDatePreset(string preset)
+    {
+        var today = Today;
+        switch (preset)
+        {
+            case "7d":
+                _filterFrom = today.AddDays(-6);
+                _filterTo = today;
+                break;
+            case "30d":
+                _filterFrom = today.AddDays(-29);
+                _filterTo = today;
+                break;
+            case "currentMonth":
+                _periodMode = PeriodMode.Month;
+                _periodYear = today.Year;
+                _periodMonth = today.Month;
+                _filterFrom = null;
+                _filterTo = null;
+                break;
+            case "lastMonth":
+                var previous = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
+                _periodMode = PeriodMode.Month;
+                _periodYear = previous.Year;
+                _periodMonth = previous.Month;
+                _filterFrom = null;
+                _filterTo = null;
+                break;
+            case "currentYear":
+                _periodMode = PeriodMode.Year;
+                _periodYear = today.Year;
+                _filterFrom = null;
+                _filterTo = null;
+                break;
+            case "all":
+                _periodMode = PeriodMode.All;
+                _filterFrom = null;
+                _filterTo = null;
+                break;
+            default:
+                _filterFrom = null;
+                _filterTo = null;
+                break;
+        }
+
+        _datePreset = preset;
+        _openFilterMenu = null;
+        _page = 1;
+        ComputePeriodSummary();
+    }
+
+    private void OnCustomDateChanged()
+    {
+        _datePreset = "custom";
+        _page = 1;
+    }
+
+    private void SetTypeFilter(string filter)
+    {
+        _historyFilter = filter;
+        _openFilterMenu = null;
+        _page = 1;
+    }
+
+    private void ToggleCategoryFilter(string category, ChangeEventArgs args)
+    {
+        if (args.Value is true)
+        {
+            _filterCategories.Add(category);
+        }
+        else
+        {
+            _filterCategories.Remove(category);
+        }
+
+        PruneSubcategoryFilters();
+        _page = 1;
+    }
+
+    private void ToggleSubcategoryFilter(string subcategory, ChangeEventArgs args)
+    {
+        if (args.Value is true)
+        {
+            _filterSubcategories.Add(subcategory);
+        }
+        else
+        {
+            _filterSubcategories.Remove(subcategory);
+        }
+
+        _page = 1;
+    }
+
+    private void ClearCategoryFilters()
+    {
+        _filterCategories.Clear();
+        _page = 1;
+    }
+
+    private void ClearSubcategoryFilters()
+    {
+        _filterSubcategories.Clear();
+        _page = 1;
+    }
+
+    private void PruneSubcategoryFilters()
+    {
+        var options = SubcategoryFilterOptions.ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        _filterSubcategories.RemoveWhere(value => !options.Contains(value));
+    }
+
+    private void OnSearchInput(ChangeEventArgs args)
+    {
+        _filterSearch = args.Value?.ToString() ?? "";
+        _page = 1;
+    }
+
+    private void OnAmountMinInput(ChangeEventArgs args)
+    {
+        _filterAmountMin = args.Value?.ToString() ?? "";
+        _page = 1;
+    }
+
+    private void OnAmountMaxInput(ChangeEventArgs args)
+    {
+        _filterAmountMax = args.Value?.ToString() ?? "";
+        _page = 1;
+    }
+
+    private void OnPageSizeChanged() => _page = 1;
+
+    private void PreviousPage() => _page = Math.Max(1, CurrentPage - 1);
+
+    private void NextPage() => _page = Math.Min(PageCount, CurrentPage + 1);
+
+    private void ResetFilters()
+    {
+        _periodMode = PeriodMode.Month;
+        _periodYear = Today.Year;
+        _periodMonth = Today.Month;
+        _historyFilter = FilterAll;
+        _filterFrom = null;
+        _filterTo = null;
+        _datePreset = "none";
+        _filterCategories.Clear();
+        _filterSubcategories.Clear();
+        _filterSearch = "";
+        _filterAmountMin = "";
+        _filterAmountMax = "";
+        _openFilterMenu = null;
+        _page = 1;
+        ComputePeriodSummary();
+    }
+
+    private string EmptyFilterTitle => _historyFilter switch
+    {
+        FilterIncome => "Nessuna entrata",
+        FilterExpense => "Nessuna uscita",
+        _ => "Nessun movimento",
+    };
+
+    private bool TrendHasData => TrendPoints.Any(point =>
+        _trendKind == TrendKind.Income ? point.Income > 0m : point.Expense > 0m);
+
+    private string TrendTitle => _trendKind == TrendKind.Income ? "Entrate" : "Uscite";
+
+    private string TrendToggleClass(TrendKind kind) =>
+        _trendKind == kind ? "trend-toggle-button active" : "trend-toggle-button";
+
+    private void SelectTrend(TrendKind kind) => _trendKind = kind;
+
+    private IReadOnlyList<TrendPoint> TrendPoints => _periodMode switch
+    {
+        PeriodMode.Month => BuildDayPoints(),
+        PeriodMode.Year => BuildMonthPoints(),
+        _ => BuildYearPoints(),
+    };
+
+    private IReadOnlyList<TrendPoint> BuildDayPoints()
+    {
+        var days = DateTime.DaysInMonth(_periodYear, _periodMonth);
+        var result = new List<TrendPoint>(days);
+        for (var day = 1; day <= days; day++)
+        {
+            var rows = _visibleHistory.Where(row =>
+                row.OperationDate.Year == _periodYear &&
+                row.OperationDate.Month == _periodMonth &&
+                row.OperationDate.Day == day);
+            var (income, expense) = Totals(rows);
+            result.Add(new TrendPoint(new DateOnly(_periodYear, _periodMonth, day), income, expense));
+        }
+
+        return result;
+    }
+
+    private IReadOnlyList<TrendPoint> BuildMonthPoints()
+    {
+        var result = new List<TrendPoint>(12);
+        for (var month = 1; month <= 12; month++)
+        {
+            var rows = _visibleHistory.Where(row =>
+                row.OperationDate.Year == _periodYear && row.OperationDate.Month == month);
+            var (income, expense) = Totals(rows);
+            result.Add(new TrendPoint(new DateOnly(_periodYear, month, 1), income, expense));
+        }
+
+        return result;
+    }
+
+    private IReadOnlyList<TrendPoint> BuildYearPoints()
+    {
+        var years = _visibleHistory
+            .Select(row => row.OperationDate.Year)
+            .Distinct()
+            .OrderBy(year => year)
+            .ToArray();
+        var result = new List<TrendPoint>(years.Length);
+        foreach (var year in years)
+        {
+            var rows = _visibleHistory.Where(row => row.OperationDate.Year == year);
+            var (income, expense) = Totals(rows);
+            result.Add(new TrendPoint(new DateOnly(year, 1, 1), income, expense));
+        }
+
+        return result;
+    }
+
+    private static (decimal Income, decimal Expense) Totals(IEnumerable<OperationHistoryRow> rows)
+    {
+        var income = rows
+            .Where(row => row.Kind == OperationKind.Income && row.Amount is { Amount: > 0m })
+            .Sum(row => row.Amount.GetValueOrDefault().Amount);
+        var expense = rows
+            .Where(row => row.Kind == OperationKind.Expense && row.Amount is { Amount: < 0m })
+            .Sum(row => -row.Amount.GetValueOrDefault().Amount);
+        return (income, expense);
+    }
+
+    private string TrendLabelMode => _periodMode switch
+    {
+        PeriodMode.Month => "day",
+        PeriodMode.Year => "month-name",
+        _ => "year",
+    };
+
+    private string TrendSubtitle => _periodMode switch
+    {
+        PeriodMode.Month => $"Andamento giornaliero · {PeriodLabel}",
+        PeriodMode.Year => $"Andamento mensile · {_periodYear}",
+        _ => "Andamento annuale · Tutti i dati",
+    };
+
+    private string TrendCardClass => _periodMode == PeriodMode.Year
+        ? "card operations-trend-card sparse-labels-mobile"
+        : "card operations-trend-card";
+
+    private IReadOnlyList<TimeSeriesSeries> TrendSeries
+    {
+        get
+        {
+            if (TrendPoints.Count == 0)
+            {
+                return [];
+            }
+
+            var isIncome = _trendKind == TrendKind.Income;
+            var points = TrendPoints
+                .Select(point => new TimeSeriesPoint(point.Date, isIncome ? point.Income : point.Expense))
+                .ToArray();
+            return
+            [
+                new TimeSeriesSeries(
+                    isIncome ? "Entrate" : "Uscite",
+                    points,
+                    isIncome ? IncomeColor : ExpenseColor,
+                    TimeSeriesSeriesKind.Bar),
+            ];
+        }
+    }
+
+    private IReadOnlyList<CategoryBreakdownItem> ExpenseSlices
+    {
+        get
+        {
+            var start = PeriodStart;
+            var end = PeriodEnd;
+            var rows = _visibleHistory
+                .Where(row => row.Kind == OperationKind.Expense &&
+                              row.OperationDate >= start && row.OperationDate <= end &&
+                              row.Amount is { Amount: < 0m })
+                .ToArray();
+            if (rows.Length == 0)
+            {
+                return [];
+            }
+
+            var groups = rows
+                .GroupBy(row => string.IsNullOrWhiteSpace(row.CategoryName) ? "Senza categoria" : row.CategoryName)
+                .Select(group => new
+                {
+                    Label = group.Key,
+                    Amount = group.Sum(row => -row.Amount.GetValueOrDefault().Amount),
+                    Color = CategoryAppearance.ColorFor(
+                        group.Select(row => row.CategoryColor).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color))),
+                })
+                .OrderByDescending(item => item.Amount)
+                .ToList();
+
+            var total = groups.Sum(item => item.Amount);
+            if (total <= 0m)
+            {
+                return [];
+            }
+
+            var slices = new List<CategoryBreakdownItem>(groups.Count);
+            var offset = 0m;
+            foreach (var item in groups)
+            {
+                var share = item.Amount / total;
+                slices.Add(new CategoryBreakdownItem(
+                    item.Label,
+                    new Money(item.Amount, Currency.Euro),
+                    share,
+                    item.Color,
+                    offset));
+                offset += share;
+            }
+
+            return slices;
+        }
+    }
+
+    private IReadOnlyList<CategoryBreakdownItem> SelectedCategorySlices
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_selectedCategory))
+            {
+                return [];
+            }
+
+            var start = PeriodStart;
+            var end = PeriodEnd;
+            var rows = _visibleHistory
+                .Where(row => row.Kind == OperationKind.Expense &&
+                              row.OperationDate >= start && row.OperationDate <= end &&
+                              row.Amount is { Amount: < 0m })
+                .Where(row => string.Equals(
+                    string.IsNullOrWhiteSpace(row.CategoryName) ? "Senza categoria" : row.CategoryName,
+                    _selectedCategory,
+                    StringComparison.CurrentCultureIgnoreCase))
+                .ToArray();
+            if (rows.Length == 0)
+            {
+                return [];
+            }
+
+            var groups = rows
+                .GroupBy(row => string.IsNullOrWhiteSpace(row.Subcategory) ? "Generale" : row.Subcategory)
+                .Select(group => new
+                {
+                    Label = group.Key,
+                    Amount = group.Sum(row => -row.Amount.GetValueOrDefault().Amount),
+                })
+                .OrderByDescending(item => item.Amount)
+                .ToArray();
+
+            var total = groups.Sum(item => item.Amount);
+            if (total <= 0m)
+            {
+                return [];
+            }
+
+            var slices = new List<CategoryBreakdownItem>(groups.Length);
+            var offset = 0m;
+            for (var index = 0; index < groups.Length; index++)
+            {
+                var group = groups[index];
+                var share = group.Amount / total;
+                slices.Add(new CategoryBreakdownItem(
+                    group.Label,
+                    new Money(group.Amount, Currency.Euro),
+                    share,
+                    ChartPalette.Colors[index % ChartPalette.Colors.Length],
+                    offset));
+                offset += share;
+            }
+
+            return slices;
+        }
+    }
+
+    private Money? SelectedCategoryTotal => SelectedCategorySlices.Count == 0
+        ? null
+        : new Money(SelectedCategorySlices.Sum(item => item.Amount.Amount), Currency.Euro);
+
+    private Money? ExpenseTotal => ExpenseSlices.Count == 0
+        ? null
+        : new Money(ExpenseSlices.Sum(slice => slice.Amount.Amount), Currency.Euro);
+
+    private string ExpensePieDescription => ExpenseSlices.Count == 0
+        ? string.Empty
+        : $"Uscite per categoria: {string.Join(", ", ExpenseSlices.Select(slice => $"{slice.Label} {Format.Money(slice.Amount)} ({Format.Percent(slice.Share)})"))}.";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (!_loading && _loadError is null)
+        {
+            await JS.InvokeVoidAsync("mfScrollActiveMonth", _periodMonthsRef);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+        await LoadAsync();
+        if (IsNewOperationRequested() && _loadError is null)
+        {
+            _dialogOpen = true;
+        }
+    }
+
+    private bool IsNewOperationRequested()
+    {
+        var query = Navigation.ToAbsoluteUri(Navigation.Uri).Query;
+        return query.Contains("new=1", StringComparison.OrdinalIgnoreCase) ||
+               query.Contains("new=true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
         try
         {
-            _loadError = null;
-            _accounts = await AccountsService.ListAsync();
             _categories = await CategoriesService.ListAsync();
-            await LoadMovementsAsync();
             await LoadHistoryAsync();
         }
         catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
@@ -326,72 +1374,9 @@ else
         {
             _loadError = "Impossibile contattare il database. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
         }
-
-        _loaded = true;
-        if (_accounts.Count == 0)
-        {
-            _missingAccountsWarning = "Non ci sono conti: crea prima un conto dalla pagina Conti.";
-        }
-        else if (IsTransfer && _accounts.Count < 2)
-        {
-            _missingAccountsWarning = "Per un trasferimento servono almeno due conti.";
-        }
-
-        if (_categoryChoices.Count == 0)
-        {
-            _missingCategoriesWarning = IsIncome
-                ? "Non ci sono categorie di tipo Entrate: la registrazione di un'entrata ne richiede una."
-                : "Non ci sono categorie di tipo Uscite: la registrazione di un'uscita ne richiede una.";
-        }
-    }
-
-    private void OnKindChanged()
-    {
-        _saveError = null;
-        _savedMessage = null;
-        _missingCategoriesWarning = _categoryChoices.Count == 0
-            ? $"Non ci sono categorie compatibili col tipo scelto ({KindLabel})."
-            : null;
-    }
-
-    private async Task RegisterAsync()
-    {
-        if (!_loaded || _saving)
-        {
-            return;
-        }
-
-        if (_accounts.Count == 0)
-        {
-            _saveError = "Non ci sono conti: crea prima un conto dalla pagina Conti.";
-            return;
-        }
-
-        _saving = true;
-        _saveError = null;
-        _savedMessage = null;
-        StateHasChanged();
-        try
-        {
-            var dispatcher = new OperationFormDispatcher(Registrations);
-            var accountsById = _accounts.ToDictionary(account => account.Id);
-            var model = CurrentModel();
-            var result = await dispatcher.SubmitAsync(model, accountsById);
-            if (result.Succeeded)
-            {
-                _savedMessage = result.SuccessMessage;
-                ResetForm();
-                await LoadMovementsAsync();
-                await LoadHistoryAsync();
-            }
-            else
-            {
-                _saveError = result.Error;
-            }
-        }
         finally
         {
-            _saving = false;
+            _loading = false;
         }
     }
 
@@ -401,134 +1386,194 @@ else
         {
             _historyError = null;
             _history = await History.ListAsync();
+            _visibleHistory = _history
+                .Where(row => !row.IsReversal && !row.IsReversed)
+                .Where(row => row.Kind is OperationKind.Income or OperationKind.Expense)
+                .ToArray();
+            EnsurePeriod();
+            ComputePeriodSummary();
         }
         catch (Exception)
         {
-            _historyError = "Impossibile leggere la cronologia delle operazioni.";
+            _historyError = "Impossibile leggere i movimenti.";
         }
     }
 
-    private void StartReversal(OperationHistoryRow row)
+    private void EnsurePeriod()
     {
-        _reversalError = null;
-        _pendingReversalRow = row;
+        var years = PeriodYears;
+        if (years.Count == 0)
+        {
+            _periodYear = Today.Year;
+            _periodMonth = Today.Month;
+            return;
+        }
+
+        if (!years.Contains(_periodYear))
+        {
+            _periodYear = years.Contains(Today.Year) ? Today.Year : years[^1];
+        }
+
+        _periodMonth = Math.Clamp(_periodMonth, 1, 12);
     }
 
-    private void CancelReversal()
+    private void ComputePeriodSummary()
     {
-        _pendingReversalRow = null;
-        _reversalError = null;
+        _altHoverSlice = null;
+        var rows = PeriodHistory;
+        var (income, expense) = Totals(rows);
+
+        _periodIncome = new Money(income, Currency.Euro);
+        _periodExpense = new Money(expense, Currency.Euro);
+        _periodNet = new Money(income - expense, Currency.Euro);
+        _periodIncomeCount = rows.Count(row => row.Kind == OperationKind.Income);
+        _periodExpenseCount = rows.Count(row => row.Kind == OperationKind.Expense);
+
+        _averageDivisor = _periodMode switch
+        {
+            PeriodMode.Year => _periodYear == Today.Year ? Math.Max(1, Today.Month) : 12,
+            PeriodMode.All => Math.Max(1, _visibleHistory
+                .Select(row => row.OperationDate.Year)
+                .Distinct()
+                .Count()),
+            _ => 1,
+        };
+        _averageIncome = new Money(income / _averageDivisor, Currency.Euro);
+        _averageExpense = new Money(expense / _averageDivisor, Currency.Euro);
+        _averageNet = new Money((income - expense) / _averageDivisor, Currency.Euro);
     }
 
-    private async Task ConfirmReversalAsync()
+    private void SelectMonth(int month)
     {
-        if (_pendingReversalRow is null || _saving)
+        _periodMode = PeriodMode.Month;
+        _periodMonth = month;
+        OnPeriodChanged();
+    }
+
+    private void SelectYear()
+    {
+        _periodMode = PeriodMode.Year;
+        OnPeriodChanged();
+    }
+
+    private void SelectAll()
+    {
+        _periodMode = PeriodMode.All;
+        OnPeriodChanged();
+    }
+
+    private void ChangePeriodYear(int delta)
+    {
+        var years = PeriodYears;
+        if (years.Count == 0)
         {
             return;
         }
 
-        _saving = true;
-        _reversalError = null;
-        StateHasChanged();
-        try
+        var index = Array.IndexOf(years.ToArray(), _periodYear);
+        if (index < 0)
         {
-            await Reversals.ReverseAsync(_pendingReversalRow.Id);
-            _pendingReversalRow = null;
-            _savedMessage = "Operazione eliminata: i suoi effetti sono stati annullati e le righe dei movimenti non la mostrano più.";
-            await LoadHistoryAsync();
-            await LoadMovementsAsync();
+            index = years.Count - 1;
         }
-        catch (InvalidOperationException exception)
+
+        _periodYear = years[Math.Clamp(index + delta, 0, years.Count - 1)];
+        if (_periodMode == PeriodMode.All)
         {
-            _reversalError = FriendlyDeleteError(exception.Message);
+            _periodMode = PeriodMode.Year;
         }
-        catch (ArgumentException exception)
-        {
-            _reversalError = FriendlyDeleteError(exception.Message);
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
-        {
-            _reversalError = "Non è stato possibile eliminare l'operazione: risulta già eliminata.";
-        }
-        catch (Exception)
-        {
-            _reversalError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
-        }
-        finally
-        {
-            _saving = false;
-            if (_reversalError is not null)
-            {
-                _pendingReversalRow = null;
-            }
-        }
+
+        OnPeriodChanged();
     }
 
-    /// <summary>Traduce i messaggi di servizio che parlano di "storno" in linguaggio di eliminazione per la UI.</summary>
-    private static string FriendlyDeleteError(string serviceMessage) =>
-        serviceMessage.Contains("stornat", StringComparison.OrdinalIgnoreCase)
-            ? "L'operazione risulta già eliminata."
-            : serviceMessage;
-
-    private static string CategoryLabel(Category category) =>
-        string.IsNullOrWhiteSpace(category.Subcategory)
-            ? category.Name
-            : $"{category.Name} · {category.Subcategory}";
-
-    private static string HistoryKindLabel(OperationKind kind) => kind switch
+    private void OnPeriodChanged()
     {
-        OperationKind.Income => "Entrata",
-        OperationKind.Expense => "Uscita",
-        OperationKind.Transfer => "Trasferimento",
-        _ => kind.ToString(),
-    };
-
-    private OperationFormModel CurrentModel() =>
-        new()
-        {
-            Kind = Kind,
-            AccountId = ParseOptionalGuid(_accountId),
-            CategoryId = ParseOptionalGuid(_categoryId),
-            SourceAccountId = ParseOptionalGuid(_sourceAccountId),
-            DestinationAccountId = ParseOptionalGuid(_destinationAccountId),
-            SourceAmountText = _sourceAmountText,
-            ValidAt = _validAt,
-            Description = string.IsNullOrWhiteSpace(_description) ? null : _description,
-            Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes,
-        };
-
-    private void ResetForm()
-    {
-        _sourceAmountText = "";
-        _description = null;
-        _notes = null;
-        _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
+        // La barra del periodo è il filtro data principale: azzera l'intervallo manuale
+        // della tabella per evitare che i due filtri si escludano a vicenda.
+        _filterFrom = null;
+        _filterTo = null;
+        _datePreset = "none";
+        _openFilterMenu = null;
+        _page = 1;
+        ComputePeriodSummary();
     }
 
-    private async Task LoadMovementsAsync()
+    private string MonthShortName(int month) =>
+        ItalianCulture.TextInfo.ToTitleCase(
+            new DateOnly(2000, month, 1).ToString("MMM", ItalianCulture));
+
+    private string MonthFullName(int month) =>
+        ItalianCulture.TextInfo.ToTitleCase(
+            new DateOnly(2000, month, 1).ToString("MMMM", ItalianCulture));
+
+    private decimal? MonthNetFor(int month)
     {
-        try
+        var rows = _visibleHistory
+            .Where(row => row.OperationDate.Year == _periodYear && row.OperationDate.Month == month)
+            .ToArray();
+        if (rows.Length == 0)
         {
-            _movementError = null;
-            var postings = await MovementsService.ListAsync(null, null, null);
-            _movements = postings
-                .Select(posting => new MovementRow(
-                    posting,
-                    AccountLabelOf(posting.AccountId)))
-                .ToList();
+            return null;
         }
-        catch (Exception exception)
-        {
-            _movementError = $"Impossibile leggere i movimenti: {exception.Message}";
-        }
+
+        var (income, expense) = Totals(rows);
+        return income - expense;
     }
 
-    private string AccountLabelOf(Guid accountId) =>
-        _accounts.FirstOrDefault(account => account.Id == accountId)?.Name
-            ?? "Conto " + accountId;
+    private string MonthNetLabel(int month)
+    {
+        var net = MonthNetFor(month);
+        if (net is null)
+        {
+            return "—";
+        }
 
-    private static Guid? ParseOptionalGuid(string value) =>
-        Guid.TryParse(value, out var parsed) ? parsed : null;
+        var money = new Money(net.Value, Currency.Euro);
+        return net.Value > 0m ? "+" + Format.MoneyNoDecimals(money) : Format.MoneyNoDecimals(money);
+    }
+
+    private string MonthButtonTitle(int month)
+    {
+        var net = MonthNetFor(month);
+        return net is null
+            ? $"{MonthFullName(month)} {_periodYear}"
+            : $"{MonthFullName(month)} {_periodYear} · {Format.Money(new Money(net.Value, Currency.Euro))}";
+    }
+
+    private void OpenDialog()
+    {
+        _savedMessage = null;
+        _dialogOpen = true;
+    }
+
+    private void CloseDialog() => _dialogOpen = false;
+
+    private async Task OnOperationSaved(string message)
+    {
+        _savedMessage = message;
+        await LoadHistoryAsync();
+    }
+
+    private void OpenEdit(OperationHistoryRow row)
+    {
+        _savedMessage = null;
+        _editingRow = row;
+        _editDialogOpen = true;
+    }
+
+    private void CloseEdit() => _editDialogOpen = false;
+
+    private void SetAlternativeHover(CategoryBreakdownItem slice) => _altHoverSlice = slice;
+
+    private void ClearAlternativeHover() => _altHoverSlice = null;
+
+    private void OpenCategoryBreakdown(CategoryBreakdownItem slice)
+    {
+        _selectedCategory = slice.Label;
+        _selectedCategoryColor = slice.Color;
+        _categoryDialogOpen = true;
+    }
+
+    private void CloseCategoryBreakdown() => _categoryDialogOpen = false;
 
     private static bool TryParseAmount(string? text, out decimal amount)
     {
@@ -541,4 +1586,44 @@ else
         return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
             || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
     }
+
+    private void OnRowKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args, OperationHistoryRow row)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            OpenEdit(row);
+        }
+    }
+
+    private static string AmountTone(OperationKind kind) => kind switch
+    {
+        OperationKind.Income => "income",
+        OperationKind.Expense => "expense",
+        _ => "neutral",
+    };
+
+    private static string Tone(Money? value) => value switch
+    {
+        { Amount: > 0m } => "income",
+        { Amount: < 0m } => "expense",
+        _ => "neutral",
+    };
+
+    private static string DashArray(decimal share)
+    {
+        var value = Math.Clamp(share, 0m, 1m) * 100m;
+        return $"{Invariant(value)} {Invariant(100m - value)}";
+    }
+
+    private static string DashOffset(decimal offset) =>
+        Invariant(-Math.Clamp(offset, 0m, 1m) * 100m);
+
+    private static string Invariant(decimal value) =>
+        value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private sealed record TrendPoint(DateOnly Date, decimal Income, decimal Expense)
+    {
+        public decimal Net => Income - Expense;
+    }
+
 }

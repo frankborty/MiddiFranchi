@@ -84,15 +84,16 @@ public class AccountPostingMovementTests : PostgresTestBase
     public async Task Movements_ShouldExcludeReversedOperationsAndKeepTheOriginalRow()
     {
         var (account, category) = await AddOrdinaryContextAsync(CategoryType.Income);
-        var registration = new OperationRegistrationService(
-            new AccountRepository(Context),
-            new CategoryRepository(Context),
-            new FinancialOperationRepository(Context));
-        var income = await registration.IncomeAsync(new RegisterIncomeRequest(
-            account.Id,
-            category.Id,
+        // La registrazione dalla UI non usa più il conto: qui serve un movimento
+        // con posting per verificare l'esclusione delle operazioni stornate.
+        var income = new Income(
+            Guid.NewGuid(),
+            account,
+            category,
             new PositiveMoney(new Money(100m, Currency.Euro)),
-            new DateOnly(2026, 3, 1)));
+            new DateOnly(2026, 3, 1),
+            DateTimeOffset.UtcNow);
+        await new FinancialOperationRepository(Context).AddAsync(income);
         ClearTracker();
 
         var operations = new FinancialOperationRepository(Context);
@@ -128,20 +129,22 @@ public class AccountPostingMovementTests : PostgresTestBase
     {
         var (account, incomeCategory) = await AddOrdinaryContextAsync(CategoryType.Income);
         var expenseCategory = await AddCategoryAsync(CategoryType.Expense);
-        var registration = new OperationRegistrationService(
-            new AccountRepository(Context),
-            new CategoryRepository(Context),
-            new FinancialOperationRepository(Context));
-        await registration.IncomeAsync(new RegisterIncomeRequest(
-            account.Id,
-            incomeCategory.Id,
+        // Movimenti con conto costruiti direttamente per verificare il calcolo dai posting.
+        var operations = new FinancialOperationRepository(Context);
+        await operations.AddAsync(new Income(
+            Guid.NewGuid(),
+            account,
+            incomeCategory,
             new PositiveMoney(new Money(150m, Currency.Euro)),
-            new DateOnly(2026, 3, 1)));
-        await registration.ExpenseAsync(new RegisterExpenseRequest(
-            account.Id,
-            expenseCategory.Id,
+            new DateOnly(2026, 3, 1),
+            DateTimeOffset.UtcNow));
+        await operations.AddAsync(new Expense(
+            Guid.NewGuid(),
+            account,
+            expenseCategory,
             new PositiveMoney(new Money(70m, Currency.Euro)),
-            new DateOnly(2026, 3, 8)));
+            new DateOnly(2026, 3, 8),
+            DateTimeOffset.UtcNow));
         ClearTracker();
 
         var accountService = new AccountService(
@@ -201,19 +204,13 @@ public class AccountPostingMovementTests : PostgresTestBase
     [PostgresFact]
     public async Task Registration_ShouldRejectAnInexistentCategory()
     {
-        var accountRepository = new AccountRepository(Context);
-        var account = new Account(
-            Guid.NewGuid(), "Conto corrente", AccountType.Checking,
-            Currency.Euro, AccountStatus.Active);
-        await accountRepository.AddAsync(account);
         var registration = new OperationRegistrationService(
-            accountRepository,
+            new AccountRepository(Context),
             new CategoryRepository(Context),
             new FinancialOperationRepository(Context));
 
         var missingCategory = await Should.ThrowAsync<InvalidOperationException>(
             () => registration.IncomeAsync(new RegisterIncomeRequest(
-                account.Id,
                 Guid.NewGuid(),
                 new PositiveMoney(new Money(10m, Currency.Euro)),
                 new DateOnly(2026, 3, 10))));

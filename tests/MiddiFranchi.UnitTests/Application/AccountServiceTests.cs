@@ -47,6 +47,18 @@ public class AccountServiceTests
     }
 
     [Fact]
+    public async Task Create_ShouldRejectADuplicateName()
+    {
+        await _service.CreateAsync(new NewAccount("PostePay", AccountType.Checking));
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.CreateAsync(new NewAccount("postepay", AccountType.Checking)));
+
+        exception.Message.ShouldContain("Esiste già un conto con questo nome");
+        _accounts.Accounts.Count.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task GetById_ShouldReturnThePersistedAccount()
     {
         var created = await CreateAccountAsync("Conto corrente");

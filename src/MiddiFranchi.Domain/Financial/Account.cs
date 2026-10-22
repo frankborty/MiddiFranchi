@@ -50,8 +50,10 @@ public sealed class Account
     /// <summary>Colore personalizzato del conto nei grafici, nel formato #RRGGBB; null = automatico.</summary>
     public string? ColorHex { get; }
 
-    /// <summary>Icona personalizzata come data URL; null = icona predefinita del tipo o logo del conto.</summary>
+    /// <summary>Immagine data URL oppure icona condivisa nel formato <c>icon:nome</c>; null = logo o icona del tipo.</summary>
     public string? IconDataUrl { get; }
+
+    public const string IconTokenPrefix = "icon:";
 
     private static string? NormalizeColor(string? colorHex)
     {
@@ -81,10 +83,24 @@ public sealed class Account
         }
 
         var normalized = iconDataUrl.Trim();
+        if (normalized.StartsWith(IconTokenPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var icon = normalized[IconTokenPrefix.Length..];
+            if (icon.Length is 0 or > 40 ||
+                !icon.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'))
+            {
+                throw new ArgumentException(
+                    "L'icona del conto non è valida.",
+                    nameof(iconDataUrl));
+            }
+
+            return IconTokenPrefix + icon.ToLowerInvariant();
+        }
+
         if (!normalized.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException(
-                "L'icona del conto deve essere un'immagine.",
+                "L'icona del conto deve essere un'immagine o un'icona selezionata.",
                 nameof(iconDataUrl));
         }
 

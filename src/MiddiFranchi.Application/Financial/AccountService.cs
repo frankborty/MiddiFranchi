@@ -25,9 +25,17 @@ public sealed class AccountService
 
     public async Task<Account> CreateAsync(NewAccount request, CancellationToken cancellationToken = default)
     {
+        var name = request.Name.Trim();
+        var existing = await _accounts.ListAsync(cancellationToken);
+        if (existing.Any(account =>
+                string.Equals(account.Name.Trim(), name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            throw new InvalidOperationException("Esiste già un conto con questo nome.");
+        }
+
         var account = new Account(
             Guid.NewGuid(),
-            request.Name,
+            name,
             request.Type,
             Currency.Euro,
             AccountStatus.Active);

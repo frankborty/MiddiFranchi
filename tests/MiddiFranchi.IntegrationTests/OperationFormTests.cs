@@ -48,58 +48,50 @@ public class OperationFormTests
     }
 
     [Fact]
-    public async Task SubmitAsync_ShouldRouteIncomeToTheIncomeService()
+    public async Task SubmitAsync_ShouldRouteIncomeToTheIncomeServiceWithoutAnAccount()
     {
-        var account = WithAccount("Conto corrente", Euro);
         var category = new Category(Guid.NewGuid(), "Stipendio", CategoryType.Income);
-        _accounts.Accounts.Add(account);
         _categories.Categories.Add(category);
 
         var result = await _dispatcher.SubmitAsync(
             new OperationFormModel
             {
                 Kind = OperationFormKind.Income,
-                AccountId = account.Id,
                 CategoryId = category.Id,
                 SourceAmountText = "123,45",
                 ValidAt = ValidAt,
-            },
-            NamedAccounts(account));
+            });
 
         result.Succeeded.ShouldBeTrue();
         var registered = _operations.Operations.ShouldHaveSingleItem();
         var income = registered.ShouldBeOfType<Income>();
+        income.Account.ShouldBeNull();
         income.Amount.Value.Amount.ShouldBe(123.45m);
         income.Amount.Value.Currency.Code.ShouldBe("EUR");
-        income.GeneratePostings().ShouldHaveSingleItem().SignedAmount.ShouldBe(123.45m);
+        income.GeneratePostings().ShouldBeEmpty();
     }
 
     [Fact]
-    public async Task SubmitAsync_ShouldRouteExpenseToTheExpenseService()
+    public async Task SubmitAsync_ShouldRouteExpenseToTheExpenseServiceWithoutAnAccount()
     {
-        var account = WithAccount("Conto corrente", Euro);
         var category = new Category(Guid.NewGuid(), "Affitto", CategoryType.Expense);
-        _accounts.Accounts.Add(account);
         _categories.Categories.Add(category);
 
         var result = await _dispatcher.SubmitAsync(
             new OperationFormModel
             {
                 Kind = OperationFormKind.Expense,
-                AccountId = account.Id,
                 CategoryId = category.Id,
                 SourceAmountText = "50.00",
                 ValidAt = ValidAt,
                 Description = "Affitto giugno",
-                Notes = "consulente pagamento",
-            },
-            NamedAccounts(account));
+            });
 
         result.Succeeded.ShouldBeTrue();
         var expense = _operations.Operations.ShouldHaveSingleItem().ShouldBeOfType<Expense>();
+        expense.Account.ShouldBeNull();
         expense.Amount.Value.Amount.ShouldBe(50m);
-        // Il segno resta nel posting, l'importo della spesa è positivo.
-        expense.GeneratePostings().ShouldHaveSingleItem().SignedAmount.ShouldBe(-50m);
+        expense.GeneratePostings().ShouldBeEmpty();
     }
 
     [Fact]
@@ -140,26 +132,24 @@ public class OperationFormTests
             ValidAt = ValidAt,
         };
 
-        var result = await _dispatcher.SubmitAsync(model, new Dictionary<Guid, Account>());
+        var result = await _dispatcher.SubmitAsync(model);
 
         result.Succeeded.ShouldBeFalse();
-        result.Error.ShouldNotBeNull().ShouldContain("conto destinatario");
+        result.Error.ShouldNotBeNull().ShouldContain("categoria");
         _operations.Operations.ShouldBeEmpty();
     }
 
     [Fact]
     public async Task SubmitAsync_ShouldRejectAMissingCategory()
     {
-        var account = WithAccount("Conto corrente", Euro);
         var model = new OperationFormModel
         {
             Kind = OperationFormKind.Income,
-            AccountId = account.Id,
             SourceAmountText = "10",
             ValidAt = ValidAt,
         };
 
-        var result = await _dispatcher.SubmitAsync(model, NamedAccounts(account));
+        var result = await _dispatcher.SubmitAsync(model);
 
         result.Error.ShouldNotBeNull().ShouldContain("categoria");
         _operations.Operations.ShouldBeEmpty();
@@ -168,20 +158,16 @@ public class OperationFormTests
     [Fact]
     public async Task SubmitAsync_ShouldRejectAMissingDate()
     {
-        var account = WithAccount("Conto corrente", Euro);
         var category = new Category(Guid.NewGuid(), "Stipendio", CategoryType.Income);
-        _accounts.Accounts.Add(account);
         _categories.Categories.Add(category);
 
         var result = await _dispatcher.SubmitAsync(
             new OperationFormModel
             {
                 Kind = OperationFormKind.Income,
-                AccountId = account.Id,
                 CategoryId = category.Id,
                 SourceAmountText = "10",
-            },
-            NamedAccounts(account));
+            });
 
         result.Error.ShouldNotBeNull().ShouldContain("data economica");
         _operations.Operations.ShouldBeEmpty();
@@ -196,21 +182,17 @@ public class OperationFormTests
     [InlineData("10.5", true)]
     public async Task SubmitAsync_ShouldValidateTheAmount(string amountText, bool expectedAccepted)
     {
-        var account = WithAccount("Conto corrente", Euro);
         var category = new Category(Guid.NewGuid(), "Stipendio", CategoryType.Income);
-        _accounts.Accounts.Add(account);
         _categories.Categories.Add(category);
 
         var result = await _dispatcher.SubmitAsync(
             new OperationFormModel
             {
                 Kind = OperationFormKind.Income,
-                AccountId = account.Id,
                 CategoryId = category.Id,
                 SourceAmountText = amountText,
                 ValidAt = ValidAt,
-            },
-            NamedAccounts(account));
+            });
 
         result.Succeeded.ShouldBe(expectedAccepted, result.Error ?? "riuscita");
         if (expectedAccepted)
@@ -250,21 +232,17 @@ public class OperationFormTests
     [Fact]
     public async Task SubmitAsync_ShouldExposeTheApplicationErrorMessageWithoutStackTraces()
     {
-        var account = WithAccount("Conto corrente", Euro);
         var category = new Category(Guid.NewGuid(), "Stipendio", CategoryType.Income);
-        _accounts.Accounts.Add(account);
         _categories.Categories.Add(category);
 
         var result = await _dispatcher.SubmitAsync(
             new OperationFormModel
             {
                 Kind = OperationFormKind.Income,
-                AccountId = account.Id,
                 CategoryId = Guid.NewGuid(),
                 SourceAmountText = "10",
                 ValidAt = ValidAt,
-            },
-            NamedAccounts(account));
+            });
 
         result.Succeeded.ShouldBeFalse();
         result.Error.ShouldNotBeNull().ShouldContain("non esiste");
@@ -338,6 +316,12 @@ public class OperationFormTests
             Categories[index] = category;
             return Task.CompletedTask;
         }
+
+        public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            Categories.RemoveAll(category => category.Id == id);
+            return Task.CompletedTask;
+        }
     }
 
     /// <summary>Falsificazione minimale del repository delle operazioni per i test di coordinamento.</summary>
@@ -360,6 +344,24 @@ public class OperationFormTests
         public Task AddAsync(FinancialOperation operation, CancellationToken cancellationToken = default)
         {
             Operations.Add(operation);
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateAsync(FinancialOperation operation, CancellationToken cancellationToken = default)
+        {
+            var index = Operations.FindIndex(candidate => candidate.Id == operation.Id);
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Operazione non trovata.");
+            }
+
+            Operations[index] = operation;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            Operations.RemoveAll(operation => operation.Id == id || operation.OriginalOperationId == id);
             return Task.CompletedTask;
         }
 

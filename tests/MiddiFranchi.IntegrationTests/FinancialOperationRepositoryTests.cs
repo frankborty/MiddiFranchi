@@ -26,7 +26,7 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         var date = new DateOnly(2026, 3, 10);
         var recordedAt = new DateTimeOffset(2026, 3, 10, 12, 30, 45, TimeSpan.Zero);
         var income = new Income(
-            Guid.NewGuid(), account, category, amount, date, recordedAt, "Stipendio", "Nota");
+            Guid.NewGuid(), account, category, amount, date, recordedAt, "Stipendio");
 
         await repository.AddAsync(income);
         ClearTracker();
@@ -42,7 +42,6 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         loadedIncome.OperationDate.ShouldBe(date);
         loadedIncome.RecordedAt.ShouldBe(recordedAt);
         loadedIncome.Description.ShouldBe("Stipendio");
-        loadedIncome.Notes.ShouldBe("Nota");
         loadedIncome.Status.ShouldBe(OperationStatus.Registered);
 
         var postings = await new AccountPostingRepository(Context).ListForAccountAsync(account.Id, date);

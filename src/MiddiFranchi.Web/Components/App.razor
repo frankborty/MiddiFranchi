@@ -60,11 +60,29 @@
             return isNaN(date.getTime()) ? null : date.getTime();
         };
 
-        /* Modalità etichette asse temporale: short dd MMM, hour HH:mm, month MMM yy, year. */
+        /* Modalità etichette asse temporale: short dd MMM, hour HH:mm, day, month MMM yy, month-name MMM, year. */
         window.mfSetAxisLabelMode = function (mode) {
-            window.mfAxisLabelMode = mode === "hour" || mode === "month" || mode === "year" ? mode : "short";
+            window.mfAxisLabelMode =
+                mode === "hour" || mode === "day" || mode === "month" || mode === "month-name" || mode === "year"
+                    ? mode
+                    : "short";
         };
         window.mfSetAxisLabelMode("short");
+
+        /* Su schermi stretti tiene visibile il mese selezionato nella barra del periodo. */
+        window.mfScrollActiveMonth = function (container) {
+            if (!container) return;
+            var active = container.querySelector(".period-month.active");
+            if (!active || container.scrollWidth <= container.clientWidth + 1) return;
+
+            var containerRect = container.getBoundingClientRect();
+            var activeRect = active.getBoundingClientRect();
+            if (activeRect.left >= containerRect.left && activeRect.right <= containerRect.right) return;
+
+            var target = container.scrollLeft + (activeRect.left - containerRect.left) -
+                (container.clientWidth - activeRect.width) / 2;
+            container.scrollTo({ left: Math.max(0, target), behavior: "auto" });
+        };
 
         /* Sidebar comprimibile (solo icone) con persistenza su localStorage. */
         window.mfToggleNavCollapsed = function () {

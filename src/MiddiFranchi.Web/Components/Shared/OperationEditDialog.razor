@@ -1,0 +1,337 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject OperationUpdateService Updates
+@inject OperationDeletionService Deletions
+
+@if (Open && Operation is { } operation)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card operation-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-operation-title"
+             @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="edit-operation-title">Modifica operazione</h2>
+                    <p class="section-sub">
+                        <StatusBadge Tone="@KindTone">@KindLabel</StatusBadge>
+                    </p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid operation-form" @onsubmit="SaveAsync">
+                @if (IsExpense)
+                {
+                    <label>
+                        <span>Categoria</span>
+                        <select @bind="_categoryName" @bind:after="OnCategoryGroupChanged">
+                            <option value="">Tutte le categorie</option>
+                            @foreach (var group in ExpenseGroups)
+                            {
+                                <option value="@group.Name">@group.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <label>
+                        <span>Sottocategoria *</span>
+                        <select @bind="_categoryId" @bind:after="OnSubcategoryChanged" required aria-required="true">
+                            <option value="">Seleziona…</option>
+                            @foreach (var group in VisibleExpenseGroups)
+                            {
+                                <optgroup label="@group.Name">
+                                    @foreach (var category in group.Categories)
+                                    {
+                                        <option value="@category.Id">@SubcategoryLabel(category)</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <label class="operation-form-wide">
+                        <span>Categoria *</span>
+                        <select @bind="_categoryId" required aria-required="true">
+                            <option value="">Seleziona…</option>
+                            @foreach (var category in IncomeCategories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </select>
+                    </label>
+                }
+
+                <label>
+                    <span>Importo *</span>
+                    <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00" required aria-required="true" @bind="_amountText" />
+                </label>
+                <label>
+                    <span>Data *</span>
+                    <input type="date" required aria-required="true" @bind="_validAt" />
+                </label>
+                <label class="operation-form-wide">
+                    <span>Descrizione / Nota</span>
+                    <input type="text" maxlength="200" placeholder="Es. Spesa settimanale" @bind="_description" />
+                </label>
+
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@(_saving || !CanSave)">
+                        Salva modifiche
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
+                </div>
+            </form>
+
+            <div class="settings-danger-zone">
+                @if (_confirmingDelete)
+                {
+                    <div class="alert alert-warning" role="alert">
+                        <div>
+                            Eliminare definitivamente questa operazione? L'azione non può essere annullata.
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="danger-button" disabled="@_saving" @onclick="ConfirmDeleteAsync">
+                                <MfIcon Name="trash" Size="16" /> Elimina definitivamente
+                            </button>
+                            <button type="button" class="secondary-button" disabled="@_saving" @onclick="CancelDelete">Annulla</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <button type="button" class="delete-button" disabled="@_saving" @onclick="RequestDelete">
+                        <MfIcon Name="trash" Size="16" /> Elimina movimento
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public OperationHistoryRow? Operation { get; set; }
+
+    [Parameter] public IReadOnlyList<Category> Categories { get; set; } = [];
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private bool _wasOpen;
+    private Guid? _loadedOperationId;
+    private bool _saving;
+    private bool _confirmingDelete;
+    private string? _error;
+    private string _categoryId = "";
+    private string _categoryName = "";
+    private bool _filterByCategory;
+    private string _amountText = "";
+    private DateOnly? _validAt;
+    private string? _description;
+
+    private OperationKind Kind => Operation?.Kind ?? OperationKind.Expense;
+    private bool IsExpense => Kind == OperationKind.Expense;
+    private string KindLabel => Kind == OperationKind.Income ? "Entrata" : "Uscita";
+    private string KindTone => Kind == OperationKind.Income ? "income" : "expense";
+
+    private IReadOnlyList<Category> CategoryChoices =>
+        OperationForm.CategoriesFor(IsExpense ? OperationFormKind.Expense : OperationFormKind.Income, Categories);
+
+    private IReadOnlyList<Category> IncomeCategories => CategoryChoices
+        .OrderBy(category => category.Name, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
+    private IReadOnlyList<CategoryGroup> ExpenseGroups => OperationForm.GroupCategories(CategoryChoices);
+
+    private IReadOnlyList<CategoryGroup> VisibleExpenseGroups =>
+        !_filterByCategory || string.IsNullOrWhiteSpace(_categoryName)
+            ? ExpenseGroups
+            : ExpenseGroups
+                .Where(group => string.Equals(group.Name, _categoryName, StringComparison.CurrentCultureIgnoreCase))
+                .ToArray();
+
+    private bool CanSave =>
+        Operation is not null &&
+        !string.IsNullOrWhiteSpace(_categoryId) &&
+        !string.IsNullOrWhiteSpace(_amountText) &&
+        _validAt is not null;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open || Operation is not { } operation)
+        {
+            _wasOpen = false;
+            _loadedOperationId = null;
+            return;
+        }
+
+        if (_wasOpen && _loadedOperationId == operation.Id)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _loadedOperationId = operation.Id;
+        _saving = false;
+        _confirmingDelete = false;
+        _error = null;
+        _categoryId = operation.CategoryId?.ToString() ?? "";
+        _categoryName = operation.CategoryName ?? "";
+        _filterByCategory = !string.IsNullOrWhiteSpace(_categoryName);
+        _amountText = Math.Abs(operation.Amount.GetValueOrDefault().Amount)
+            .ToString("0.##", CultureInfo.InvariantCulture);
+        _validAt = operation.OperationDate;
+        _description = operation.Description;
+    }
+
+    private void OnCategoryGroupChanged()
+    {
+        _filterByCategory = !string.IsNullOrWhiteSpace(_categoryName);
+        if (string.IsNullOrWhiteSpace(_categoryName))
+        {
+            _categoryId = "";
+            return;
+        }
+
+        var selected = CategoryChoices.FirstOrDefault(category => category.Id.ToString() == _categoryId);
+        if (selected is null ||
+            !string.Equals(selected.Name, _categoryName, StringComparison.CurrentCultureIgnoreCase))
+        {
+            _categoryId = "";
+        }
+    }
+
+    private void OnSubcategoryChanged()
+    {
+        if (!Guid.TryParse(_categoryId, out var id))
+        {
+            return;
+        }
+
+        var selected = CategoryChoices.FirstOrDefault(category => category.Id == id);
+        if (selected is not null)
+        {
+            _categoryName = selected.Name;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || Operation is null || !CanSave)
+        {
+            return;
+        }
+
+        if (!TryParseAmount(_amountText, out var amount) || amount <= 0m)
+        {
+            _error = "L'importo deve essere un numero positivo.";
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            await Updates.UpdateAsync(new UpdateOperationRequest(
+                Operation.Id,
+                Guid.Parse(_categoryId),
+                new PositiveMoney(new Money(amount, Currency.Euro)),
+                _validAt!.Value,
+                string.IsNullOrWhiteSpace(_description) ? null : _description.Trim()));
+            await OnSaved.InvokeAsync("Operazione aggiornata.");
+            await OnClose.InvokeAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Salvataggio non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void RequestDelete()
+    {
+        _error = null;
+        _confirmingDelete = true;
+    }
+
+    private void CancelDelete() => _confirmingDelete = false;
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_saving || Operation is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            await Deletions.DeleteAsync(Operation.Id);
+            await OnSaved.InvokeAsync("Operazione eliminata definitivamente.");
+            await OnClose.InvokeAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private static string SubcategoryLabel(Category category) =>
+        string.IsNullOrWhiteSpace(category.Subcategory) ? "Generale" : category.Subcategory;
+
+    private static bool TryParseAmount(string? text, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
+            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
+    }
+}

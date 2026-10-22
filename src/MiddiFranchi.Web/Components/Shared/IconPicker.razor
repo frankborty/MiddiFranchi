@@ -1,0 +1,29 @@
+@namespace MiddiFranchi.Web.Components.Shared
+
+<div class="icon-picker" role="group" aria-label="@Label">
+    @foreach (var option in CategoryAppearance.Icons)
+    {
+        <button type="button"
+                class="@(Value == option.Name ? "icon-picker-option selected" : "icon-picker-option")"
+                title="@option.Label"
+                aria-label="@option.Label"
+                aria-pressed="@(Value == option.Name ? "true" : "false")"
+                @onclick="() => SelectAsync(option.Name)">
+            <MfIcon Name="@option.Name" Size="20" />
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = CategoryAppearance.DefaultIcon;
+
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Icona";
+
+    private async Task SelectAsync(string icon)
+    {
+        Value = icon;
+        await ValueChanged.InvokeAsync(icon);
+    }
+}

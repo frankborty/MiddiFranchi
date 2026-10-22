@@ -51,5 +51,7 @@ internal sealed class CategoryRecordConfiguration : IEntityTypeConfiguration<Cat
         builder.Property(category => category.Type).IsEnumString();
         builder.Property(category => category.Description).IsOptionalText();
         builder.Property(category => category.Subcategory).IsOptionalText();
+        builder.Property(category => category.Icon).HasMaxLength(32);
+        builder.Property(category => category.ColorHex).HasMaxLength(7);
     }
 }

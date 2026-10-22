@@ -15,6 +15,12 @@ public interface IFinancialOperationRepository
 
     Task AddAsync(FinancialOperation operation, CancellationToken cancellationToken = default);
 
+    /// <summary>Aggiorna categoria, importo, data e descrizione di un'entrata o di un'uscita.</summary>
+    Task UpdateAsync(FinancialOperation operation, CancellationToken cancellationToken = default);
+
+    /// <summary>Rimuove definitivamente l'operazione, i suoi posting e l'eventuale storno collegato.</summary>
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
     /// <summary>Indica se almeno un'operazione, anche stornata, riferisce il conto.</summary>
     Task<bool> AnyReferencingAccountAsync(Guid accountId, CancellationToken cancellationToken = default);
 }
