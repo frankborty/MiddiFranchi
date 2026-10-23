@@ -21,14 +21,25 @@
 
     <div class="library-chart-canvas" style="@CanvasHeightStyle">
         <ApexChart @key="AxisKey" @ref="_chart" TItem="ApexTimePoint" Options="_options">
+            @foreach (var range in RangeSeries)
+            {
+                <ApexRangeAreaSeries TItem="ApexTimePoint"
+                                     Items="@ToRangePoints(range)"
+                                     Name="@range.Label"
+                                     XValue="@(point => point.Date)"
+                                     Top="@(point => point.Top)"
+                                     Bottom="@(point => point.Bottom)"
+                                     Stroke="@RangeStroke" />
+            }
             @foreach (var series in Series)
             {
                 <ApexPointSeries TItem="ApexTimePoint"
                                  Items="@ToPoints(series)"
                                  Name="@series.Label"
-                                 SeriesType="@(IsBar(series) ? SeriesType.Bar : SeriesType.Line)"
+                                 SeriesType="@SeriesTypeFor(series)"
                                  XValue="@(point => point.Date)"
                                  YValue="@(point => point.Value)"
+                                 PointColor="@PointColorFor"
                                  Stroke="@StrokeFor(series)" />
             }
         </ApexChart>
@@ -98,8 +109,10 @@
     private string? _appliedAxisKey;
 
     private string AxisKey =>
-        $"{_theme}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|" +
-        $"{string.Join(",", Series.Select(series => series.Color ?? ""))}";
+        $"{_theme}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|{PercentageValues}|" +
+        $"{ColorPointsBySign}|{TooltipDateMode}|" +
+        $"{string.Join(",", RangeSeries.Select(range => $"{range.Color}:{range.FillOpacity}:{range.Points.Count}"))}|" +
+        $"{string.Join(",", Series.Select(series => $"{series.Color}:{series.FillColor}:{series.FillOpacity}"))}";
 
     // L'altezza numerica è già applicata al grafico Apex; forzarla anche sul contenitore
     // aggiungerebbe padding e bordo, creando una barra di scorrimento verticale.
@@ -116,6 +129,22 @@
 
     [Parameter, EditorRequired]
     public IReadOnlyList<TimeSeriesSeries> Series { get; set; } = [];
+
+    /// <summary>Bande tra due serie (aree con intervallo), disegnate sotto le linee.</summary>
+    [Parameter]
+    public IReadOnlyList<TimeSeriesRangeSeries> RangeSeries { get; set; } = [];
+
+    /// <summary>Formatta asse Y e tooltip come percentuale invece che come valuta.</summary>
+    [Parameter]
+    public bool PercentageValues { get; set; }
+
+    /// <summary>Colora ogni punto/barra di verde se non negativo, di rosso se negativo.</summary>
+    [Parameter]
+    public bool ColorPointsBySign { get; set; }
+
+    /// <summary>Formato data del tooltip: "month" (mese e anno) o "year" (solo anno).</summary>
+    [Parameter]
+    public string? TooltipDateMode { get; set; }
 
     /// <summary>Modalità etichette asse temporale: "short" (dd MMM), "hour" (HH:mm), "month" (MMM yy) o "year" (anno a gennaio, MMM yy altrimenti).</summary>
     [Parameter]
@@ -317,10 +346,35 @@
                 point.Value))
             .ToList();
 
+    private List<ApexTimePoint> ToRangePoints(TimeSeriesRangeSeries range) =>
+        range.Points
+            .OrderBy(point => point.Date)
+            .Select(point => new ApexTimePoint(
+                point.Date.ToDateTime(TimeOnly.MinValue),
+                null,
+                point.Top,
+                point.Bottom))
+            .ToList();
+
     // Lo stroke della serie è impostato per-serie con colore pieno: l'opacità
     // globale del fill di ApexCharts altrimenti sbiadisce anche la linea.
     private bool IsBar(TimeSeriesSeries series) =>
         Stacked && series.Kind == TimeSeriesSeriesKind.Bar;
+
+    private SeriesType SeriesTypeFor(TimeSeriesSeries series) =>
+        IsBar(series)
+            ? SeriesType.Bar
+            : series.Kind == TimeSeriesSeriesKind.Area
+                ? SeriesType.Area
+                : SeriesType.Line;
+
+    private static SeriesStroke RangeStroke => new() { Width = 0, Color = "transparent" };
+
+    private Func<ApexTimePoint, string>? PointColorFor =>
+        ColorPointsBySign ? SignColor : null;
+
+    private static string SignColor(ApexTimePoint point) =>
+        point.Value is >= 0m ? "#22c55e" : "#ef4444";
 
     private SeriesStroke StrokeFor(TimeSeriesSeries series) => new()
     {
@@ -328,13 +382,22 @@
         Width = IsBar(series) ? 0 : 2,
     };
 
-    private string SeriesSignature() => string.Join("|", Series.Select(series =>
-    {
-        var points = series.Points;
-        return points.Count == 0
-            ? $"{series.Label}:0"
-            : $"{series.Label}:{points.Count}:{points[0].Date}:{points[^1].Date}";
-    }));
+    private string SeriesSignature() =>
+        string.Join("|", RangeSeries.Select(range =>
+        {
+            var points = range.Points;
+            return points.Count == 0
+                ? $"{range.Label}:0"
+                : $"{range.Label}:{points.Count}:{points[0].Date}:{points[^1].Date}";
+        })) +
+        "||" +
+        string.Join("|", Series.Select(series =>
+        {
+            var points = series.Points;
+            return points.Count == 0
+                ? $"{series.Label}:0"
+                : $"{series.Label}:{points.Count}:{points[0].Date}:{points[^1].Date}";
+        }));
 
     private static decimal? ValueAt(TimeSeriesSeries series, DateOnly date) => series
         .Points
@@ -348,23 +411,34 @@
         var dark = theme == "dark";
         var currencyCode = Currency.Code ?? "EUR";
         var defaultColor = dark ? "#2dd4bf" : "#0c8fa5";
-        var colors = Series
-            .Select(series => series.Color ?? defaultColor)
+        var colors = RangeSeries
+            .Select(range => range.Color)
+            .Concat(Series.Select(series => series.Color ?? defaultColor))
             .ToList();
-        var currencyFormatter =
-            $"function(val) {{ return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
-        var stackedChart = Stacked ? "true" : "false";
+        var currencyFormatter = PercentageValues
+            ? "function(val) { return new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(val); }"
+            : $"function(val) {{ return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
         var showStackedTotal = Stacked && ShowStackedTotal ? "true" : "false";
+        var percentageValues = PercentageValues ? "true" : "false";
+        var tooltipDateOptions = TooltipDateMode switch
+        {
+            "year" => "{ year: 'numeric' }",
+            "month" => "{ year: 'numeric', month: 'long' }",
+            _ => Stacked
+                ? "{ year: 'numeric', month: 'long' }"
+                : "{ year: 'numeric', month: '2-digit', day: '2-digit' }",
+        };
         var customTooltip =
             $$"""
             function (opts) {
               var w = opts.w;
               var chartSeries = w.config.series || [];
               var colors = w.globals.colors || [];
-              var fmt = new Intl.NumberFormat('it-IT', { style: 'currency', currency: '{{currencyCode}}', maximumFractionDigits: 0, useGrouping: true });
-              // Le barre sono mensili: il titolo mostra mese e anno, non il giorno di chiusura.
-              var stacked = {{stackedChart}};
-              var dateFmt = new Intl.DateTimeFormat('it-IT', stacked ? { year: 'numeric', month: 'long' } : { year: 'numeric', month: '2-digit', day: '2-digit' });
+              var fmt = {{percentageValues}}
+                ? new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 1, minimumFractionDigits: 1 })
+                : new Intl.NumberFormat('it-IT', { style: 'currency', currency: '{{currencyCode}}', maximumFractionDigits: 0, useGrouping: true });
+              // Il formato del titolo dipende dal tipo di grafico: mese/anno o solo anno.
+              var dateFmt = new Intl.DateTimeFormat('it-IT', {{tooltipDateOptions}});
               // Le x arrivano come stringa ISO o numerico: normalizziamo a millisecondi.
               function ms(x) {
                 if (x === undefined || x === null) { return null; }
@@ -378,27 +452,58 @@
               var hoveredSeries = chartSeries[opts.seriesIndex];
               var hoveredData = hoveredSeries && hoveredSeries.data ? hoveredSeries.data : [];
               var hoveredItem = hoveredData[idx];
-              if (!hoveredItem) { return ''; }
-              var ts = ms(typeof hoveredItem === 'object' ? hoveredItem.x : hoveredItem);
+              var ts = hoveredItem ? ms(typeof hoveredItem === 'object' ? hoveredItem.x : hoveredItem) : null;
+              if (ts === null) {
+                for (var i = 0; i < chartSeries.length && ts === null; i++) {
+                  var fallbackData = chartSeries[i] && chartSeries[i].data ? chartSeries[i].data : [];
+                  var fallbackItem = fallbackData[idx];
+                  if (fallbackItem) { ts = ms(typeof fallbackItem === 'object' ? fallbackItem.x : fallbackItem); }
+                }
+              }
               if (ts === null) { return ''; }
 
               var title = dateFmt.format(new Date(ts));
 
+              var hoveredIsRange = hoveredSeries && (hoveredSeries.name === 'Area' || hoveredSeries.type === 'rangeArea');
+              var rangeValue = null;
+              if (hoveredIsRange && hoveredItem && Array.isArray(hoveredItem.y) && hoveredItem.y.length >= 2) {
+                var rangeTop = Number(hoveredItem.y[1]);
+                var rangeBottom = Number(hoveredItem.y[0]);
+                rangeValue = rangeTop > 0 ? rangeTop : rangeBottom;
+              }
+              var lineSeries = chartSeries.filter(function (s) {
+                return s.name !== 'Area' && s.type !== 'rangeArea';
+              });
+
               var rows = '';
               var total = 0;
               chartSeries.forEach(function (s, i) {
-                var data = s && s.data ? s.data : [];
-                var item = null;
-                for (var j = 0; j < data.length; j++) {
-                  var candidate = data[j];
-                  var x = typeof candidate === 'object' ? candidate.x : candidate;
-                  if (ms(x) === ts) { item = candidate; break; }
+                if (s.name === 'Area' || s.type === 'rangeArea') { return; }
+                var y = null;
+                var pointColor = colors[i] || '#999';
+                if (hoveredIsRange && lineSeries.length === 1 && rangeValue !== null) {
+                  y = rangeValue;
+                } else {
+                  var data = s && s.data ? s.data : [];
+                  var item = null;
+                  var bestDelta = Infinity;
+                  for (var j = 0; j < data.length; j++) {
+                    var candidate = data[j];
+                    var x = typeof candidate === 'object' ? candidate.x : candidate;
+                    var candidateTs = ms(x);
+                    if (candidateTs === null) { continue; }
+                    var delta = Math.abs(candidateTs - ts);
+                    if (delta < bestDelta) { bestDelta = delta; item = candidate; }
+                  }
+                  if (!item) { return; }
+                  y = typeof item === 'object' ? item.y : item;
+                  if (item && typeof item === 'object') {
+                    pointColor = item.fillColor || item.FillColor || pointColor;
+                  }
                 }
-                if (!item) { return; }
-                var y = typeof item === 'object' ? item.y : item;
                 if (y === undefined || y === null) { return; }
                 total += Number(y);
-                rows += '<div class="mf-tooltip-row"><span class="mf-tooltip-dot" style="background:' + (colors[i] || '#999') + '"></span><span class="mf-tooltip-name">' + (s.name || '') + '</span><span class="mf-tooltip-value">' + fmt.format(y) + '</span></div>';
+                rows += '<div class="mf-tooltip-row"><span class="mf-tooltip-dot" style="background:' + pointColor + '"></span><span class="mf-tooltip-name">' + (s.name || '') + '</span><span class="mf-tooltip-value">' + fmt.format(y) + '</span></div>';
               });
               if (!rows) { return ''; }
               if ({{showStackedTotal}}) {
@@ -409,31 +514,49 @@
             }
             """;
         // Etichette asse temporale lette al volo da window.mfAxisLabelMode ("short"/"hour"/"day"/"month"/"month-name"/"year").
-        const string axisDateFormatter =
-            "function(value, timestamp) { var date = timestamp ? new Date(timestamp) : new Date(value); if (isNaN(date.getTime())) return value || ''; var mode = window.mfAxisLabelMode || 'short'; var month = new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(date); if (mode === 'hour') { return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date); } if (mode === 'day') { var day = date.getDate(); return day === 1 || day % 5 === 0 ? String(day) : ''; } if (mode === 'month-name') { return month; } if (mode === 'year') { return date.getMonth() === 0 ? String(date.getFullYear()) : new Intl.DateTimeFormat('it-IT', { month: 'short', year: '2-digit' }).format(date); } var options = mode === 'month' ? { month: 'short', year: '2-digit' } : { day: '2-digit', month: 'short' }; return new Intl.DateTimeFormat('it-IT', options).format(date); }";
+        var axisDateFormatter = $$"""
+            function(value, timestamp) { var date = timestamp ? new Date(timestamp) : new Date(value); if (isNaN(date.getTime())) return value || ''; var mode = '{{XAxisLabelMode}}'; var month = new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(date); if (mode === 'hour') { return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date); } if (mode === 'day') { var day = date.getDate(); return day === 1 || day % 5 === 0 ? String(day) : ''; } if (mode === 'month-name') { return month; } if (mode === 'year') { return date.getMonth() === 0 ? String(date.getFullYear()) : new Intl.DateTimeFormat('it-IT', { month: 'short', year: '2-digit' }).format(date); } var options = mode === 'month' ? { month: 'short', year: '2-digit' } : { day: '2-digit', month: 'short' }; return new Intl.DateTimeFormat('it-IT', options).format(date); }
+            """;
+        var chart = new Chart
+        {
+            Height = Height,
+            Width = "100%",
+            Toolbar = new Toolbar { Show = false },
+            Zoom = new Zoom { Enabled = false },
+            Animations = new Animations
+            {
+                Enabled = true,
+                Speed = 450,
+                Easing = Easing.Easeinout,
+                DynamicAnimation = new DynamicAnimation { Enabled = true, Speed = 350 },
+            },
+            Background = "transparent",
+            ForeColor = dark ? "#b6b6bf" : "#45536e",
+            Stacked = Stacked,
+            StackType = Stacked ? ApexCharts.StackType.Normal : null,
+        };
+        if (RangeSeries.Count > 0)
+        {
+            chart.Type = ChartType.RangeArea;
+        }
+
         return new ApexChartOptions<ApexTimePoint>
         {
             Debug = false,
-            Chart = new Chart
-            {
-                Height = Height,
-                Width = "100%",
-                Toolbar = new Toolbar { Show = false },
-                Zoom = new Zoom { Enabled = false },
-                Animations = new Animations
-                {
-                    Enabled = true,
-                    Speed = 450,
-                    Easing = Easing.Easeinout,
-                    DynamicAnimation = new DynamicAnimation { Enabled = true, Speed = 350 },
-                },
-                Background = "transparent",
-                ForeColor = dark ? "#b6b6bf" : "#45536e",
-                Stacked = Stacked,
-                StackType = Stacked ? ApexCharts.StackType.Normal : null,
-            },
+            Chart = chart,
             Colors = colors,
-            Fill = new Fill { Type = FillType.Solid, Opacity = 1 },
+            Fill = new Fill
+            {
+                Type = FillType.Solid,
+                Opacity = RangeSeries
+                    .Select(range => range.FillOpacity)
+                    .Concat(Series.Select(series => series.FillOpacity))
+                    .ToList(),
+                Colors = RangeSeries
+                    .Select(range => range.Color)
+                    .Concat(Series.Select(series => series.FillColor ?? series.Color ?? defaultColor))
+                    .ToList(),
+            },
             Stroke = new Stroke { Curve = Curve.Straight, Width = Stacked ? 0 : 2.5, LineCap = ApexCharts.LineCap.Round },
             PlotOptions = Stacked
                 ? new PlotOptions
@@ -484,5 +607,9 @@
         };
     }
 
-    public sealed record ApexTimePoint(DateTime Date, decimal? Value);
+    public sealed record ApexTimePoint(
+        DateTime Date,
+        decimal? Value,
+        decimal Top = 0,
+        decimal Bottom = 0);
 }

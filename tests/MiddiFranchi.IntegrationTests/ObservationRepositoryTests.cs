@@ -21,7 +21,7 @@ public class ObservationRepositoryTests : PostgresTestBase
         var instrument = new Instrument(
             Guid.NewGuid(),
             "ETF",
-            InstrumentType.Etf,
+            AssetClass.Equity,
             Currency.Euro,
             PriceUnit.PerUnit);
         await new InstrumentRepository(Context).AddAsync(instrument);
@@ -74,7 +74,7 @@ public class ObservationRepositoryTests : PostgresTestBase
         var bond = new Instrument(
             Guid.NewGuid(),
             "Obbligazione",
-            InstrumentType.Bond,
+            AssetClass.Bond,
             Currency.Euro,
             PriceUnit.PercentOfNominal,
             new Money(1000m, Currency.Euro));

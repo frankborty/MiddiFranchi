@@ -9,16 +9,14 @@ public class InvestmentOperationTests
 {
     private static readonly Currency Euro = Currency.Euro;
     private static readonly Currency Usd = Currency.Euro;
-    private static readonly InvestmentPortfolio MainPortfolio = new(
-        Guid.Parse("9a5f8b83-c3d4-4a01-9f9f-4c8a0d3f1e2d"), "Portafoglio principale", Euro);
     private static readonly Instrument Etf = new(
-        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", AssetClass.Equity, Euro, PriceUnit.PerUnit);
     private static readonly Instrument UsdInstrument = new(
-        Guid.Parse("c8e4a2b7-71d5-4f30-a9c6-2bd7fbcf7a94"), "Azioni USA", InstrumentType.Share, Usd, PriceUnit.PerUnit);
+        Guid.Parse("c8e4a2b7-71d5-4f30-a9c6-2bd7fbcf7a94"), "Azioni USA", AssetClass.Equity, Usd, PriceUnit.PerUnit);
     private static readonly Instrument Bond = new(
         Guid.Parse("8f31fbe7-4f8f-4b1f-a187-6c4e6f3c7c42"),
         "Obbligazione società",
-        InstrumentType.Bond,
+        AssetClass.Bond,
         Euro,
         PriceUnit.PercentOfNominal,
         new Money(1000m, Euro));
@@ -37,8 +35,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Buy(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             new Quantity(2.5m),
             Quote(80m, Euro),
@@ -50,7 +47,6 @@ public class InvestmentOperationTests
 
         operation.Kind.ShouldBe(OperationKind.Investment);
         operation.InvestmentKind.ShouldBe(InvestmentOperationKind.Buy);
-        operation.Portfolio.ShouldBe(MainPortfolio);
         operation.Instrument.ShouldBe(Etf);
         operation.SettlementAccount.ShouldBe(EuroAccount);
         operation.Quantity.ShouldNotBeNull();
@@ -69,8 +65,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Buy(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             new Quantity(2.5m),
             Quote(80m, Euro),
@@ -99,8 +94,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Sell(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             new Quantity(1m),
             Quote(95m, Euro),
@@ -122,8 +116,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Dividend(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             Eur(10m),
             OperationDate,
@@ -142,8 +135,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Coupon(
             OperationId,
-            MainPortfolio,
-            Bond,
+                        Bond,
             EuroAccount,
             Eur(25m),
             OperationDate,
@@ -162,8 +154,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.StandaloneFee(
             OperationId,
-            MainPortfolio,
-            EuroAccount,
+                        EuroAccount,
             Eur(0.50m),
             OperationDate,
             RecordedAt);
@@ -184,8 +175,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.StandaloneFee(
             OperationId,
-            MainPortfolio,
-            EuroAccount,
+                        EuroAccount,
             Eur(0.50m),
             OperationDate,
             RecordedAt,
@@ -202,8 +192,7 @@ public class InvestmentOperationTests
         var exception = Should.Throw<ArgumentException>(
             () => InvestmentOperation.Buy(
                 OperationId,
-                MainPortfolio,
-                null!,
+                                null!,
                 EuroAccount,
                 new Quantity(2.5m),
                 Quote(80m, Euro),
@@ -223,8 +212,7 @@ public class InvestmentOperationTests
         var exception = Should.Throw<ArgumentException>(
             () => InvestmentOperation.Buy(
                 OperationId,
-                MainPortfolio,
-                Etf,
+                                Etf,
                 EuroAccount,
                 new Quantity(2.5m),
                 Quote(80m, Euro),
@@ -242,8 +230,7 @@ public class InvestmentOperationTests
         var exception = Should.Throw<ArgumentException>(
             () => InvestmentOperation.Sell(
                 OperationId,
-                MainPortfolio,
-                Etf,
+                                Etf,
                 EuroAccount,
                 new Quantity(1m),
                 Quote(95m, Euro),
@@ -261,8 +248,7 @@ public class InvestmentOperationTests
         var exception = Should.Throw<ArgumentException>(
             () => InvestmentOperation.Buy(
                 OperationId,
-                MainPortfolio,
-                Etf,
+                                Etf,
                 EuroAccount,
                 new Quantity(2.5m),
                 Quote(80m, Euro),
@@ -281,8 +267,7 @@ public class InvestmentOperationTests
         var exception = Should.Throw<ArgumentException>(
             () => InvestmentOperation.Dividend(
                 OperationId,
-                MainPortfolio,
-                null!,
+                                null!,
                 EuroAccount,
                 Eur(10m),
                 OperationDate,
@@ -293,27 +278,11 @@ public class InvestmentOperationTests
     }
 
     [Fact]
-    public void Construction_ShouldRejectANullPortfolio()
-    {
-        Should.Throw<ArgumentNullException>(() => InvestmentOperation.Buy(
-            OperationId,
-            null!,
-            Etf,
-            EuroAccount,
-            new Quantity(2.5m),
-            Quote(80m, Euro),
-            null,
-            OperationDate,
-            RecordedAt));
-    }
-
-    [Fact]
     public void Construction_ShouldRejectANullSettlementAccount()
     {
         Should.Throw<ArgumentNullException>(() => InvestmentOperation.Buy(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             null!,
             new Quantity(2.5m),
             Quote(80m, Euro),
@@ -327,8 +296,7 @@ public class InvestmentOperationTests
     {
         Should.Throw<ArgumentException>(() => InvestmentOperation.Buy(
             Guid.Empty,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             new Quantity(2.5m),
             Quote(80m, Euro),
@@ -343,8 +311,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Buy(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             new Quantity(2.5m),
             Quote(80m, Euro),
@@ -362,8 +329,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Sell(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             new Quantity(1m),
             Quote(95m, Euro),
@@ -381,8 +347,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Buy(
             OperationId,
-            MainPortfolio,
-            Bond,
+                        Bond,
             EuroAccount,
             new Quantity(3m),
             QuotedPrice.AsPercentOfNominal(98.5m),
@@ -410,8 +375,7 @@ public class InvestmentOperationTests
     {
         var operation = InvestmentOperation.Sell(
             OperationId,
-            MainPortfolio,
-            Bond,
+                        Bond,
             EuroAccount,
             new Quantity(3m),
             QuotedPrice.AsPercentOfNominal(98.5m),
@@ -439,8 +403,7 @@ public class InvestmentOperationTests
         Should.Throw<ArgumentException>(
                 () => InvestmentOperation.Buy(
                     OperationId,
-                    MainPortfolio,
-                    Etf,
+                                        Etf,
                     EuroAccount,
                     default,
                     Quote(80m, Euro),
@@ -456,8 +419,7 @@ public class InvestmentOperationTests
         Should.Throw<ArgumentException>(
                 () => InvestmentOperation.Buy(
                     OperationId,
-                    MainPortfolio,
-                    Etf,
+                                        Etf,
                     EuroAccount,
                     new Quantity(1m),
                     QuotedPrice.AsPercentOfNominal(98.5m),
@@ -469,8 +431,7 @@ public class InvestmentOperationTests
         Should.Throw<ArgumentException>(
                 () => InvestmentOperation.Buy(
                     OperationId,
-                    MainPortfolio,
-                    Bond,
+                                        Bond,
                     EuroAccount,
                     new Quantity(1m),
                     Quote(985m, Euro),
@@ -486,8 +447,7 @@ public class InvestmentOperationTests
         var fees = new List<FeeComponent> { BuyFee(1.50m) };
         var operation = InvestmentOperation.Buy(
             OperationId,
-            MainPortfolio,
-            Etf,
+                        Etf,
             EuroAccount,
             new Quantity(2.5m),
             Quote(80m, Euro),

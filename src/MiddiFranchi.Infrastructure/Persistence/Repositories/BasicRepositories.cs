@@ -191,49 +191,6 @@ public sealed class CategoryRepository : ICategoryRepository
     }
 }
 
-public sealed class InvestmentPortfolioRepository : IInvestmentPortfolioRepository
-{
-    private readonly MiddiFranchiDbContext _context;
-
-    public InvestmentPortfolioRepository(MiddiFranchiDbContext context)
-    {
-        _context = context;
-    }
-
-    public async Task<InvestmentPortfolio?> GetByIdAsync(
-        Guid id,
-        CancellationToken cancellationToken = default)
-    {
-        var record = await _context.Portfolios
-            .AsNoTracking()
-            .SingleOrDefaultAsync(portfolio => portfolio.Id == id, cancellationToken);
-
-        return record is null ? null : PersistenceMapper.ToDomain(record);
-    }
-
-    public async Task<IReadOnlyList<InvestmentPortfolio>> ListAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var records = await _context.Portfolios
-            .AsNoTracking()
-            .OrderBy(portfolio => portfolio.Name)
-            .ThenBy(portfolio => portfolio.Id)
-            .ToListAsync(cancellationToken);
-
-        return records.Select(PersistenceMapper.ToDomain).ToArray();
-    }
-
-    public async Task AddAsync(
-        InvestmentPortfolio portfolio,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(portfolio);
-
-        _context.Portfolios.Add(PersistenceMapper.ToRecord(portfolio));
-        await _context.SaveChangesAsync(cancellationToken);
-    }
-}
-
 public sealed class InstrumentRepository : IInstrumentRepository
 {
     private readonly MiddiFranchiDbContext _context;
@@ -272,5 +229,72 @@ public sealed class InstrumentRepository : IInstrumentRepository
 
         _context.Instruments.Add(PersistenceMapper.ToRecord(instrument));
         await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateAsync(Instrument instrument, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instrument);
+
+        var record = await _context.Instruments
+            .SingleOrDefaultAsync(candidate => candidate.Id == instrument.Id, cancellationToken)
+            ?? throw new InvalidOperationException($"Lo strumento {instrument.Id} non esiste.");
+
+        record.Name = instrument.Name;
+        record.Symbol = instrument.Symbol;
+        record.Isin = instrument.Isin;
+        record.AssetClass = instrument.AssetClass;
+        record.Status = instrument.Status;
+        record.PriceUnit = instrument.PriceUnit;
+        record.NotionalValueAmount = instrument.NotionalValue?.Amount;
+        record.NotionalValueCurrencyCode = instrument.NotionalValue?.Currency.Code;
+        record.ReferenceUrl = instrument.ReferenceUrl;
+        record.Notes = instrument.Notes;
+        record.MaturityDate = instrument.MaturityDate;
+        record.CouponRate = instrument.CouponRate;
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var record = await _context.Instruments
+            .SingleOrDefaultAsync(instrument => instrument.Id == id, cancellationToken);
+        if (record is null)
+        {
+            return;
+        }
+
+        _context.Instruments.Remove(record);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task<bool> IsinExistsAsync(
+        string isin,
+        Guid? excludingId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = isin.Trim().ToUpperInvariant();
+        var excluded = excludingId ?? Guid.Empty;
+        return _context.Instruments.AnyAsync(
+            instrument =>
+                instrument.Isin != null &&
+                instrument.Isin.ToUpper() == normalized &&
+                (excludingId == null || instrument.Id != excluded),
+            cancellationToken);
+    }
+
+    public Task<bool> SymbolExistsAsync(
+        string symbol,
+        Guid? excludingId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = symbol.Trim().ToUpperInvariant();
+        var excluded = excludingId ?? Guid.Empty;
+        return _context.Instruments.AnyAsync(
+            instrument =>
+                instrument.Symbol != null &&
+                instrument.Symbol.ToUpper() == normalized &&
+                (excludingId == null || instrument.Id != excluded),
+            cancellationToken);
     }
 }

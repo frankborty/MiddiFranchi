@@ -145,24 +145,7 @@ public sealed class FinancialDashboardService
 
     private static DashboardInvestments BuildInvestments(NetWorthSummary summary)
     {
-        var portfolios = summary.Investments
-            .Select(BuildPortfolio)
-            .ToArray();
-
-        var total = portfolios.Any(portfolio => portfolio.HasValuedPositions)
-            ? summary.InvestmentsSubtotal
-            : null;
-
-        return new DashboardInvestments(
-            total,
-            portfolios.Sum(portfolio => portfolio.ValuedPositionCount),
-            portfolios.Sum(portfolio => portfolio.UnvaluedPositionCount),
-            portfolios);
-    }
-
-    private static DashboardPortfolio BuildPortfolio(PortfolioValuation valuation)
-    {
-        var positions = valuation.Positions
+        var positions = summary.Investments.Positions
             .Select(position => new DashboardInvestmentPosition(
                 position.Position.Instrument.Name,
                 position.Position.Instrument.Symbol,
@@ -171,32 +154,12 @@ public sealed class FinancialDashboardService
                 position.IncompletenessReason))
             .ToArray();
 
-        var valuedPositions = positions
-            .Where(position => position.IsValuated)
-            .ToArray();
-
-        Money? total = valuation.IsComplete && valuedPositions.Length > 0
-            ? new Money(
-                valuedPositions.Sum(position => position.Value!.Value.Amount),
-                valuation.Portfolio.ReferenceCurrency)
+        var valued = positions.Count(position => position.IsValuated);
+        var unvalued = positions.Count(position => !position.IsValuated);
+        var total = summary.Investments.IsComplete && valued > 0
+            ? summary.InvestmentsSubtotal
             : null;
 
-        var distribution = total is { Amount: > 0m } portfolioTotal
-            ? valuedPositions
-                .Select(position => new DashboardInvestmentShare(
-                    position.InstrumentName,
-                    position.Value!.Value,
-                    (double)(position.Value.Value.Amount / portfolioTotal.Amount)))
-                .OrderByDescending(item => item.Share)
-                .ToArray()
-            : [];
-
-        return new DashboardPortfolio(
-            valuation.Portfolio.Id,
-            valuation.Portfolio.Name,
-            valuation.Portfolio.ReferenceCurrency,
-            total,
-            positions,
-            distribution);
+        return new DashboardInvestments(total, valued, unvalued, positions);
     }
 }

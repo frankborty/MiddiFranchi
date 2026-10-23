@@ -269,7 +269,7 @@ public class ManualBalanceTests : PostgresTestBase
         var readings = await repository.ListForAccountAsync(account.Id);
 
         var summary = NetWorthCalculator.Summarize(
-            [account, unreadAccount], [], [], [], [], new DateOnly(2026, 4, 30), manualBalances: readings);
+            [account, unreadAccount], [], [], [], new DateOnly(2026, 4, 30), manualBalances: readings);
 
         summary.IsComplete.ShouldBeFalse();
         summary.TotalValue.ShouldBeNull();

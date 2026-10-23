@@ -4,7 +4,9 @@ using MiddiFranchi.Domain.Shared;
 namespace MiddiFranchi.Application.Financial;
 
 /// <summary>
-/// Riepilogo degli investimenti. Tutti i valori, compresi portafogli e asset, sono in EUR.
+/// Riepilogo degli investimenti. Tutti i valori, compresi gli asset, sono in EUR.
+/// Il rendimento non realizzato è la differenza tra valore attuale e costo residuo; il risultato
+/// totale aggiunge plusvalenze realizzate e proventi e sottrae le commissioni autonome.
 /// </summary>
 public sealed record InvestmentOverview(
     DateOnly ValuationDate,
@@ -12,16 +14,19 @@ public sealed record InvestmentOverview(
     Money? CurrentValue,
     Money? Performance,
     decimal? PerformancePercent,
+    Money? RealizedResult,
+    Money? Income,
+    Money? OtherFees,
+    Money? TotalResult,
+    decimal? TotalResultPercent,
     bool IsComplete,
     IReadOnlyList<string> IncompletenessReasons,
-    IReadOnlyList<InvestmentPortfolioOverview> Portfolios,
+    IReadOnlyList<InvestmentAssetOverview> Assets,
     InvestmentHistory History)
 {
-    public bool HasPortfolios => Portfolios.Count > 0;
+    public int AssetCount => Assets.Count;
 
-    public int AssetCount => Portfolios.Sum(portfolio => portfolio.Assets.Count);
-
-    public bool HasAssets => AssetCount > 0;
+    public bool HasAssets => Assets.Count > 0;
 }
 
 public sealed record InvestmentHistory(
@@ -37,34 +42,20 @@ public sealed record InvestmentHistoryPoint(
     Money? InvestedCapital,
     Money? CurrentValue);
 
-public sealed record InvestmentPortfolioOverview(
-    Guid PortfolioId,
-    string Name,
-    Currency ReferenceCurrency,
-    Money? InvestedCapital,
-    Money? CurrentValue,
-    Money? Performance,
-    decimal? PerformancePercent,
-    bool IsComplete,
-    IReadOnlyList<string> IncompletenessReasons,
-    IReadOnlyList<InvestmentAssetOverview> Assets)
-{
-    public bool HasAssets => Assets.Count > 0;
-
-    public int ValuedAssetCount => Assets.Count(asset => asset.CurrentValue is not null);
-
-    public int UnvaluedAssetCount => Assets.Count(asset => asset.CurrentValue is null);
-}
-
 public sealed record InvestmentAssetOverview(
     Guid InstrumentId,
     string Name,
     string? Symbol,
-    InstrumentType Type,
+    AssetClass AssetClass,
     Quantity Quantity,
     Money? InvestedCapital,
+    Money? AverageCost,
     Money? CurrentValue,
-    Money? Performance,
-    decimal? PerformancePercent,
+    Money? UnrealizedResult,
+    Money RealizedResult,
+    Money Income,
+    Money OtherFees,
+    Money? TotalResult,
+    decimal? TotalResultPercent,
     bool IsComplete,
     string? IncompletenessReason);

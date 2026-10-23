@@ -1,7 +1,7 @@
 @namespace MiddiFranchi.Web.Components.Shared
 <div class="stat-tile @(Hero ? "hero" : string.Empty)">
     <span class="stat-label">@Label</span>
-    <strong>@Value</strong>
+    <strong class="@ValueClass">@Value</strong>
     @if (!string.IsNullOrWhiteSpace(Hint))
     {
         <span class="stat-hint">@Hint</span>
@@ -21,6 +21,9 @@
 
     [Parameter]
     public string? Hint { get; set; }
+
+    [Parameter]
+    public string? ValueClass { get; set; }
 
     /// <summary>Quando true, usa la variante hero (scuro, in evidenza).</summary>
     [Parameter]

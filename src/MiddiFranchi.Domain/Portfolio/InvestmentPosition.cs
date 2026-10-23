@@ -4,16 +4,8 @@ namespace MiddiFranchi.Domain.Portfolio;
 
 public sealed record InvestmentPosition
 {
-    public InvestmentPosition(
-        InvestmentPortfolio portfolio,
-        Instrument instrument,
-        Quantity quantity)
+    public InvestmentPosition(Instrument instrument, Quantity quantity)
     {
-        if (portfolio is null)
-        {
-            throw new ArgumentNullException(nameof(portfolio));
-        }
-
         if (instrument is null)
         {
             throw new ArgumentNullException(nameof(instrument));
@@ -26,12 +18,9 @@ public sealed record InvestmentPosition
                 nameof(quantity));
         }
 
-        Portfolio = portfolio;
         Instrument = instrument;
         Quantity = quantity;
     }
-
-    public InvestmentPortfolio Portfolio { get; }
 
     public Instrument Instrument { get; }
 

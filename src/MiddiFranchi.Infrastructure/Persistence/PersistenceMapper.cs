@@ -47,28 +47,22 @@ internal static class PersistenceMapper
         record.Icon,
         record.ColorHex);
 
-    public static InvestmentPortfolioRecord ToRecord(InvestmentPortfolio portfolio) => new()
-    {
-        Id = portfolio.Id,
-        Name = portfolio.Name,
-        ReferenceCurrencyCode = portfolio.ReferenceCurrency.Code,
-    };
-
-    public static InvestmentPortfolio ToDomain(InvestmentPortfolioRecord record) => new(
-        record.Id,
-        record.Name,
-        Currency.Parse(record.ReferenceCurrencyCode));
-
     public static InstrumentRecord ToRecord(Instrument instrument) => new()
     {
         Id = instrument.Id,
         Name = instrument.Name,
         Symbol = instrument.Symbol,
-        Type = instrument.Type,
+        Isin = instrument.Isin,
+        AssetClass = instrument.AssetClass,
+        Status = instrument.Status,
         QuoteCurrencyCode = instrument.QuoteCurrency.Code,
         PriceUnit = instrument.PriceUnit,
         NotionalValueAmount = instrument.NotionalValue?.Amount,
         NotionalValueCurrencyCode = instrument.NotionalValue?.Currency.Code,
+        ReferenceUrl = instrument.ReferenceUrl,
+        Notes = instrument.Notes,
+        MaturityDate = instrument.MaturityDate,
+        CouponRate = instrument.CouponRate,
     };
 
     public static Instrument ToDomain(InstrumentRecord record)
@@ -84,11 +78,17 @@ internal static class PersistenceMapper
         return new Instrument(
             record.Id,
             record.Name,
-            record.Type,
+            record.AssetClass,
             Currency.Parse(record.QuoteCurrencyCode),
             record.PriceUnit,
             notional,
-            record.Symbol);
+            record.Symbol,
+            record.Isin,
+            record.ReferenceUrl,
+            record.Notes,
+            record.Status,
+            record.MaturityDate,
+            record.CouponRate);
     }
 
     public static PriceObservationRecord ToRecord(PriceObservation observation) => new()
@@ -165,7 +165,6 @@ internal static class PersistenceMapper
 
             case InvestmentOperation investment:
                 record.InvestmentKind = investment.InvestmentKind;
-                record.PortfolioId = investment.Portfolio.Id;
                 record.InstrumentId = investment.Instrument?.Id;
                 record.SettlementAccountId = investment.SettlementAccount.Id;
                 record.QuantityValue = investment.Quantity?.Value;
@@ -215,7 +214,6 @@ internal static class PersistenceMapper
         IReadOnlyCollection<FinancialOperationRecord> records,
         IReadOnlyDictionary<Guid, Account> accounts,
         IReadOnlyDictionary<Guid, Category> categories,
-        IReadOnlyDictionary<Guid, InvestmentPortfolio> portfolios,
         IReadOnlyDictionary<Guid, Instrument> instruments,
         IReadOnlyDictionary<Guid, IReadOnlyList<FeeComponent>> fees)
     {
@@ -234,7 +232,7 @@ internal static class PersistenceMapper
 
         foreach (var record in records.Where(record => record.Kind != OperationKind.Reversal))
         {
-            result[record.Id] = ToDomainOperation(record, accounts, categories, portfolios, instruments, fees);
+            result[record.Id] = ToDomainOperation(record, accounts, categories, instruments, fees);
         }
 
         foreach (var record in records.Where(record => record.Kind == OperationKind.Reversal))
@@ -269,7 +267,6 @@ internal static class PersistenceMapper
         FinancialOperationRecord record,
         IReadOnlyDictionary<Guid, Account> accounts,
         IReadOnlyDictionary<Guid, Category> categories,
-        IReadOnlyDictionary<Guid, InvestmentPortfolio> portfolios,
         IReadOnlyDictionary<Guid, Instrument> instruments,
         IReadOnlyDictionary<Guid, IReadOnlyList<FeeComponent>> fees)
     {
@@ -303,7 +300,7 @@ internal static class PersistenceMapper
                 record.RecordedAt,
                 record.Description,
                 null),
-            OperationKind.Investment => ToDomainInvestment(record, accounts, portfolios, instruments, fees),
+            OperationKind.Investment => ToDomainInvestment(record, accounts, instruments, fees),
             _ => throw new InvalidOperationException(
                 $"Il tipo di operazione {record.Kind} non è supportato dalla persistenza."),
         };
@@ -312,20 +309,12 @@ internal static class PersistenceMapper
     private static InvestmentOperation ToDomainInvestment(
         FinancialOperationRecord record,
         IReadOnlyDictionary<Guid, Account> accounts,
-        IReadOnlyDictionary<Guid, InvestmentPortfolio> portfolios,
         IReadOnlyDictionary<Guid, Instrument> instruments,
         IReadOnlyDictionary<Guid, IReadOnlyList<FeeComponent>> fees)
     {
         var investmentKind = record.InvestmentKind
             ?? throw new InvalidOperationException(
                 $"L'operazione d'investimento {record.Id} non ha un tipo.");
-        var portfolio = portfolios.TryGetValue(
-            record.PortfolioId ?? throw new InvalidOperationException(
-                $"L'operazione d'investimento {record.Id} non ha un portafoglio."),
-            out var foundPortfolio)
-            ? foundPortfolio
-            : throw new InvalidOperationException(
-                $"Il portafoglio dell'operazione {record.Id} non è stato caricato.");
         var settlementAccount = RequiredAccount(accounts, record.SettlementAccountId, record.Id);
         var feeList = fees.TryGetValue(record.Id, out var foundFees) ? foundFees : [];
 
@@ -344,7 +333,6 @@ internal static class PersistenceMapper
             InvestmentOperationKind.Buy or InvestmentOperationKind.Sell => CreateBuyOrSell(
                 record,
                 investmentKind,
-                portfolio,
                 instrument ?? throw new InvalidOperationException(
                     $"L'operazione {record.Id} richiede uno strumento."),
                 settlementAccount,
@@ -356,7 +344,6 @@ internal static class PersistenceMapper
             InvestmentOperationKind.Dividend => CreateDividendOrCoupon(
                 investmentKind,
                 record,
-                portfolio,
                 instrument ?? throw new InvalidOperationException(
                     $"L'operazione {record.Id} richiede uno strumento."),
                 settlementAccount,
@@ -364,14 +351,12 @@ internal static class PersistenceMapper
             InvestmentOperationKind.Coupon => CreateDividendOrCoupon(
                 investmentKind,
                 record,
-                portfolio,
                 instrument ?? throw new InvalidOperationException(
                     $"L'operazione {record.Id} richiede uno strumento."),
                 settlementAccount,
                 feeList),
             InvestmentOperationKind.StandaloneFee => InvestmentOperation.StandaloneFee(
                 record.Id,
-                portfolio,
                 settlementAccount,
                 StandaloneFeeAmount(record, settlementAccount, feeList),
                 record.OperationDate,
@@ -387,7 +372,6 @@ internal static class PersistenceMapper
     private static InvestmentOperation CreateBuyOrSell(
         FinancialOperationRecord record,
         InvestmentOperationKind kind,
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account settlementAccount,
         Quantity quantity,
@@ -397,7 +381,6 @@ internal static class PersistenceMapper
         return kind == InvestmentOperationKind.Buy
             ? InvestmentOperation.Buy(
                 record.Id,
-                portfolio,
                 instrument,
                 settlementAccount,
                 quantity,
@@ -409,7 +392,6 @@ internal static class PersistenceMapper
                 null)
             : InvestmentOperation.Sell(
                 record.Id,
-                portfolio,
                 instrument,
                 settlementAccount,
                 quantity,
@@ -424,7 +406,6 @@ internal static class PersistenceMapper
     private static InvestmentOperation CreateDividendOrCoupon(
         InvestmentOperationKind kind,
         FinancialOperationRecord record,
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account settlementAccount,
         IReadOnlyList<FeeComponent> fees)
@@ -440,7 +421,6 @@ internal static class PersistenceMapper
         return kind == InvestmentOperationKind.Dividend
             ? InvestmentOperation.Dividend(
                 record.Id,
-                portfolio,
                 instrument,
                 settlementAccount,
                 amount,
@@ -450,7 +430,6 @@ internal static class PersistenceMapper
                 null)
             : InvestmentOperation.Coupon(
                 record.Id,
-                portfolio,
                 instrument,
                 settlementAccount,
                 amount,

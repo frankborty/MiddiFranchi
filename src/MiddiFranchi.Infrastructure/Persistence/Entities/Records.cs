@@ -37,15 +37,6 @@ public sealed class CategoryRecord
     public string? ColorHex { get; set; }
 }
 
-public sealed class InvestmentPortfolioRecord
-{
-    public Guid Id { get; set; }
-
-    public string Name { get; set; } = null!;
-
-    public string ReferenceCurrencyCode { get; set; } = null!;
-}
-
 public sealed class InstrumentRecord
 {
     public Guid Id { get; set; }
@@ -54,7 +45,11 @@ public sealed class InstrumentRecord
 
     public string? Symbol { get; set; }
 
-    public InstrumentType Type { get; set; }
+    public string? Isin { get; set; }
+
+    public AssetClass AssetClass { get; set; }
+
+    public InstrumentStatus Status { get; set; }
 
     public string QuoteCurrencyCode { get; set; } = null!;
 
@@ -63,6 +58,14 @@ public sealed class InstrumentRecord
     public decimal? NotionalValueAmount { get; set; }
 
     public string? NotionalValueCurrencyCode { get; set; }
+
+    public string? ReferenceUrl { get; set; }
+
+    public string? Notes { get; set; }
+
+    public DateOnly? MaturityDate { get; set; }
+
+    public decimal? CouponRate { get; set; }
 }
 
 public sealed class FinancialOperationRecord
@@ -108,10 +111,6 @@ public sealed class FinancialOperationRecord
     public string? DestinationAmountCurrencyCode { get; set; }
 
     public InvestmentOperationKind? InvestmentKind { get; set; }
-
-    public Guid? PortfolioId { get; set; }
-
-    public InvestmentPortfolioRecord? Portfolio { get; set; }
 
     public Guid? InstrumentId { get; set; }
 

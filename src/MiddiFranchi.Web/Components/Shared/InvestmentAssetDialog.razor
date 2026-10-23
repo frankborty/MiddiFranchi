@@ -1,0 +1,385 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Portfolio
+@using MiddiFranchi.Domain.Shared
+@inject InvestmentAssetService AssetService
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card investment-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="investment-asset-dialog-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="investment-asset-dialog-title">
+                        @(Asset is null ? "Nuovo strumento" : "Modifica strumento")
+                    </h2>
+                    <p class="section-sub">
+                        Identità, classificazione e dettagli dell'obbligazione. La valuta è sempre EUR.
+                    </p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveAsync">
+                <label class="operation-form-wide">
+                    <span>Nome *</span>
+                    <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
+                </label>
+
+                <label>
+                    <span>Classe di attività *</span>
+                    <select @bind="_assetClass" required aria-required="true">
+                        @foreach (var value in Enum.GetValues<AssetClass>())
+                        {
+                            <option value="@value">@Format.AssetClassLabel(value)</option>
+                        }
+                    </select>
+                </label>
+
+                <label>
+                    <span>Unità di prezzo *</span>
+                    <select @bind="_priceUnit" required aria-required="true">
+                        @foreach (var value in Enum.GetValues<PriceUnit>())
+                        {
+                            <option value="@value">@Format.PriceUnitLabel(value)</option>
+                        }
+                    </select>
+                </label>
+
+                <label>
+                    <span>Sigla per il pricing</span>
+                    <input type="text" maxlength="32" placeholder="Es. V3MA" @bind="_symbol" />
+                </label>
+
+                <label>
+                    <span>Codice ISIN</span>
+                    <input type="text" maxlength="12" placeholder="12 caratteri" @bind="_isin" />
+                </label>
+
+                <label>
+                    <span>Valuta</span>
+                    <span class="status-chip neutral investment-currency-chip">EUR</span>
+                </label>
+
+                @if (UsesNotionalValue)
+                {
+                    <label>
+                        <span>Valore nominale per unità (EUR) *</span>
+                        <input type="number" inputmode="decimal" step="any" min="0" placeholder="1000,00"
+                               required aria-required="true" @bind="_notionalText" />
+                    </label>
+                }
+
+                @if (IsBond)
+                {
+                    <label>
+                        <span>Scadenza</span>
+                        <input type="date" @bind="_maturityDate" />
+                    </label>
+                    <label>
+                        <span>Rendimento annuo (%)</span>
+                        <input type="number" inputmode="decimal" step="any" min="0" max="100"
+                               placeholder="Es. 3,5" @bind="_couponRateText" />
+                    </label>
+                }
+
+                <label class="operation-form-wide">
+                    <span>Link alla scheda dello strumento</span>
+                    <input type="url" maxlength="500" placeholder="https://…" @bind="_referenceUrl" />
+                </label>
+
+                <label class="operation-form-wide">
+                    <span>Nota breve</span>
+                    <textarea rows="3" maxlength="1000" placeholder="Es. PAC mensile, commissioni, strategia…"
+                              @bind="_notes"></textarea>
+                </label>
+
+                <div class="form-actions">
+                    <button type="submit" class="primary-button" disabled="@_saving">
+                        <MfIcon Name="@SaveIcon" Size="18" />
+                        @(Asset is null ? "Crea strumento" : "Salva modifiche")
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">
+                        Annulla
+                    </button>
+                </div>
+            </form>
+
+            @if (Asset is not null)
+            {
+                <div class="settings-danger-zone">
+                    @if (_deleteError is not null)
+                    {
+                        <p class="alert alert-error" role="alert">@_deleteError</p>
+                    }
+                    @if (!CanDelete)
+                    {
+                        <p class="table-hint">
+                            Lo strumento ha operazioni o quotazioni registrate: archivialo invece di eliminarlo.
+                        </p>
+                    }
+                    else if (_confirmingDelete)
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            <div>Eliminare definitivamente «@_name»? L'operazione non è reversibile.</div>
+                            <div class="form-actions">
+                                <button type="button" class="danger-button" disabled="@_deleting" @onclick="DeleteAsync">
+                                    <MfIcon Name="trash" Size="16" /> Elimina definitivamente
+                                </button>
+                                <button type="button" class="secondary-button" disabled="@_deleting" @onclick="CancelDelete">
+                                    Annulla
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="delete-button" disabled="@_saving" @onclick="StartDelete">
+                            <MfIcon Name="trash" Size="16" /> Elimina strumento
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public InvestmentAssetRow? Asset { get; set; }
+
+    [Parameter] public bool CanDelete { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    [Parameter] public EventCallback OnDeleted { get; set; }
+
+    private bool _wasOpen;
+    private bool _saving;
+    private bool _deleting;
+    private bool _confirmingDelete;
+    private string? _error;
+    private string? _deleteError;
+    private string _name = "";
+    private AssetClass _assetClass = AssetClass.Equity;
+    private PriceUnit _priceUnit = PriceUnit.PerUnit;
+    private string _symbol = "";
+    private string _isin = "";
+    private string _notionalText = "";
+    private string _referenceUrl = "";
+    private string _notes = "";
+    private string _couponRateText = "";
+    private DateOnly? _maturityDate;
+
+    private string SaveIcon => Asset is null ? "plus" : "check";
+
+    private bool IsBond => _assetClass == AssetClass.Bond;
+
+    private bool UsesNotionalValue => _priceUnit == PriceUnit.PercentOfNominal;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _saving = false;
+        _deleting = false;
+        _confirmingDelete = false;
+        _error = null;
+        _deleteError = null;
+
+        _name = Asset?.Name ?? "";
+        _assetClass = Asset?.AssetClass ?? AssetClass.Equity;
+        _priceUnit = Asset?.PriceUnit ?? PriceUnit.PerUnit;
+        _symbol = Asset?.Symbol ?? "";
+        _isin = Asset?.Isin ?? "";
+        _notionalText = Asset?.NotionalValue is { } notional
+            ? notional.Amount.ToString(CultureInfo.InvariantCulture)
+            : "";
+        _referenceUrl = Asset?.ReferenceUrl ?? "";
+        _notes = Asset?.Notes ?? "";
+        _couponRateText = Asset?.CouponRate is { } rate
+            ? rate.ToString(CultureInfo.InvariantCulture)
+            : "";
+        _maturityDate = Asset?.MaturityDate;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || _deleting)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "Il nome dello strumento è obbligatorio.";
+            return;
+        }
+
+        Money? notional = null;
+        if (UsesNotionalValue)
+        {
+            if (!TryParseDecimal(_notionalText, out var amount) || amount <= 0m)
+            {
+                _error = "Il valore nominale per unità deve essere positivo.";
+                return;
+            }
+
+            notional = new Money(amount, Currency.Euro);
+        }
+
+        decimal? couponRate = null;
+        if (IsBond && !string.IsNullOrWhiteSpace(_couponRateText))
+        {
+            if (!TryParseDecimal(_couponRateText, out var rate) || rate <= 0m || rate > 100m)
+            {
+                _error = "Il rendimento annuo deve essere maggiore di zero e non superiore a 100.";
+                return;
+            }
+
+            couponRate = rate;
+        }
+
+        var maturityDate = IsBond ? _maturityDate : null;
+
+        _saving = true;
+        try
+        {
+            if (Asset is null)
+            {
+                await AssetService.CreateAsync(new NewInvestmentAsset(
+                    _name,
+                    _assetClass,
+                    _priceUnit,
+                    notional,
+                    _symbol,
+                    _isin,
+                    _referenceUrl,
+                    _notes,
+                    maturityDate,
+                    couponRate));
+            }
+            else
+            {
+                await AssetService.UpdateAsync(new UpdateInvestmentAssetRequest(
+                    Asset.InstrumentId,
+                    _name,
+                    _assetClass,
+                    _priceUnit,
+                    notional,
+                    _symbol,
+                    _isin,
+                    _referenceUrl,
+                    _notes,
+                    maturityDate,
+                    couponRate));
+            }
+
+            await OnSaved.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Impossibile salvare lo strumento. Verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void StartDelete()
+    {
+        _deleteError = null;
+        _confirmingDelete = true;
+    }
+
+    private void CancelDelete()
+    {
+        _confirmingDelete = false;
+        _deleteError = null;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Asset is null || _deleting)
+        {
+            return;
+        }
+
+        _deleting = true;
+        _deleteError = null;
+        try
+        {
+            await AssetService.DeleteAsync(Asset.InstrumentId);
+            await OnDeleted.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _deleteError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _deleteError = "Impossibile eliminare lo strumento. Verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving || _deleting)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private static bool TryParseDecimal(string? text, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+            || decimal.TryParse(text, NumberStyles.Float, CultureInfo.GetCultureInfo("it-IT"), out value);
+    }
+}

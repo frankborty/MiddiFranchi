@@ -11,5 +11,7 @@ public interface IPriceObservationRepository
 
     Task<IReadOnlyList<PriceObservation>> ListAsync(CancellationToken cancellationToken = default);
 
+    Task<bool> AnyForInstrumentAsync(Guid instrumentId, CancellationToken cancellationToken = default);
+
     Task AddAsync(PriceObservation observation, CancellationToken cancellationToken = default);
 }

@@ -164,12 +164,11 @@ public class ReversalServiceTests
     [Fact]
     public async Task History_ShouldExcludeInvestmentOperations()
     {
-        var portfolio = new Domain.Portfolio.InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Euro);
         var instrument = new Domain.Portfolio.Instrument(
-            Guid.NewGuid(), "ETF", Domain.Portfolio.InstrumentType.Etf, Euro, Domain.Portfolio.PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", Domain.Portfolio.AssetClass.Equity, Euro, Domain.Portfolio.PriceUnit.PerUnit);
         var settlement = new Account(Guid.NewGuid(), "Conto titoli", AccountType.Checking, Euro, AccountStatus.Active);
         var buy = InvestmentOperation.Buy(
-            Guid.NewGuid(), portfolio, instrument, settlement,
+            Guid.NewGuid(), instrument, settlement,
             new Domain.Shared.Quantity(1m),
             Domain.Portfolio.QuotedPrice.AtUnitPrice(new Domain.Shared.UnitPrice(new Money(80m, Euro))),
             null,

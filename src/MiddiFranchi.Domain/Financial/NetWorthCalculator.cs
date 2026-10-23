@@ -6,8 +6,8 @@ namespace MiddiFranchi.Domain.Financial;
 
 /// <summary>
 /// Calcola il patrimonio netto in EUR. Tutti gli importi dell'applicazione sono in EUR:
-/// non esistono conversioni di valuta. Le collezioni di conti e portafogli definiscono il
-/// perimetro richiesto: il Domain non possiede un aggregate root del perimetro completo.
+/// non esistono conversioni di valuta. Le collezioni di conti definiscono il perimetro richiesto:
+/// il Domain non possiede un aggregate root del perimetro completo.
 /// La modalità è una scelta esplicita del chiamante: passare le rilevazioni manuali seleziona
 /// i saldi manuali come fonte autorevole dei conti — un conto senza rilevazione valida alla
 /// data è incompleto e non diventa zero — mentre ometterle seleziona la modalità posting.
@@ -19,7 +19,6 @@ public static class NetWorthCalculator
     public static NetWorthSummary Summarize(
         IReadOnlyCollection<Account> accounts,
         IEnumerable<AccountPosting> postings,
-        IEnumerable<InvestmentPortfolio> portfolios,
         IEnumerable<InvestmentOperation> operations,
         IEnumerable<PriceObservation> priceObservations,
         DateOnly valuationDate,
@@ -28,7 +27,6 @@ public static class NetWorthCalculator
     {
         if (accounts is null) throw new ArgumentNullException(nameof(accounts));
         if (postings is null) throw new ArgumentNullException(nameof(postings));
-        if (portfolios is null) throw new ArgumentNullException(nameof(portfolios));
         if (operations is null) throw new ArgumentNullException(nameof(operations));
         if (priceObservations is null) throw new ArgumentNullException(nameof(priceObservations));
 
@@ -36,9 +34,6 @@ public static class NetWorthCalculator
         EnsureDistinctAccountIds(accountList);
 
         var postingList = postings as IReadOnlyCollection<AccountPosting> ?? postings.ToArray();
-        var portfolioList = portfolios.ToArray();
-        EnsureDistinctPortfolioIds(portfolioList);
-
         var operationList = operations.ToArray();
         var priceList = priceObservations as IReadOnlyCollection<PriceObservation> ?? priceObservations.ToArray();
         var policy = valuationPolicy ?? ValuationPolicy.Unbounded;
@@ -76,24 +71,20 @@ public static class NetWorthCalculator
             ? new Money(accountEntries.Sum(entry => entry.Balance!.Value.Amount), Euro)
             : (Money?)null;
 
-        var portfolioValuations = portfolioList
-            .Select(portfolio => PortfolioValuationCalculator.Valuate(
-                portfolio, operationList, priceList, valuationDate, policy))
-            .ToList();
+        var valuation = InvestmentValuationCalculator.Valuate(
+            operationList,
+            priceList,
+            valuationDate,
+            policy);
 
-        foreach (var valuation in portfolioValuations.Where(valuation => valuation.IsIncomplete))
+        foreach (var position in valuation.Positions.Where(position => position.IsIncomplete))
         {
-            foreach (var position in valuation.Positions.Where(position => position.IsIncomplete))
-            {
-                incompletenessReasons.Add(
-                    $"Portafoglio {valuation.Portfolio.Name}: {position.IncompletenessReason}");
-            }
+            incompletenessReasons.Add($"Investimento: {position.IncompletenessReason}");
         }
 
-        var investmentsSubtotal = portfolioValuations.All(valuation => valuation.IsComplete)
+        var investmentsSubtotal = valuation.IsComplete
             ? new Money(
-                portfolioValuations.Sum(valuation =>
-                    valuation.Positions.Sum(position => position.Value!.Value.Amount)),
+                valuation.Positions.Sum(position => position.Value!.Value.Amount),
                 Euro)
             : (Money?)null;
 
@@ -105,7 +96,7 @@ public static class NetWorthCalculator
             valuationDate,
             Euro,
             accountEntries,
-            portfolioValuations,
+            valuation,
             accountsSubtotal,
             investmentsSubtotal,
             totalValue,
@@ -127,25 +118,6 @@ public static class NetWorthCalculator
                 throw new ArgumentException(
                     $"Il conto {account.Name} ({account.Id}) è presente più volte: la stessa entità non può essere conteggiata due volte.",
                     nameof(accounts));
-            }
-        }
-    }
-
-    private static void EnsureDistinctPortfolioIds(IReadOnlyList<InvestmentPortfolio> portfolios)
-    {
-        var seen = new HashSet<Guid>();
-        foreach (var portfolio in portfolios)
-        {
-            if (portfolio is null)
-            {
-                throw new ArgumentNullException(nameof(portfolios), "La collezione dei portafogli non può contenere null.");
-            }
-
-            if (!seen.Add(portfolio.Id))
-            {
-                throw new ArgumentException(
-                    $"Il portafoglio {portfolio.Name} ({portfolio.Id}) è presente più volte: la stessa entità non può essere conteggiata due volte.",
-                    nameof(portfolios));
             }
         }
     }

@@ -14,7 +14,6 @@ public class DashboardOverviewServiceTests
 
     private readonly FakeAccountRepository _accounts = new();
     private readonly FakeManualBalanceRepository _manualBalances = new();
-    private readonly FakeInvestmentPortfolioRepository _portfolios = new();
     private readonly FakeFinancialOperationRepository _operations = new();
     private readonly FakePriceObservationRepository _prices = new();
 
@@ -117,15 +116,13 @@ public class DashboardOverviewServiceTests
     [Fact]
     public async Task LoadAsync_ShouldComposeTheInvestmentHistoryAndCurrentPerformance()
     {
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "ETF Core", Euro);
-        _portfolios.Portfolios.Add(portfolio);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF globale", AssetClass.Equity, Euro, PriceUnit.PerUnit);
         var account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Euro, AccountStatus.Active);
 
         AddPrice(instrument, 80m, new DateOnly(2026, 1, 1));
-        AddBuy(portfolio, instrument, account, 2m, 80m, new DateOnly(2026, 1, 5));
+        AddBuy(instrument, account, 2m, 80m, new DateOnly(2026, 1, 5));
         AddPrice(instrument, 90m, new DateOnly(2026, 1, 10));
 
         var overview = await BuildService(new DateOnly(2026, 1, 20)).LoadAsync();
@@ -148,7 +145,6 @@ public class DashboardOverviewServiceTests
     private DashboardOverviewService BuildService(DateOnly? today = null)
     {
         var investmentService = new InvestmentOverviewService(
-            _portfolios,
             _operations,
             _prices,
             () => today ?? Today);
@@ -177,7 +173,6 @@ public class DashboardOverviewServiceTests
             RecordedAt));
 
     private void AddBuy(
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account account,
         decimal quantity,
@@ -185,7 +180,6 @@ public class DashboardOverviewServiceTests
         DateOnly date) =>
         _operations.Operations.Add(InvestmentOperation.Buy(
             Guid.NewGuid(),
-            portfolio,
             instrument,
             account,
             new Quantity(quantity),

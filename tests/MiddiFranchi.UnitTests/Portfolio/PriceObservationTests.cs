@@ -13,11 +13,11 @@ public class PriceObservationTests
     private static readonly Guid BondId = Guid.Parse("8f31fbe7-4f8f-4b1f-a187-6c4e6f3c7c42");
 
     private static readonly Instrument Etf = new(
-        EtfId, "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+        EtfId, "ETF globale", AssetClass.Equity, Euro, PriceUnit.PerUnit);
     private static readonly Instrument OtherEtf = new(
-        Guid.NewGuid(), "ETF alternativa", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+        Guid.NewGuid(), "ETF alternativa", AssetClass.Equity, Euro, PriceUnit.PerUnit);
     private static readonly Instrument Bond = new(
-        BondId, "Obbligazione società", InstrumentType.Bond, Euro, PriceUnit.PercentOfNominal, new Money(1000m, Euro));
+        BondId, "Obbligazione società", AssetClass.Bond, Euro, PriceUnit.PercentOfNominal, new Money(1000m, Euro));
 
     private static readonly DateOnly ValidAt = new(2026, 3, 10);
     private static readonly DateOnly AsOf = new(2026, 3, 31);

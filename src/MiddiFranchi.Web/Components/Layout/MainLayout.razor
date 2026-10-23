@@ -27,6 +27,7 @@
             </div>
             <div class="sidebar-group">
                 <NavLink href="investments" class="nav-investments" Match="NavLinkMatch.All" title="Investimenti" aria-label="Investimenti"><MfIcon Name="pie" Size="20" /><span class="nav-label">Investimenti</span></NavLink>
+                <NavLink href="investments/advanced" class="nav-advanced-stats" Match="NavLinkMatch.Prefix" title="Statistiche avanzate" aria-label="Statistiche avanzate"><MfIcon Name="chart" Size="20" /><span class="nav-label">Statistiche</span></NavLink>
                 <NavLink href="net-worth" class="nav-networth" Match="NavLinkMatch.All" title="Patrimonio netto" aria-label="Patrimonio netto"><MfIcon Name="trend" Size="20" /><span class="nav-label">Patrimonio netto</span></NavLink>
             </div>
             <div class="sidebar-group sidebar-group-bottom">
@@ -43,7 +44,7 @@
         <main class="page-body">
             @Body
         </main>
-        @if (!IsAccountsSection && !IsSettingsSection && !IsOperationsSection)
+        @if (!IsAccountsSection && !IsSettingsSection && !IsOperationsSection && !IsInvestmentsSection)
         {
             <a class="fab-add" href="operations?new=1" aria-label="Nuova operazione">
                 <MfIcon Name="plus" Size="24" />
@@ -62,6 +63,7 @@
     private bool IsAccountsSection => IsAccountsPath(Navigation.Uri);
     private bool IsSettingsSection => IsSettingsPath(Navigation.Uri);
     private bool IsOperationsSection => IsOperationsPath(Navigation.Uri);
+    private bool IsInvestmentsSection => IsInvestmentsPath(Navigation.Uri);
 
     protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
 
@@ -88,6 +90,12 @@
     {
         var path = new Uri(uri).AbsolutePath.TrimEnd('/');
         return path.Equals("/operations", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsInvestmentsPath(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.TrimEnd('/');
+        return path.StartsWith("/investments", StringComparison.OrdinalIgnoreCase);
     }
 }
 

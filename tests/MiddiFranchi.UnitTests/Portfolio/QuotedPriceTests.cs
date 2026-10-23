@@ -9,11 +9,11 @@ public class QuotedPriceTests
     private static readonly Currency Euro = Currency.Euro;
     private static readonly Currency Usd = Currency.Euro;
     private static readonly Instrument Etf = new(
-        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", AssetClass.Equity, Euro, PriceUnit.PerUnit);
     private static readonly Instrument Bond = new(
         Guid.Parse("8f31fbe7-4f8f-4b1f-a187-6c4e6f3c7c42"),
         "Obbligazione società",
-        InstrumentType.Bond,
+        AssetClass.Bond,
         Euro,
         PriceUnit.PercentOfNominal,
         new Money(1000m, Euro));

@@ -12,13 +12,13 @@ Tutti gli importi dell'applicazione sono in EUR. Non esistono altre valute, osse
 
 Perimetro della prima versione:
 - conti in EUR, entrate, spese e trasferimenti;
-- portafogli e strumenti finanziari;
+- strumenti finanziari e operazioni d'investimento;
 - acquisti, vendite parziali, dividendi, cedole e commissioni;
 - guadagni e perdite realizzati e non realizzati;
 - valutazione storica di liquidità, quantità, posizioni e patrimonio;
 - costo medio ponderato a fini di reportistica personale, non fiscale;
 - registrazioni append-only con storni e correzioni retrodatate.
-Sono rinviati: TWR, XIRR, motore fiscale, importazione CSV, ricostruzione bitemporale, ratei obbligazionari e trasferimenti di titoli tra portafogli.
+Sono rinviati: TWR, XIRR, motore fiscale, importazione CSV, ricostruzione bitemporale, ratei obbligazionari e trasferimenti di titoli.
 
 2. Concetti e relazioni
 Account
@@ -32,9 +32,6 @@ FinancialOperation
 ├── Transfer
 ├── InvestmentOperation
 └── ReversalOperation
-
-Portfolio
-└── conti di regolamento ammessi
 
 Instrument
 ├── prezzi in EUR
@@ -86,13 +83,15 @@ Invarianti dei prestiti:
 6. Un prestito è considerato **attivo** finché l'ultima rilevazione disponibile non è zero; quando arriva a zero è **estinto**. Lo stato è derivato, non memorizzato, e la lista può nascondere gli estinti.
 7. Un conto di tipo Prestiti con prestiti registrati non può essere convertito a un altro tipo; gli altri conti possono cambiare tipo dal dettaglio.
 
-2.2 Portfolio
-Un Portfolio raggruppa posizioni e definisce i conti di regolamento ammessi. Tutti i valori del portafoglio sono in EUR.
+2.2 Perimetro degli investimenti
+Il sistema usa un unico perimetro globale di investimenti: non esistono portafogli multipli né un selettore di portafoglio. Tutti i valori sono in EUR.
 
-La posizione è identificata dalla coppia (Portfolio, Instrument). La quantità detenuta e il costo residuo sono ricostruiti dagli eventi d'investimento validi.
+La posizione è identificata dall'Instrument. La quantità detenuta e il costo residuo sono ricostruiti dagli eventi d'investimento validi.
 
 2.3 Instrument
-Un Instrument è una voce di catalogo riutilizzabile da più portafogli. Conserva identificativo, nome, tipo, unità di prezzo e politica di valutazione. Per le obbligazioni può inoltre conservare valore nominale per unità in EUR, tasso cedolare, frequenza delle cedole, scadenza ed emittente.
+Un Instrument è una voce unica del catalogo. Conserva identificativo, nome, classe di attività, unità di prezzo e stato (Active oppure Archived). La classe di attività distingue azionario, obbligazionario, monetario, immobiliare, materie prime, cripto, bilanciato, previdenza e altro. Può inoltre conservare una sigla per il servizio di pricing, un codice ISIN, un link alla scheda descrittiva, una nota breve e il valore nominale per unità in EUR.
+
+Per le obbligazioni può conservare la data di scadenza e il rendimento annuo fisso. La frequenza delle cedole e l'emittente non sono implementati. Uno strumento con storia non viene eliminato: viene archiviato dopo la vendita totale delle quote; l'eliminazione fisica è ammessa solo se non esistono operazioni né quotazioni.
 
 I prezzi di mercato e il costo medio ponderato sono espressi in EUR. Non esistono valute di quotazione diverse dall'EUR.
 
@@ -125,14 +124,14 @@ Un Transfer sposta liquidità tra un conto sorgente e un conto destinazione. Reg
 Un trasferimento produce due posting di capitale: addebito sul conto sorgente e accredito sul conto destinazione. Eventuali commissioni sono componenti esplicite, con un posting negativo sul conto che le sostiene. Il trasferimento non è un'entrata o una spesa e non deve alterare di per sé il patrimonio consolidato.
 
 3.4 InvestmentOperation
-Un'operazione d'investimento è collegata a un portafoglio e a uno strumento. Quando comporta liquidità, è collegata anche a un conto di regolamento. Tutti gli importi sono in EUR.
+Un'operazione d'investimento è collegata a uno strumento. Quando comporta liquidità, è collegata anche a un conto di regolamento. Tutti gli importi sono in EUR.
 
 Tipi inclusi nella prima versione:
 - Buy: acquisto di quantità positiva a prezzo unitario positivo; genera un addebito di capitale e gli eventuali addebiti delle commissioni.
 - Sell: vendita di quantità positiva non superiore alla quantità detenuta alla data economica; genera un accredito di capitale e gli eventuali addebiti delle commissioni.
 - Dividend: provento da dividendo accreditato al conto; non modifica la quantità.
 - Coupon: provento da cedola accreditato al conto; non modifica la quantità.
-- StandaloneFee: commissione autonoma collegata al portafoglio e, quando applicabile, allo strumento; addebita un conto ma non modifica quantità e costo base.
+- StandaloneFee: commissione autonoma collegata, quando applicabile, allo strumento; addebita un conto ma non modifica quantità e costo base.
 TransferIn, TransferOut e QuantityEvent sono concetti futuri. Non devono essere simulati come acquisti o vendite: un trasferimento di titoli deve preservare il costo storico e non generare un risultato realizzato.
 
 Gli importi lordi, le commissioni, le eventuali ritenute fiscali e gli importi effettivamente regolati vanno distinti. Una ritenuta (TaxWithheld) non è una commissione: il trattamento fiscale completo è fuori dalla prima versione, ma i dati lordi e la ritenuta non devono essere confusi o persi.
@@ -181,6 +180,8 @@ Una PriceObservation conserva strumento, prezzo positivo in EUR, unità di prezz
 
 Per la valutazione alla data T si sceglie l'osservazione con ValidAt ≤ T più recente tra quelle ammissibili. Se l'età supera la soglia di obsolescenza configurata, la posizione è segnalata come non valutata o con prezzo obsoleto secondo una politica esplicita; non si presenta un prezzo vecchio come corrente senza indicazione. Non si usano mai prezzi futuri rispetto a T.
 
+La pagina Investimenti consente di registrare una quotazione manuale con fonte «Manuale». Le osservazioni più vecchie di 30 giorni sono segnalate come da aggiornare, senza essere presentate come correnti.
+
 ValuationPolicy descrive se lo strumento è valutato manualmente, tramite provider o con valore fisso, oltre alla soglia di obsolescenza. Un valore fisso è una politica esplicita, non una scorciatoia che elimina la provenienza del valore.
 
 5.2 PriceUnit e obbligazioni
@@ -188,7 +189,7 @@ ValuationPolicy descrive se lo strumento è valutato manualmente, tramite provid
 - PercentOfNominal: prezzo espresso come percentuale del valore nominale per unità. EffectiveUnitPrice = NotionalValue × Price / 100; MarketValue = Quantity × EffectiveUnitPrice.
 Esempio: nominale di 1.000 EUR, prezzo al 98,5%: prezzo unitario effettivo 985 EUR; per 3 unità, valore di mercato 2.955 EUR.
 
-Il valore nominale è una caratteristica dello strumento, non un prezzo di mercato. I ratei maturati non sono inclusi nel valore di mercato definito qui: quando saranno implementati, il valore comprensivo di ratei sarà una metrica distinta. Le cedole sono proventi registrati come Coupon; non si incorporano nel prezzo. Le commissioni restano componenti separate.
+Il valore nominale, la scadenza e il rendimento annuo fisso sono caratteristiche dello strumento, non prezzi di mercato. I ratei maturati non sono inclusi nel valore di mercato definito qui: quando saranno implementati, il valore comprensivo di ratei sarà una metrica distinta. Le cedole sono proventi registrati come Coupon; non si incorporano nel prezzo. Le commissioni restano componenti separate.
 
 6. Costo base e risultati d'investimento
 6.1 Convenzioni contabili
@@ -210,7 +211,7 @@ Le commissioni d'acquisto sono già in EUR e sono incluse nel costo base.
 Una vendita riduce quantità e costo base in proporzione al costo medio immediatamente precedente alla vendita. Il costo unitario medio non cambia a seguito della vendita stessa; cambia con nuovi acquisti o altri eventi di quantità esplicitamente definiti.
 
 6.3 Formule
-Per una posizione (Portfolio, Instrument) alla data T:
+Per una posizione di un Instrument alla data T:
 QuantityHeld(T) = somma delle quantità firmate degli eventi validi fino a T
 CostBasis(T) = costo base residuo, incluse le commissioni di acquisto
 AverageCost(T) = CostBasis(T) / QuantityHeld(T), se QuantityHeld(T) > 0
@@ -278,7 +279,7 @@ Se la posizione contiene 1 quota e viene tentata la vendita di 2 quote, l'operaz
 
 9. Prima versione e sviluppi futuri
 9.1 Inclusi nella prima versione
-- Account, AccountPosting, Category, Portfolio, Instrument;
+- Account, AccountPosting, Category, Instrument;
 - rilevazioni manuali dei saldi dei conti, con saldo corrente e consultazione storica;
 - FinancialOperation con Income, Expense, Transfer, InvestmentOperation e ReversalOperation;
 - componenti monetarie e di quantità, prezzi in EUR;
@@ -292,7 +293,7 @@ Se la posizione contiene 1 quota e viene tentata la vendita di 2 quote, l'operaz
 - motore fiscale e regole fiscali specifiche;
 - importazione CSV e deduplicazione tramite identificativi esterni;
 - ricostruzione bitemporale «come noto alla data»;
-- trasferimenti di titoli tra portafogli, operazioni societarie e altri eventi di quantità;
+- trasferimenti di titoli, operazioni societarie e altri eventi di quantità;
 - ratei obbligazionari e valore comprensivo di ratei;
 - provider reali e automazioni di aggiornamento.
 I dati originari, le date, le osservazioni, gli importi lordi e le ritenute devono essere conservati quando disponibili, così da non precludere gli sviluppi futuri.

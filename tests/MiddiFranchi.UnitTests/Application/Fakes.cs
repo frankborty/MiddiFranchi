@@ -370,6 +370,21 @@ public sealed class FakeFinancialOperationRepository : IFinancialOperationReposi
         return Task.CompletedTask;
     }
 
+    public Task UpdateInvestmentAsync(
+        InvestmentOperation operation,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var index = _operations.FindIndex(candidate => candidate.Id == operation.Id);
+        if (index < 0)
+        {
+            throw new InvalidOperationException("Operazione non trovata.");
+        }
+
+        _operations[index] = operation;
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         ReceivedTokens.Add(cancellationToken);
@@ -406,6 +421,94 @@ public sealed class FakeFinancialOperationRepository : IFinancialOperationReposi
             _ => false,
         });
         return Task.FromResult(referenced);
+    }
+
+    public Task<bool> AnyForInstrumentAsync(
+        Guid instrumentId,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        return Task.FromResult(_operations
+            .OfType<InvestmentOperation>()
+            .Any(operation => operation.Instrument?.Id == instrumentId));
+    }
+}
+
+public sealed class FakeInstrumentRepository : IInstrumentRepository
+{
+    private readonly List<Instrument> _instruments = [];
+
+    public List<Instrument> Instruments => _instruments;
+
+    public List<CancellationToken> ReceivedTokens { get; } = [];
+
+    public Task<Instrument?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        return Task.FromResult(_instruments.FirstOrDefault(instrument => instrument.Id == id));
+    }
+
+    public Task<IReadOnlyList<Instrument>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        IReadOnlyList<Instrument> result = _instruments
+            .OrderBy(instrument => instrument.Name)
+            .ThenBy(instrument => instrument.Id)
+            .ToArray();
+        return Task.FromResult(result);
+    }
+
+    public Task AddAsync(Instrument instrument, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        _instruments.Add(instrument);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateAsync(Instrument instrument, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var index = _instruments.FindIndex(candidate => candidate.Id == instrument.Id);
+        if (index < 0)
+        {
+            throw new InvalidOperationException($"Lo strumento {instrument.Id} non esiste.");
+        }
+
+        _instruments[index] = instrument;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        _instruments.RemoveAll(instrument => instrument.Id == id);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsinExistsAsync(
+        string isin,
+        Guid? excludingId,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var normalized = isin.Trim().ToUpperInvariant();
+        return Task.FromResult(_instruments.Any(instrument =>
+            instrument.Isin is not null &&
+            string.Equals(instrument.Isin, normalized, StringComparison.OrdinalIgnoreCase) &&
+            (excludingId is null || instrument.Id != excludingId.Value)));
+    }
+
+    public Task<bool> SymbolExistsAsync(
+        string symbol,
+        Guid? excludingId,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var normalized = symbol.Trim();
+        return Task.FromResult(_instruments.Any(instrument =>
+            instrument.Symbol is not null &&
+            string.Equals(instrument.Symbol, normalized, StringComparison.OrdinalIgnoreCase) &&
+            (excludingId is null || instrument.Id != excludingId.Value)));
     }
 }
 
@@ -453,38 +556,6 @@ public sealed class FakeAccountPostingRepository : IAccountPostingRepository
     }
 }
 
-public sealed class FakeInvestmentPortfolioRepository : IInvestmentPortfolioRepository
-{
-    private readonly List<InvestmentPortfolio> _portfolios = [];
-
-    public List<InvestmentPortfolio> Portfolios => _portfolios;
-
-    public List<CancellationToken> ReceivedTokens { get; } = [];
-
-    public Task<InvestmentPortfolio?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        ReceivedTokens.Add(cancellationToken);
-        return Task.FromResult(_portfolios.FirstOrDefault(portfolio => portfolio.Id == id));
-    }
-
-    public Task<IReadOnlyList<InvestmentPortfolio>> ListAsync(CancellationToken cancellationToken = default)
-    {
-        ReceivedTokens.Add(cancellationToken);
-        IReadOnlyList<InvestmentPortfolio> result = _portfolios
-            .OrderBy(portfolio => portfolio.Name)
-            .ThenBy(portfolio => portfolio.Id)
-            .ToArray();
-        return Task.FromResult(result);
-    }
-
-    public Task AddAsync(InvestmentPortfolio portfolio, CancellationToken cancellationToken = default)
-    {
-        ReceivedTokens.Add(cancellationToken);
-        _portfolios.Add(portfolio);
-        return Task.CompletedTask;
-    }
-}
-
 public sealed class FakePriceObservationRepository : IPriceObservationRepository
 {
     private readonly List<PriceObservation> _observations = [];
@@ -519,6 +590,14 @@ public sealed class FakePriceObservationRepository : IPriceObservationRepository
             .ThenBy(observation => observation.Id)
             .ToArray();
         return Task.FromResult(result);
+    }
+
+    public Task<bool> AnyForInstrumentAsync(
+        Guid instrumentId,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        return Task.FromResult(_observations.Any(observation => observation.Instrument.Id == instrumentId));
     }
 
     public Task AddAsync(PriceObservation observation, CancellationToken cancellationToken = default)

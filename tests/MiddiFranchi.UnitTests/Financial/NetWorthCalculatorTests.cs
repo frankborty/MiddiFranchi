@@ -14,10 +14,8 @@ public class NetWorthCalculatorTests
         Guid.Parse("d2f104e2-26bd-46dc-9db3-b83c059fe0a4"), "Conto corrente", AccountType.Checking, Euro, AccountStatus.Active);
     private static readonly Category IncomeCategory = new(
         Guid.Parse("f8f5d4f1-6a2b-4f4b-9d8d-3f6d0b1a2c3d"), "Stipendio", CategoryType.Income);
-    private static readonly InvestmentPortfolio Portfolio = new(
-        Guid.Parse("9a5f8b83-c3d4-4a01-9f9f-4c8a0d3f1e2d"), "Portafoglio principale", Euro);
     private static readonly Instrument Etf = new(
-        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", AssetClass.Equity, Euro, PriceUnit.PerUnit);
 
     [Fact]
     public void Summarize_ShouldComputeAccountsAndInvestmentsInEur()
@@ -30,7 +28,6 @@ public class NetWorthCalculatorTests
         var summary = NetWorthCalculator.Summarize(
             [CheckingAccount],
             [],
-            [Portfolio],
             [buy],
             [price],
             ValuationDate,
@@ -42,7 +39,7 @@ public class NetWorthCalculatorTests
         summary.InvestmentsSubtotal.ShouldBe(new Money(180m, Euro));
         summary.TotalValue.ShouldBe(new Money(1180m, Euro));
         summary.Accounts.ShouldHaveSingleItem().Balance.ShouldBe(new Money(1000m, Euro));
-        summary.Investments.ShouldHaveSingleItem().Positions.ShouldHaveSingleItem()
+        summary.Investments.Positions.ShouldHaveSingleItem()
             .Value!.Value.ShouldBe(new Money(180m, Euro));
     }
 
@@ -62,7 +59,6 @@ public class NetWorthCalculatorTests
             income.GeneratePostings(),
             [],
             [],
-            [],
             ValuationDate);
 
         summary.IsComplete.ShouldBeTrue();
@@ -75,7 +71,6 @@ public class NetWorthCalculatorTests
     {
         var summary = NetWorthCalculator.Summarize(
             [CheckingAccount],
-            [],
             [],
             [],
             [],
@@ -97,7 +92,6 @@ public class NetWorthCalculatorTests
         var summary = NetWorthCalculator.Summarize(
             [],
             [],
-            [Portfolio],
             [buy],
             [],
             ValuationDate);
@@ -113,16 +107,7 @@ public class NetWorthCalculatorTests
     {
         Should.Throw<ArgumentException>(
                 () => NetWorthCalculator.Summarize(
-                    [CheckingAccount, CheckingAccount], [], [], [], [], ValuationDate))
-            .Message.ShouldContain("presente più volte");
-    }
-
-    [Fact]
-    public void Summarize_ShouldRejectDuplicatePortfolios()
-    {
-        Should.Throw<ArgumentException>(
-                () => NetWorthCalculator.Summarize(
-                    [], [], [Portfolio, Portfolio], [], [], ValuationDate))
+                    [CheckingAccount, CheckingAccount], [], [], [], ValuationDate))
             .Message.ShouldContain("presente più volte");
     }
 
@@ -130,30 +115,25 @@ public class NetWorthCalculatorTests
     public void Summarize_ShouldRejectNullCollections()
     {
         Should.Throw<ArgumentNullException>(
-                () => NetWorthCalculator.Summarize(null!, [], [], [], [], ValuationDate))
+                () => NetWorthCalculator.Summarize(null!, [], [], [], ValuationDate))
             .ParamName.ShouldBe("accounts");
 
         Should.Throw<ArgumentNullException>(
-                () => NetWorthCalculator.Summarize([], null!, [], [], [], ValuationDate))
+                () => NetWorthCalculator.Summarize([], null!, [], [], ValuationDate))
             .ParamName.ShouldBe("postings");
 
         Should.Throw<ArgumentNullException>(
-                () => NetWorthCalculator.Summarize([], [], null!, [], [], ValuationDate))
-            .ParamName.ShouldBe("portfolios");
-
-        Should.Throw<ArgumentNullException>(
-                () => NetWorthCalculator.Summarize([], [], [], null!, [], ValuationDate))
+                () => NetWorthCalculator.Summarize([], [], null!, [], ValuationDate))
             .ParamName.ShouldBe("operations");
 
         Should.Throw<ArgumentNullException>(
-                () => NetWorthCalculator.Summarize([], [], [], [], null!, ValuationDate))
+                () => NetWorthCalculator.Summarize([], [], [], null!, ValuationDate))
             .ParamName.ShouldBe("priceObservations");
     }
 
     private static InvestmentOperation Buy(decimal quantity, decimal price) =>
         InvestmentOperation.Buy(
             Guid.NewGuid(),
-            Portfolio,
             Etf,
             CheckingAccount,
             new Quantity(quantity),

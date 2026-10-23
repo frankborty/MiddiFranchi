@@ -73,6 +73,13 @@ public sealed class PriceObservationRepository : IPriceObservationRepository
         return records.Select(record => PersistenceMapper.ToDomain(record, instrumentsById[record.InstrumentId])).ToArray();
     }
 
+    public Task<bool> AnyForInstrumentAsync(
+        Guid instrumentId,
+        CancellationToken cancellationToken = default) =>
+        _context.PriceObservations.AnyAsync(
+            observation => observation.InstrumentId == instrumentId,
+            cancellationToken);
+
     public async Task AddAsync(PriceObservation observation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(observation);

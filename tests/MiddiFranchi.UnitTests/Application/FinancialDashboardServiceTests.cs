@@ -71,9 +71,8 @@ public class FinancialDashboardServiceTests
         var project = new DashboardProject();
         var account = project.AddAccount("Conto titoli", Euro);
         project.AddReading(account, 100m);
-        var portfolio = project.AddPortfolio("Portafoglio", Euro);
         var etf = project.AddInstrument("ETF globale", Euro);
-        project.AddBuy(portfolio, etf, account, 2m, 80m, new DateOnly(2026, 10, 5));
+        project.AddBuy(etf, account, 2m, 80m, new DateOnly(2026, 10, 5));
 
         var dashboard = await project.Build().LoadAsync();
 
@@ -83,10 +82,7 @@ public class FinancialDashboardServiceTests
         dashboard.Investments.HasValuedPositions.ShouldBeFalse();
         dashboard.Investments.ValuedPositionCount.ShouldBe(0);
         dashboard.Investments.UnvaluedPositionCount.ShouldBe(1);
-        var valuation = dashboard.Investments.Portfolios.ShouldHaveSingleItem();
-        valuation.Total.ShouldBeNull();
-        valuation.Distribution.ShouldBeEmpty();
-        valuation.Positions.ShouldHaveSingleItem().Value.ShouldBeNull();
+        dashboard.Investments.Positions.ShouldHaveSingleItem().Value.ShouldBeNull();
     }
 
     [Fact]
@@ -95,9 +91,8 @@ public class FinancialDashboardServiceTests
         var project = new DashboardProject();
         var account = project.AddAccount("Conto titoli", Euro);
         project.AddReading(account, 100m);
-        var portfolio = project.AddPortfolio("Portafoglio", Euro);
         var etf = project.AddInstrument("ETF globale", Euro);
-        project.AddBuy(portfolio, etf, account, 2.5m, 80m, new DateOnly(2026, 10, 5));
+        project.AddBuy(etf, account, 2.5m, 80m, new DateOnly(2026, 10, 5));
         project.AddPrice(etf, 90m, new DateOnly(2026, 10, 15));
 
         var dashboard = await project.Build().LoadAsync();
@@ -109,9 +104,7 @@ public class FinancialDashboardServiceTests
         dashboard.Investments.Total.ShouldBe(new Money(225m, Euro));
         dashboard.Investments.ValuedPositionCount.ShouldBe(1);
         dashboard.Investments.UnvaluedPositionCount.ShouldBe(0);
-        var valuation = dashboard.Investments.Portfolios.ShouldHaveSingleItem();
-        valuation.Total.ShouldBe(new Money(225m, Euro));
-        valuation.Distribution.ShouldHaveSingleItem().Share.ShouldBe(1d);
+        dashboard.Investments.Positions.ShouldHaveSingleItem().Value.ShouldBe(new Money(225m, Euro));
     }
 
     [Fact]
@@ -149,15 +142,12 @@ public class FinancialDashboardServiceTests
 
         public FakeFinancialOperationRepository Operations { get; } = new();
 
-        public FakeInvestmentPortfolioRepository Portfolios { get; } = new();
-
         public FakePriceObservationRepository Prices { get; } = new();
 
         public FinancialDashboardService Build() => new(
             new NetWorthOverviewService(
                 Accounts,
                 Readings,
-                Portfolios,
                 Operations,
                 Prices),
             new AccountOverviewService(Accounts, Readings, _postings),
@@ -227,22 +217,14 @@ public class FinancialDashboardServiceTests
             return transfer;
         }
 
-        public InvestmentPortfolio AddPortfolio(string name, Currency currency)
-        {
-            var portfolio = new InvestmentPortfolio(Guid.NewGuid(), name, currency);
-            Portfolios.Portfolios.Add(portfolio);
-            return portfolio;
-        }
-
         public Instrument AddInstrument(string name, Currency currency)
         {
             var instrument = new Instrument(
-                Guid.NewGuid(), name, InstrumentType.Etf, currency, PriceUnit.PerUnit);
+                Guid.NewGuid(), name, AssetClass.Equity, currency, PriceUnit.PerUnit);
             return instrument;
         }
 
         public InvestmentOperation AddBuy(
-            InvestmentPortfolio portfolio,
             Instrument instrument,
             Account settlementAccount,
             decimal quantity,
@@ -251,7 +233,6 @@ public class FinancialDashboardServiceTests
         {
             var operation = InvestmentOperation.Buy(
                 Guid.NewGuid(),
-                portfolio,
                 instrument,
                 settlementAccount,
                 new Quantity(quantity),

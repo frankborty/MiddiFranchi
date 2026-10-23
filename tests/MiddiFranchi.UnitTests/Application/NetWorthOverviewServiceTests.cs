@@ -14,7 +14,6 @@ public class NetWorthOverviewServiceTests
 
     private readonly FakeAccountRepository _accounts = new();
     private readonly FakeManualBalanceRepository _readings = new();
-    private readonly FakeInvestmentPortfolioRepository _portfolios = new();
     private readonly FakeFinancialOperationRepository _operations = new();
     private readonly FakePriceObservationRepository _prices = new();
 
@@ -23,9 +22,8 @@ public class NetWorthOverviewServiceTests
     {
         var account = AddAccount("Conto corrente");
         AddReading(account, 100m, new DateOnly(2026, 3, 20));
-        var portfolio = AddPortfolio("Portafoglio", Euro);
         var instrument = AddInstrument("ETF globale", Euro);
-        AddBuy(portfolio, instrument, account, 2m, 50m, new DateOnly(2026, 3, 10));
+        AddBuy(instrument, account, 2m, 50m, new DateOnly(2026, 3, 10));
         AddPrice(instrument, 60m, new DateOnly(2026, 3, 20));
 
         var summary = await BuildService().SummarizeAsync(Today);
@@ -54,9 +52,8 @@ public class NetWorthOverviewServiceTests
     {
         var account = AddAccount("Conto titoli");
         AddReading(account, 100m, new DateOnly(2026, 3, 20));
-        var portfolio = AddPortfolio("Portafoglio", Euro);
         var instrument = AddInstrument("ETF globale", Euro);
-        AddBuy(portfolio, instrument, account, 2m, 50m, new DateOnly(2026, 3, 10));
+        AddBuy(instrument, account, 2m, 50m, new DateOnly(2026, 3, 10));
 
         var summary = await BuildService().SummarizeAsync(Today);
 
@@ -70,7 +67,6 @@ public class NetWorthOverviewServiceTests
     private NetWorthOverviewService BuildService() => new(
         _accounts,
         _readings,
-        _portfolios,
         _operations,
         _prices);
 
@@ -90,18 +86,10 @@ public class NetWorthOverviewServiceTests
             validAt,
             RecordedAt));
 
-    private InvestmentPortfolio AddPortfolio(string name, Currency currency)
-    {
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), name, currency);
-        _portfolios.Portfolios.Add(portfolio);
-        return portfolio;
-    }
-
     private static Instrument AddInstrument(string name, Currency currency) =>
-        new(Guid.NewGuid(), name, InstrumentType.Etf, currency, PriceUnit.PerUnit);
+        new(Guid.NewGuid(), name, AssetClass.Equity, currency, PriceUnit.PerUnit);
 
     private void AddBuy(
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account account,
         decimal quantity,
@@ -109,7 +97,6 @@ public class NetWorthOverviewServiceTests
         DateOnly date) =>
         _operations.Operations.Add(InvestmentOperation.Buy(
             Guid.NewGuid(),
-            portfolio,
             instrument,
             account,
             new Quantity(quantity),

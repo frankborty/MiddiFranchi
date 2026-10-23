@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MiddiFranchi.Domain.Financial;
 using MiddiFranchi.Domain.Portfolio;
 using MiddiFranchi.Domain.Shared;
+using MiddiFranchi.Infrastructure.Persistence.Entities;
 using MiddiFranchi.Infrastructure.Persistence.Repositories;
 using MiddiFranchi.IntegrationTests.Infrastructure;
 using Shouldly;
@@ -138,19 +139,16 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     {
         var account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
             Guid.NewGuid(),
             "Obbligazione",
-            InstrumentType.Bond,
+            AssetClass.Bond,
             Currency.Euro,
             PriceUnit.PercentOfNominal,
             new Money(1000m, Currency.Euro));
         var accountRepository = new AccountRepository(Context);
-        var portfolioRepository = new InvestmentPortfolioRepository(Context);
         var instrumentRepository = new InstrumentRepository(Context);
         await accountRepository.AddAsync(account);
-        await portfolioRepository.AddAsync(portfolio);
         await instrumentRepository.AddAsync(instrument);
 
         var repository = new FinancialOperationRepository(Context);
@@ -161,7 +159,6 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             account);
         var operation = InvestmentOperation.Buy(
             Guid.NewGuid(),
-            portfolio,
             instrument,
             account,
             new Quantity(3m),
@@ -175,7 +172,6 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
 
         var loaded = (await repository.GetByIdAsync(operation.Id)).ShouldBeOfType<InvestmentOperation>();
         loaded.InvestmentKind.ShouldBe(InvestmentOperationKind.Buy);
-        loaded.Portfolio.Id.ShouldBe(portfolio.Id);
         loaded.Instrument.ShouldNotBeNull();
         loaded.Instrument.Id.ShouldBe(instrument.Id);
         loaded.Instrument.NotionalValue.ShouldBe(new Money(1000m, Currency.Euro));
@@ -204,11 +200,9 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     {
         var account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", AssetClass.Equity, Currency.Euro, PriceUnit.PerUnit);
         await new AccountRepository(Context).AddAsync(account);
-        await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
         await new InstrumentRepository(Context).AddAsync(instrument);
 
         var repository = new FinancialOperationRepository(Context);
@@ -223,7 +217,6 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
             account);
         var operation = InvestmentOperation.Buy(
             Guid.NewGuid(),
-            portfolio,
             instrument,
             account,
             new Quantity(1m),
@@ -313,18 +306,15 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     {
         var account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", AssetClass.Equity, Currency.Euro, PriceUnit.PerUnit);
         await new AccountRepository(Context).AddAsync(account);
-        await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
         await new InstrumentRepository(Context).AddAsync(instrument);
 
         var repository = new FinancialOperationRepository(Context);
         var date = new DateOnly(2026, 3, 19);
         var operation = InvestmentOperation.Dividend(
             Guid.NewGuid(),
-            portfolio,
             instrument,
             account,
             new PositiveMoney(new Money(12.5m, Currency.Euro)),
@@ -350,15 +340,12 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
     {
         var account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         await new AccountRepository(Context).AddAsync(account);
-        await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
 
         var repository = new FinancialOperationRepository(Context);
         var date = new DateOnly(2026, 3, 21);
         var operation = InvestmentOperation.StandaloneFee(
             Guid.NewGuid(),
-            portfolio,
             account,
             new PositiveMoney(new Money(0.5m, Currency.Euro)),
             date,
@@ -413,57 +400,6 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         operations.Select(operation => operation.Id).ShouldBe([first.Id, second.Id, reversal.Id]);
         operations.Single(operation => operation.Id == first.Id).Status.ShouldBe(OperationStatus.Reversed);
         operations.Single(operation => operation.Id == reversal.Id).ShouldBeOfType<ReversalOperation>();
-    }
-
-    [PostgresFact]
-    public async Task ListInvestmentsByPortfolio_ShouldFilterByDateAndReversalStatus()
-    {
-        var account = new Account(
-            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
-        var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
-        await new AccountRepository(Context).AddAsync(account);
-        await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
-        await new InstrumentRepository(Context).AddAsync(instrument);
-
-        var repository = new FinancialOperationRepository(Context);
-        var first = InvestmentOperation.Buy(
-            Guid.NewGuid(),
-            portfolio,
-            instrument,
-            account,
-            new Quantity(1m),
-            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(80m, Currency.Euro))),
-            null,
-            new DateOnly(2026, 3, 10),
-            new DateTimeOffset(2026, 3, 10, 8, 0, 0, TimeSpan.Zero));
-        var second = InvestmentOperation.Buy(
-            Guid.NewGuid(),
-            portfolio,
-            instrument,
-            account,
-            new Quantity(2m),
-            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(90m, Currency.Euro))),
-            null,
-            new DateOnly(2026, 3, 20),
-            new DateTimeOffset(2026, 3, 20, 8, 0, 0, TimeSpan.Zero));
-        await repository.AddAsync(first);
-        await repository.AddAsync(second);
-
-        var beforeSecond = await repository.ListInvestmentsByPortfolioAsync(portfolio.Id, new DateOnly(2026, 3, 15));
-        beforeSecond.ShouldHaveSingleItem().Id.ShouldBe(first.Id);
-
-        await repository.AddAsync(new ReversalOperation(
-            Guid.NewGuid(),
-            first,
-            new DateOnly(2026, 3, 16),
-            new DateTimeOffset(2026, 3, 16, 8, 0, 0, TimeSpan.Zero)));
-
-        (await repository.ListInvestmentsByPortfolioAsync(portfolio.Id, new DateOnly(2026, 3, 15)))
-            .ShouldBeEmpty();
-        var afterSecond = await repository.ListInvestmentsByPortfolioAsync(portfolio.Id, new DateOnly(2026, 3, 25));
-        afterSecond.ShouldHaveSingleItem().Id.ShouldBe(second.Id);
     }
 
     [PostgresFact]
@@ -538,6 +474,110 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         loaded.RecordedAt.ShouldNotBe(recordedAt);
     }
 
+    [PostgresFact]
+    public async Task UpdateInvestment_ShouldReplaceFeesAndPostings()
+    {
+        var (account, instrument) = await AddInvestmentContextAsync();
+        var repository = new FinancialOperationRepository(Context);
+        var date = new DateOnly(2026, 4, 1);
+        var recordedAt = new DateTimeOffset(2026, 4, 1, 9, 0, 0, TimeSpan.Zero);
+        var originalFee = new FeeComponent(
+            FeeKind.BuyFee,
+            new PositiveMoney(new Money(2m, Currency.Euro)),
+            account);
+        var buy = InvestmentOperation.Buy(
+            Guid.NewGuid(),
+            instrument,
+            account,
+            new Quantity(3m),
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(10m, Currency.Euro))),
+            [originalFee],
+            date,
+            recordedAt);
+        await repository.AddAsync(buy);
+        ClearTracker();
+
+        var updatedFee = new FeeComponent(
+            FeeKind.BuyFee,
+            new PositiveMoney(new Money(1m, Currency.Euro)),
+            account);
+        var updated = InvestmentOperation.Buy(
+            buy.Id,
+            instrument,
+            account,
+            new Quantity(2m),
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(12m, Currency.Euro))),
+            [updatedFee],
+            date,
+            recordedAt,
+            "Aggiornata");
+
+        await repository.UpdateInvestmentAsync(updated);
+        ClearTracker();
+
+        var loaded = (await repository.GetByIdAsync(buy.Id)).ShouldBeOfType<InvestmentOperation>();
+        loaded.Quantity!.Value.Value.ShouldBe(2m);
+        loaded.UnitPrice!.Value.Price.ShouldBe(new Money(12m, Currency.Euro));
+        loaded.Description.ShouldBe("Aggiornata");
+        loaded.Fees.ShouldHaveSingleItem().Amount.Value.ShouldBe(new Money(1m, Currency.Euro));
+
+        var postings = await new AccountPostingRepository(Context).ListForAccountAsync(account.Id, date);
+        postings.Count.ShouldBe(2);
+        postings.Single(posting => posting.Kind == PostingKind.Capital).SignedAmount.ShouldBe(-24m);
+        postings.Single(posting => posting.Kind == PostingKind.Fee).SignedAmount.ShouldBe(-1m);
+    }
+
+    [PostgresFact]
+    public async Task DeleteInvestment_ShouldRemoveFeesAndPostings()
+    {
+        var (account, instrument) = await AddInvestmentContextAsync();
+        var repository = new FinancialOperationRepository(Context);
+        var date = new DateOnly(2026, 4, 2);
+        var fee = new FeeComponent(
+            FeeKind.BuyFee,
+            new PositiveMoney(new Money(2m, Currency.Euro)),
+            account);
+        var buy = InvestmentOperation.Buy(
+            Guid.NewGuid(),
+            instrument,
+            account,
+            new Quantity(1m),
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(10m, Currency.Euro))),
+            [fee],
+            date,
+            new DateTimeOffset(2026, 4, 2, 9, 0, 0, TimeSpan.Zero));
+        await repository.AddAsync(buy);
+        ClearTracker();
+
+        await repository.DeleteAsync(buy.Id);
+        ClearTracker();
+
+        (await repository.GetByIdAsync(buy.Id)).ShouldBeNull();
+        (await Context.Set<FeeComponentRecord>()
+            .CountAsync(candidate => candidate.InvestmentOperationId == buy.Id)).ShouldBe(0);
+        (await Context.AccountPostings
+            .CountAsync(candidate => candidate.FinancialOperationId == buy.Id)).ShouldBe(0);
+    }
+
+    [PostgresFact]
+    public async Task AnyForInstrumentAsync_ShouldDetectInvestmentOperations()
+    {
+        var (account, instrument) = await AddInvestmentContextAsync();
+        var repository = new FinancialOperationRepository(Context);
+        await repository.AddAsync(InvestmentOperation.Buy(
+            Guid.NewGuid(),
+            instrument,
+            account,
+            new Quantity(1m),
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(10m, Currency.Euro))),
+            null,
+            new DateOnly(2026, 4, 3),
+            new DateTimeOffset(2026, 4, 3, 9, 0, 0, TimeSpan.Zero)));
+
+        (await repository.AnyForInstrumentAsync(instrument.Id)).ShouldBeTrue();
+        (await repository.AnyForInstrumentAsync(Guid.NewGuid())).ShouldBeFalse();
+    }
+
     private async Task<(Account Account, Category Category)> AddOrdinaryContextAsync(CategoryType type)
     {
         var account = new Account(
@@ -546,5 +586,17 @@ public class FinancialOperationRepositoryTests : PostgresTestBase
         await new AccountRepository(Context).AddAsync(account);
         await new CategoryRepository(Context).AddAsync(category);
         return (account, category);
+    }
+
+    private async Task<(Account Account, Instrument Instrument)>
+        AddInvestmentContextAsync()
+    {
+        var account = new Account(
+            Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
+        var instrument = new Instrument(
+            Guid.NewGuid(), "ETF", AssetClass.Equity, Currency.Euro, PriceUnit.PerUnit);
+        await new AccountRepository(Context).AddAsync(account);
+        await new InstrumentRepository(Context).AddAsync(instrument);
+        return (account, instrument);
     }
 }

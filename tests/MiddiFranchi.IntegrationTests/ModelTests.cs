@@ -23,7 +23,6 @@ public class ModelTests
 
         tables.ShouldContain("Accounts");
         tables.ShouldContain("Categories");
-        tables.ShouldContain("InvestmentPortfolios");
         tables.ShouldContain("Instruments");
         tables.ShouldContain("FinancialOperations");
         tables.ShouldContain("AccountPostings");
@@ -65,6 +64,7 @@ public class ModelTests
         operation.FindProperty(nameof(FinancialOperationRecord.InvestmentKind))!
             .GetProviderClrType().ShouldBe(typeof(string));
         operation.FindProperty("Status").ShouldBeNull();
+        operation.FindProperty("PortfolioId").ShouldBeNull();
     }
 
     [Fact]
@@ -117,6 +117,44 @@ public class ModelTests
 
         symbol.GetMaxLength().ShouldBe(32);
         symbol.IsNullable.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Model_ShouldExposeTheInstrumentCatalogDetails()
+    {
+        using var context = CreateContext();
+        var model = GetModel(context);
+        var instrument = model.FindEntityType(typeof(InstrumentRecord)).ShouldNotBeNull();
+
+        instrument.FindProperty(nameof(InstrumentRecord.AssetClass))!
+            .GetProviderClrType().ShouldBe(typeof(string));
+        instrument.FindProperty(nameof(InstrumentRecord.Status))!
+            .GetProviderClrType().ShouldBe(typeof(string));
+        instrument.FindProperty(nameof(InstrumentRecord.Isin))!
+            .GetMaxLength().ShouldBe(12);
+        instrument.FindProperty(nameof(InstrumentRecord.ReferenceUrl))!
+            .GetMaxLength().ShouldBe(500);
+        instrument.FindProperty(nameof(InstrumentRecord.Notes))!
+            .GetColumnType().ShouldBe("text");
+        instrument.FindProperty(nameof(InstrumentRecord.MaturityDate))!
+            .GetColumnType().ShouldBe("date");
+        instrument.FindProperty(nameof(InstrumentRecord.CouponRate))!
+            .GetColumnType().ShouldBe("numeric");
+
+        instrument.GetIndexes().ShouldContain(index =>
+            index.IsUnique &&
+            index.Properties.Any(property => property.Name == nameof(InstrumentRecord.Isin)));
+
+        instrument.GetCheckConstraints().ShouldContain(constraint =>
+            constraint.Name == "CK_Instruments_AssetClass");
+        instrument.GetCheckConstraints().ShouldContain(constraint =>
+            constraint.Name == "CK_Instruments_Status");
+        instrument.GetCheckConstraints().ShouldContain(constraint =>
+            constraint.Name == "CK_Instruments_IsinFormat");
+        instrument.GetCheckConstraints().ShouldContain(constraint =>
+            constraint.Name == "CK_Instruments_BondDetails");
+        instrument.GetCheckConstraints().ShouldContain(constraint =>
+            constraint.Name == "CK_Instruments_CouponRate");
     }
 
     [Fact]

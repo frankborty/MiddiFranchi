@@ -1,4 +1,5 @@
 using MiddiFranchi.Domain.Financial;
+using MiddiFranchi.Domain.Portfolio;
 using MiddiFranchi.Domain.Shared;
 using Shouldly;
 
@@ -12,8 +13,10 @@ public class NetWorthSummaryTests
     [Fact]
     public void Construction_ShouldRejectNullCollections()
     {
+        var valuation = new InvestmentValuation(ValuationDate, []);
+
         Should.Throw<ArgumentNullException>(
-                () => new NetWorthSummary(ValuationDate, Euro, null!, [], null, null, null, []))
+                () => new NetWorthSummary(ValuationDate, Euro, null!, valuation, null, null, null, []))
             .ParamName.ShouldBe("accounts");
 
         Should.Throw<ArgumentNullException>(
@@ -21,7 +24,7 @@ public class NetWorthSummaryTests
             .ParamName.ShouldBe("investments");
 
         Should.Throw<ArgumentNullException>(
-                () => new NetWorthSummary(ValuationDate, Euro, [], [], null, null, null, null!))
+                () => new NetWorthSummary(ValuationDate, Euro, [], valuation, null, null, null, null!))
             .ParamName.ShouldBe("incompletenessReasons");
     }
 
@@ -29,7 +32,8 @@ public class NetWorthSummaryTests
     public void Construction_ShouldRejectADefaultReportingCurrency()
     {
         Should.Throw<ArgumentException>(
-                () => new NetWorthSummary(ValuationDate, default, [], [], null, null, null, []))
+                () => new NetWorthSummary(
+                    ValuationDate, default, [], new InvestmentValuation(ValuationDate, []), null, null, null, []))
             .ParamName.ShouldBe("reportingCurrency");
     }
 }

@@ -11,15 +11,9 @@ namespace MiddiFranchi.Domain.Portfolio;
 public static class InvestmentCostBasisCalculator
 {
     public static IReadOnlyList<InvestmentCostBasis> Calculate(
-        InvestmentPortfolio portfolio,
         IEnumerable<InvestmentOperation> operations,
         DateOnly asOfDate)
     {
-        if (portfolio is null)
-        {
-            throw new ArgumentNullException(nameof(portfolio));
-        }
-
         if (operations is null)
         {
             throw new ArgumentNullException(nameof(operations));
@@ -48,7 +42,6 @@ public static class InvestmentCostBasisCalculator
 
         var sequence = operationList
             .Where(operation => operation.Status == OperationStatus.Registered)
-            .Where(operation => operation.Portfolio.Id == portfolio.Id)
             .Where(operation => operation.OperationDate <= asOfDate)
             .Where(operation => operation.InvestmentKind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell)
             .OrderBy(operation => operation.OperationDate)
@@ -84,7 +77,6 @@ public static class InvestmentCostBasisCalculator
                 var instrument = instruments[pair.Key];
                 var state = pair.Value;
                 return new InvestmentCostBasis(
-                    portfolio,
                     instrument,
                     new Quantity(state.Quantity),
                     new Money(state.Cost, instrument.QuoteCurrency));

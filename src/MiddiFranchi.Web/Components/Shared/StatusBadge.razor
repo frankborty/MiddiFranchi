@@ -1,10 +1,13 @@
 @namespace MiddiFranchi.Web.Components.Shared
-<span class="status-chip @Tone">@ChildContent</span>
+<span class="status-chip @Tone" title="@Title">@ChildContent</span>
 
 @code {
     /// <summary>neutral | brand | teal | amber | income | expense | warning | info.</summary>
     [Parameter]
     public string Tone { get; set; } = "neutral";
+
+    [Parameter]
+    public string? Title { get; set; }
 
     [Parameter]
     public RenderFragment? ChildContent { get; set; }

@@ -130,63 +130,50 @@ else if (_summary is not null)
 
     <section class="card">
         <h2><MfIcon Name="chart" Size="18" /> Investimenti</h2>
-        @if (_summary.Investments.Count == 0)
+        @if (_summary.Investments.Positions.Count == 0)
         {
-            <EmptyState Title="Nessun portafoglio registrato"
-                        Hint="I portafogli e le posizioni registrate compaiono qui con la loro valorizzazione alla data richiesta."
-                        Icon="chart" />
+            <EmptyState Title="Nessuna posizione aperta alla data di riferimento"
+                        Hint="Le posizioni si costruiscono dalle operazioni d'acquisto e vendita fino alla data scelta."
+                        Icon="coin" />
         }
         else
         {
-            @foreach (var valuation in _summary.Investments)
-            {
-                <h3>@valuation.Portfolio.Name</h3>
-                @if (valuation.Positions.Count == 0)
-                {
-                    <EmptyState Title="Nessuna posizione aperta alla data di riferimento"
-                                Hint="Le posizioni si costruiscono dalle operazioni d' acquisto e vendita fino alla data scelta."
-                                Icon="coin" />
-                }
-                else
-                {
-                    <div class="table-scroll" tabindex="0">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th scope="col">Strumento</th>
-                                    <th scope="col" class="num">Quantità</th>
-                                    <th scope="col" class="num">Valore</th>
-                                    <th scope="col">Stato</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var position in valuation.Positions)
-                                {
-                                    <tr>
-                                        <td>@position.Position.Instrument.Name</td>
-                                        <td class="num">@PositionQuantity(position.Position.Quantity)</td>
-                                        <td class="num">
-                                            @if (position.Value is { } value)
-                                            {
-                                                <AmountValue Value="@value" />
-                                            }
-                                            else
-                                            {
-                                                <span>-</span>
-                                            }
-                                        </td>
-                                        <td>
-                                            <StatusBadge Tone="@(position.IsValuated ? "income" : "warning")">
-                                                @(position.IncompletenessReason ?? "Valorizzata")
-                                            </StatusBadge>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            }
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Strumento</th>
+                            <th scope="col" class="num">Quantità</th>
+                            <th scope="col" class="num">Valore</th>
+                            <th scope="col">Stato</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var position in _summary.Investments.Positions)
+                        {
+                            <tr>
+                                <td>@position.Position.Instrument.Name</td>
+                                <td class="num">@PositionQuantity(position.Position.Quantity)</td>
+                                <td class="num">
+                                    @if (position.Value is { } value)
+                                    {
+                                        <AmountValue Value="@value" />
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>
+                                    <StatusBadge Tone="@(position.IsValuated ? "income" : "warning")">
+                                        @(position.IncompletenessReason ?? "Valorizzata")
+                                    </StatusBadge>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         }
     </section>
 }
@@ -237,8 +224,8 @@ else if (_summary is not null)
         summary.Accounts.Count(entry => entry.Balance is null);
 
     private static int ValuedPositionsCount(NetWorthSummary summary) =>
-        summary.Investments.Sum(valuation => valuation.Positions.Count(position => position.IsValuated));
+        summary.Investments.Positions.Count(position => position.IsValuated);
 
     private static int UnvaluedPositionsCount(NetWorthSummary summary) =>
-        summary.Investments.Sum(valuation => valuation.Positions.Count(position => position.IsIncomplete));
+        summary.Investments.Positions.Count(position => position.IsIncomplete);
 }

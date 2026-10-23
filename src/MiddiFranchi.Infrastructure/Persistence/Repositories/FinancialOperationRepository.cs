@@ -61,26 +61,6 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
         return await FinancialOperationMaterializer.MaterializeAsync(_context, records, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<InvestmentOperation>> ListInvestmentsByPortfolioAsync(
-        Guid portfolioId,
-        DateOnly asOfDate,
-        CancellationToken cancellationToken = default)
-    {
-        var records = await _context.FinancialOperations
-            .AsNoTracking()
-            .Where(operation =>
-                operation.Kind == OperationKind.Investment &&
-                operation.PortfolioId == portfolioId &&
-                operation.OperationDate <= asOfDate &&
-                !_context.FinancialOperations.Any(reversal =>
-                    reversal.Kind == OperationKind.Reversal &&
-                    reversal.OriginalOperationId == operation.Id))
-            .ToListAsync(cancellationToken);
-
-        var operations = await FinancialOperationMaterializer.MaterializeAsync(_context, records, cancellationToken);
-        return operations.OfType<InvestmentOperation>().ToArray();
-    }
-
     public async Task AddAsync(FinancialOperation operation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operation);
@@ -172,6 +152,98 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateInvestmentAsync(
+        InvestmentOperation operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        var record = await _context.FinancialOperations
+            .SingleOrDefaultAsync(candidate => candidate.Id == operation.Id, cancellationToken)
+            ?? throw new InvalidOperationException("Operazione non trovata.");
+
+        if (record.Kind != OperationKind.Investment)
+        {
+            throw new InvalidOperationException("L'operazione non è un'operazione d'investimento.");
+        }
+
+        var alreadyReversed = await _context.FinancialOperations.AnyAsync(
+            candidate =>
+                candidate.Kind == OperationKind.Reversal &&
+                candidate.OriginalOperationId == operation.Id,
+            cancellationToken);
+
+        if (alreadyReversed)
+        {
+            throw new InvalidOperationException(
+                "L'operazione è stornata e non può essere modificata.");
+        }
+
+        var ownsTransaction = _context.Database.CurrentTransaction is null;
+        var transaction = ownsTransaction
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        try
+        {
+            await _context.AccountPostings
+                .Where(posting => posting.FinancialOperationId == operation.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+            await _context.Set<FeeComponentRecord>()
+                .Where(fee => fee.InvestmentOperationId == operation.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            record.OperationDate = operation.OperationDate;
+            record.Description = operation.Description;
+            record.InstrumentId = operation.Instrument?.Id;
+            record.SettlementAccountId = operation.SettlementAccount.Id;
+            record.QuantityValue = operation.Quantity?.Value;
+            record.QuotedPriceUnit = operation.QuotedPrice?.Unit;
+            record.QuotedPricePriceAmount = operation.QuotedPrice?.PricePerUnit?.Price.Amount;
+            record.QuotedPricePriceCurrencyCode = operation.QuotedPrice?.PricePerUnit?.Price.Currency.Code;
+            record.QuotedPricePercentOfNominal = operation.QuotedPrice?.PercentOfNominal;
+            record.AmountAmount = operation.Amount?.Value.Amount;
+            record.AmountCurrencyCode = operation.Amount?.Value.Currency.Code;
+
+            _context.AccountPostings.AddRange(PersistenceMapper.ToPostingRecords(operation));
+
+            var ordinal = 0;
+            _context.Set<FeeComponentRecord>().AddRange(operation.Fees.Select(fee =>
+                new FeeComponentRecord
+                {
+                    InvestmentOperationId = operation.Id,
+                    Ordinal = ordinal++,
+                    Kind = fee.Kind,
+                    AmountAmount = fee.Amount.Value.Amount,
+                    AmountCurrencyCode = fee.Amount.Value.Currency.Code,
+                    DebitAccountId = fee.DebitAccount.Id,
+                }));
+
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
+    }
+
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var operation = await _context.FinancialOperations
@@ -195,10 +267,14 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
 
         try
         {
-            // I posting hanno una FK Restrict verso l'operazione: vanno rimossi per primi.
+            // Posting e commissioni hanno una FK Restrict verso l'operazione: vanno rimossi per primi.
             var postings = await _context.AccountPostings
                 .Where(posting => operationIds.Contains(posting.FinancialOperationId))
                 .ToListAsync(cancellationToken);
+            var fees = await _context.Set<FeeComponentRecord>()
+                .Where(fee => operationIds.Contains(fee.InvestmentOperationId))
+                .ToListAsync(cancellationToken);
+            _context.Set<FeeComponentRecord>().RemoveRange(fees);
             _context.AccountPostings.RemoveRange(postings);
             await _context.SaveChangesAsync(cancellationToken);
 
@@ -243,5 +319,14 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
                 operation.DestinationAccountId == accountId ||
                 operation.SettlementAccountId == accountId ||
                 operation.Fees.Any(fee => fee.DebitAccountId == accountId),
+            cancellationToken);
+
+    public Task<bool> AnyForInstrumentAsync(
+        Guid instrumentId,
+        CancellationToken cancellationToken = default) =>
+        _context.FinancialOperations.AnyAsync(
+            operation =>
+                operation.Kind == OperationKind.Investment &&
+                operation.InstrumentId == instrumentId,
             cancellationToken);
 }

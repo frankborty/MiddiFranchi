@@ -1,28 +1,17 @@
 namespace MiddiFranchi.Domain.Portfolio;
 
-public sealed record PortfolioValuation
+public sealed record InvestmentValuation
 {
-    public PortfolioValuation(
-        InvestmentPortfolio portfolio,
-        DateOnly valuationDate,
-        IReadOnlyList<InvestmentPositionValuation> positions)
+    public InvestmentValuation(DateOnly valuationDate, IReadOnlyList<InvestmentPositionValuation> positions)
     {
-        if (portfolio is null)
-        {
-            throw new ArgumentNullException(nameof(portfolio));
-        }
-
         if (positions is null)
         {
             throw new ArgumentNullException(nameof(positions));
         }
 
-        Portfolio = portfolio;
         ValuationDate = valuationDate;
         Positions = positions.ToArray();
     }
-
-    public InvestmentPortfolio Portfolio { get; }
 
     public DateOnly ValuationDate { get; }
 

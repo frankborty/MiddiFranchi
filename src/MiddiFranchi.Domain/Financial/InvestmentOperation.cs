@@ -8,7 +8,6 @@ public sealed class InvestmentOperation : FinancialOperation
     private InvestmentOperation(
         Guid id,
         InvestmentOperationKind investmentKind,
-        InvestmentPortfolio portfolio,
         Instrument? instrument,
         Account settlementAccount,
         Quantity? quantity,
@@ -23,10 +22,9 @@ public sealed class InvestmentOperation : FinancialOperation
     {
         var feeList = fees.ToArray();
         var effectiveUnitPrice = Validate(
-            investmentKind, portfolio, instrument, settlementAccount, quantity, quotedPrice, amount, feeList);
+            investmentKind, instrument, settlementAccount, quantity, quotedPrice, amount, feeList);
 
         InvestmentKind = investmentKind;
-        Portfolio = portfolio;
         Instrument = instrument;
         SettlementAccount = settlementAccount;
         Quantity = quantity;
@@ -37,8 +35,6 @@ public sealed class InvestmentOperation : FinancialOperation
     }
 
     public InvestmentOperationKind InvestmentKind { get; }
-
-    public InvestmentPortfolio Portfolio { get; }
 
     public Instrument? Instrument { get; }
 
@@ -59,7 +55,6 @@ public sealed class InvestmentOperation : FinancialOperation
 
     public static InvestmentOperation Buy(
         Guid id,
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account settlementAccount,
         Quantity quantity,
@@ -72,7 +67,6 @@ public sealed class InvestmentOperation : FinancialOperation
         ForKind(
             InvestmentOperationKind.Buy,
             id,
-            portfolio,
             instrument,
             settlementAccount,
             quantity,
@@ -86,7 +80,6 @@ public sealed class InvestmentOperation : FinancialOperation
 
     public static InvestmentOperation Sell(
         Guid id,
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account settlementAccount,
         Quantity quantity,
@@ -99,7 +92,6 @@ public sealed class InvestmentOperation : FinancialOperation
         ForKind(
             InvestmentOperationKind.Sell,
             id,
-            portfolio,
             instrument,
             settlementAccount,
             quantity,
@@ -113,7 +105,6 @@ public sealed class InvestmentOperation : FinancialOperation
 
     public static InvestmentOperation Dividend(
         Guid id,
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account settlementAccount,
         PositiveMoney amount,
@@ -124,7 +115,6 @@ public sealed class InvestmentOperation : FinancialOperation
         ForKind(
             InvestmentOperationKind.Dividend,
             id,
-            portfolio,
             instrument,
             settlementAccount,
             null,
@@ -138,7 +128,6 @@ public sealed class InvestmentOperation : FinancialOperation
 
     public static InvestmentOperation Coupon(
         Guid id,
-        InvestmentPortfolio portfolio,
         Instrument instrument,
         Account settlementAccount,
         PositiveMoney amount,
@@ -149,7 +138,6 @@ public sealed class InvestmentOperation : FinancialOperation
         ForKind(
             InvestmentOperationKind.Coupon,
             id,
-            portfolio,
             instrument,
             settlementAccount,
             null,
@@ -163,7 +151,6 @@ public sealed class InvestmentOperation : FinancialOperation
 
     public static InvestmentOperation StandaloneFee(
         Guid id,
-        InvestmentPortfolio portfolio,
         Account settlementAccount,
         PositiveMoney amount,
         DateOnly operationDate,
@@ -174,7 +161,6 @@ public sealed class InvestmentOperation : FinancialOperation
         ForKind(
             InvestmentOperationKind.StandaloneFee,
             id,
-            portfolio,
             instrument,
             settlementAccount,
             null,
@@ -230,7 +216,6 @@ public sealed class InvestmentOperation : FinancialOperation
     private static InvestmentOperation ForKind(
         InvestmentOperationKind kind,
         Guid id,
-        InvestmentPortfolio portfolio,
         Instrument? instrument,
         Account settlementAccount,
         Quantity? quantity,
@@ -244,7 +229,6 @@ public sealed class InvestmentOperation : FinancialOperation
         new(
             id,
             kind,
-            portfolio,
             instrument,
             settlementAccount,
             quantity,
@@ -258,7 +242,6 @@ public sealed class InvestmentOperation : FinancialOperation
 
     private static UnitPrice? Validate(
         InvestmentOperationKind kind,
-        InvestmentPortfolio portfolio,
         Instrument? instrument,
         Account settlementAccount,
         Quantity? quantity,
@@ -266,11 +249,6 @@ public sealed class InvestmentOperation : FinancialOperation
         PositiveMoney? amount,
         IReadOnlyList<FeeComponent> fees)
     {
-        if (portfolio is null)
-        {
-            throw new ArgumentNullException(nameof(portfolio));
-        }
-
         if (settlementAccount is null)
         {
             throw new ArgumentNullException(nameof(settlementAccount));

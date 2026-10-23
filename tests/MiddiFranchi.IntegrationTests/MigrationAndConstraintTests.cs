@@ -134,16 +134,13 @@ public class MigrationAndConstraintTests : PostgresTestBase
     {
         var account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
-        var portfolio = new InvestmentPortfolio(Guid.NewGuid(), "Portafoglio", Currency.Euro);
         var instrument = new Instrument(
-            Guid.NewGuid(), "ETF", InstrumentType.Etf, Currency.Euro, PriceUnit.PerUnit);
+            Guid.NewGuid(), "ETF", AssetClass.Equity, Currency.Euro, PriceUnit.PerUnit);
         await new AccountRepository(Context).AddAsync(account);
-        await new InvestmentPortfolioRepository(Context).AddAsync(portfolio);
         await new InstrumentRepository(Context).AddAsync(instrument);
 
         var dividend = InvestmentOperation.Dividend(
             Guid.NewGuid(),
-            portfolio,
             instrument,
             account,
             new PositiveMoney(new Money(12.5m, Currency.Euro)),
@@ -206,11 +203,27 @@ public class MigrationAndConstraintTests : PostgresTestBase
         {
             Id = Guid.NewGuid(),
             Name = "ETF non valido",
-            Type = InstrumentType.Etf,
+            AssetClass = AssetClass.Equity,
             QuoteCurrencyCode = "EUR",
             PriceUnit = PriceUnit.PerUnit,
             NotionalValueAmount = 1000m,
             NotionalValueCurrencyCode = "EUR",
+        });
+
+        await Should.ThrowAsync<DbUpdateException>(() => Context.SaveChangesAsync());
+    }
+
+    [PostgresFact]
+    public async Task Database_ShouldRejectBondDetailsOnNonBondInstruments()
+    {
+        Context.Instruments.Add(new InstrumentRecord
+        {
+            Id = Guid.NewGuid(),
+            Name = "ETF non valido",
+            AssetClass = AssetClass.Equity,
+            QuoteCurrencyCode = "EUR",
+            PriceUnit = PriceUnit.PerUnit,
+            MaturityDate = new DateOnly(2030, 1, 1),
         });
 
         await Should.ThrowAsync<DbUpdateException>(() => Context.SaveChangesAsync());

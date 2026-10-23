@@ -8,7 +8,7 @@ public class ValuationPolicyTests
 {
     private static readonly Currency Euro = Currency.Euro;
     private static readonly Instrument Etf = new(
-        Guid.NewGuid(), "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+        Guid.NewGuid(), "ETF globale", AssetClass.Equity, Euro, PriceUnit.PerUnit);
     private static readonly DateTimeOffset ObservedAt = new(2026, 3, 10, 18, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly ValuationDate = new(2026, 3, 31);
 

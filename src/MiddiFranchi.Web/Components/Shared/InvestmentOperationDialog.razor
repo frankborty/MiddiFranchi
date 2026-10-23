@@ -1,0 +1,448 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Portfolio
+@using MiddiFranchi.Domain.Shared
+@inject InvestmentAssetService AssetService
+
+@if (Open && Asset is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card investment-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="investment-operation-dialog-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="investment-operation-dialog-title">@DialogTitle</h2>
+                    <p class="section-sub">@DialogSubtitle</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (Operation is null && !LockKind)
+            {
+                <div class="investment-kind-tabs" role="group" aria-label="Tipo di operazione">
+                    <button type="button" class="@KindClass(InvestmentOperationKind.Buy)"
+                            aria-pressed="@AriaPressed(_kind == InvestmentOperationKind.Buy)"
+                            @onclick="() => SelectKind(InvestmentOperationKind.Buy)">
+                        <MfIcon Name="trend" Size="16" /> Acquisto
+                    </button>
+                    <button type="button" class="@KindClass(InvestmentOperationKind.Sell)"
+                            aria-pressed="@AriaPressed(_kind == InvestmentOperationKind.Sell)"
+                            @onclick="() => SelectKind(InvestmentOperationKind.Sell)">
+                        <MfIcon Name="trend-down" Size="16" /> Vendita
+                    </button>
+                    <button type="button" class="@KindClass(InvestmentOperationKind.Dividend)"
+                            aria-pressed="@AriaPressed(_kind == InvestmentOperationKind.Dividend)"
+                            @onclick="() => SelectKind(InvestmentOperationKind.Dividend)">
+                        <MfIcon Name="coin" Size="16" /> Dividendo
+                    </button>
+                    <button type="button" class="@KindClass(InvestmentOperationKind.Coupon)"
+                            aria-pressed="@AriaPressed(_kind == InvestmentOperationKind.Coupon)"
+                            @onclick="() => SelectKind(InvestmentOperationKind.Coupon)">
+                        <MfIcon Name="percent" Size="16" /> Cedola
+                    </button>
+                </div>
+            }
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            @if (SettlementAccounts.Count == 0)
+            {
+                <p class="alert alert-warning" role="status">
+                    Non ci sono conti attivi utilizzabili per la regolazione.
+                    <a class="primary-link" href="settings/accounts">Crea o riattiva un conto nella configurazione.</a>
+                </p>
+            }
+            @if ((_kind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell) && QuantityPreview is { } available)
+            {
+                <p class="table-hint">
+                    Quantità detenuta: @Format.Quantity(available)
+                    @if (Asset.LatestPrice is { } latest)
+                    {
+                        <text> · ultima quotazione @latest.ToString("N4", CultureInfo.GetCultureInfo("it-IT"))</text>
+                        <text> @(Asset.PriceUnit == PriceUnit.PercentOfNominal ? "% del nominale" : "EUR")</text>
+                    }
+                </p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveAsync">
+                <label>
+                    <span>Conto di regolamento *</span>
+                    <select @bind="_accountId" required aria-required="true">
+                        @if (SettlementAccounts.Count == 0)
+                        {
+                            <option value="">Nessun conto disponibile</option>
+                        }
+                        @foreach (var account in SettlementAccounts)
+                        {
+                            <option value="@account.Id">@account.Name</option>
+                        }
+                    </select>
+                </label>
+
+                <label>
+                    <span>Data *</span>
+                    <input type="date" required aria-required="true" @bind="_date" />
+                </label>
+
+                @if (IsCashFlow)
+                {
+                    <label>
+                        <span>Quantità *</span>
+                        <input type="number" inputmode="decimal" step="any" min="0" placeholder="0"
+                               required aria-required="true" disabled="@LockQuantity" @bind="_quantityText" />
+                    </label>
+
+                    <label>
+                        <span>@PriceLabel *</span>
+                        <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00"
+                               required aria-required="true" @bind="_priceText" />
+                    </label>
+
+                    <label>
+                        <span>Commissioni (EUR)</span>
+                        <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00"
+                               @bind="_feeText" />
+                    </label>
+                }
+                else
+                {
+                    <label>
+                        <span>@(IsDividend ? "Importo del dividendo (EUR)" : "Importo della cedola (EUR)") *</span>
+                        <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00"
+                               required aria-required="true" @bind="_amountText" />
+                    </label>
+                }
+
+                <label class="operation-form-wide">
+                    <span>Descrizione / Nota</span>
+                    <input type="text" maxlength="200" placeholder="Es. Acquisto PAC, cedola semestrale…"
+                           @bind="_description" />
+                </label>
+
+                @if (Preview is not null)
+                {
+                    <p class="investment-operation-preview operation-form-wide">
+                        <span>@PreviewLabel</span>
+                        <strong>@Preview</strong>
+                    </p>
+                }
+
+                <div class="form-actions">
+                    <button type="submit" class="primary-button"
+                            disabled="@(_saving || SettlementAccounts.Count == 0)">
+                        <MfIcon Name="@SaveIcon" Size="18" />
+                        @SubmitLabel
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">
+                        Annulla
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
+
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public InvestmentAssetRow? Asset { get; set; }
+
+    [Parameter] public InvestmentOperationRow? Operation { get; set; }
+
+    [Parameter] public IReadOnlyList<InvestmentOption> SettlementAccounts { get; set; } = [];
+
+    [Parameter] public InvestmentOperationKind PresetKind { get; set; } = InvestmentOperationKind.Buy;
+
+    [Parameter] public bool LockKind { get; set; }
+
+    [Parameter] public decimal? PresetQuantity { get; set; }
+
+    [Parameter] public decimal? PresetPrice { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private bool _wasOpen;
+    private bool _saving;
+    private string? _error;
+    private InvestmentOperationKind _kind = InvestmentOperationKind.Buy;
+    private string _accountId = "";
+    private DateOnly _date = DateOnly.FromDateTime(DateTime.UtcNow);
+    private string _quantityText = "";
+    private string _priceText = "";
+    private string _feeText = "";
+    private string _amountText = "";
+    private string _description = "";
+
+    private bool IsCashFlow =>
+        _kind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell;
+
+    private bool IsDividend => _kind == InvestmentOperationKind.Dividend;
+
+    private bool LockQuantity => LockKind && PresetQuantity is not null;
+
+    private bool IsFullSale => Operation is null && LockKind && PresetQuantity is not null;
+
+    private string SaveIcon => Operation is null ? "plus" : "check";
+
+    private string DialogTitle => Operation is not null
+        ? "Modifica operazione"
+        : IsFullSale
+            ? "Vendi tutto e archivia"
+            : "Nuova operazione";
+
+    private string DialogSubtitle => IsFullSale
+        ? $"{Asset?.Name} · al salvataggio lo strumento viene archiviato."
+        : $"{Asset?.Name} · {Format.AssetClassLabel(Asset?.AssetClass ?? AssetClass.Other)}";
+
+    private string SubmitLabel => Operation is not null
+        ? "Salva modifiche"
+        : IsFullSale
+            ? "Vendi tutto e archivia"
+            : "Registra operazione";
+
+    private string PriceLabel => Asset?.PriceUnit == PriceUnit.PercentOfNominal
+        ? "Prezzo (% del nominale)"
+        : "Prezzo per unità (EUR)";
+
+    private Quantity? QuantityPreview => Asset?.Quantity;
+
+    private string? PreviewLabel => IsCashFlow ? "Totale operazione" : "Importo incassato";
+
+    private string? Preview
+    {
+        get
+        {
+            if (IsCashFlow)
+            {
+                if (!TryParseDecimal(_quantityText, out var quantity) || quantity <= 0m ||
+                    !TryParseDecimal(_priceText, out var price) || price <= 0m ||
+                    Asset is null)
+                {
+                    return null;
+                }
+
+                var effectivePrice = Asset.PriceUnit == PriceUnit.PercentOfNominal
+                    ? (Asset.NotionalValue?.Amount ?? 0m) * price / 100m
+                    : price;
+                var total = quantity * effectivePrice;
+                return total > 0m ? Format.Money(new Money(total, Currency.Euro)) : null;
+            }
+
+            return TryParseDecimal(_amountText, out var amount) && amount > 0m
+                ? Format.Money(new Money(amount, Currency.Euro))
+                : null;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!Open || Asset is null)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _saving = false;
+        _error = null;
+        _kind = Operation?.Kind ?? PresetKind;
+
+        var lastAssetAccount = Asset?.Operations
+            .Select(operation => operation.SettlementAccountId)
+            .FirstOrDefault(id => SettlementAccounts.Any(account => account.Id == id))
+            ?? Guid.Empty;
+        _accountId = Operation?.SettlementAccountId.ToString()
+            ?? (lastAssetAccount != Guid.Empty
+                ? lastAssetAccount.ToString()
+                : SettlementAccounts.FirstOrDefault()?.Id.ToString())
+            ?? "";
+        _date = Operation?.OperationDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        _quantityText = (Operation?.Quantity?.Value ?? PresetQuantity)
+            ?.ToString("0.####", CultureInfo.InvariantCulture) ?? "";
+        _priceText = (Operation?.Price ?? PresetPrice)
+            ?.ToString("0.####", CultureInfo.InvariantCulture) ?? "";
+        _feeText = Operation?.Fees is { } fees
+            ? fees.Amount.ToString("0.####", CultureInfo.InvariantCulture)
+            : "";
+        _amountText = Operation?.Amount is { } amount
+            ? amount.Amount.ToString("0.####", CultureInfo.InvariantCulture)
+            : "";
+        _description = Operation?.Description ?? "";
+    }
+
+    private void SelectKind(InvestmentOperationKind kind)
+    {
+        if (_kind == kind)
+        {
+            return;
+        }
+
+        _kind = kind;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || Asset is null)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (!Guid.TryParse(_accountId, out var accountId))
+        {
+            _error = "Seleziona il conto di regolamento.";
+            return;
+        }
+
+        decimal? quantity = null;
+        decimal? price = null;
+        decimal? fee = null;
+        decimal? amount = null;
+
+        if (IsCashFlow)
+        {
+            if (!TryParseDecimal(_quantityText, out var parsedQuantity) || parsedQuantity <= 0m)
+            {
+                _error = "La quantità deve essere positiva.";
+                return;
+            }
+
+            if (!TryParseDecimal(_priceText, out var parsedPrice) || parsedPrice <= 0m)
+            {
+                _error = "Il prezzo deve essere positivo.";
+                return;
+            }
+
+            quantity = parsedQuantity;
+            price = parsedPrice;
+
+            if (!string.IsNullOrWhiteSpace(_feeText))
+            {
+                if (!TryParseDecimal(_feeText, out var parsedFee) || parsedFee < 0m)
+                {
+                    _error = "Le commissioni non possono essere negative.";
+                    return;
+                }
+
+                fee = parsedFee;
+            }
+        }
+        else
+        {
+            if (!TryParseDecimal(_amountText, out var parsedAmount) || parsedAmount <= 0m)
+            {
+                _error = "L'importo deve essere positivo.";
+                return;
+            }
+
+            amount = parsedAmount;
+        }
+
+        var description = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim();
+
+        _saving = true;
+        try
+        {
+            if (Operation is null)
+            {
+                await AssetService.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
+                    Asset.InstrumentId,
+                    accountId,
+                    _kind,
+                    _date,
+                    quantity,
+                    price,
+                    fee,
+                    amount,
+                    description));
+            }
+            else
+            {
+                await AssetService.UpdateOperationAsync(new UpdateInvestmentOperationRequest(
+                    Operation.Id,
+                    accountId,
+                    _date,
+                    quantity,
+                    price,
+                    fee,
+                    amount,
+                    description));
+            }
+
+            await OnSaved.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Impossibile salvare l'operazione. Verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private string KindClass(InvestmentOperationKind kind)
+    {
+        var tone = kind switch
+        {
+            InvestmentOperationKind.Buy => "income",
+            InvestmentOperationKind.Sell => "expense",
+            InvestmentOperationKind.Dividend => "brand",
+            _ => "teal",
+        };
+        return _kind == kind
+            ? $"operation-kind-tab {tone} active"
+            : $"operation-kind-tab {tone}";
+    }
+
+    private static string AriaPressed(bool value) => value ? "true" : "false";
+
+    private static bool TryParseDecimal(string? text, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+            || decimal.TryParse(text, NumberStyles.Float, ItalianCulture, out value);
+    }
+}

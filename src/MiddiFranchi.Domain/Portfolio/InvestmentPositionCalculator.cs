@@ -6,15 +6,9 @@ namespace MiddiFranchi.Domain.Portfolio;
 public static class InvestmentPositionCalculator
 {
     public static IReadOnlyList<InvestmentPosition> Positions(
-        InvestmentPortfolio portfolio,
         IEnumerable<InvestmentOperation> operations,
         DateOnly asOfDate)
     {
-        if (portfolio is null)
-        {
-            throw new ArgumentNullException(nameof(portfolio));
-        }
-
         if (operations is null)
         {
             throw new ArgumentNullException(nameof(operations));
@@ -45,7 +39,6 @@ public static class InvestmentPositionCalculator
 
         var sequence = operationList
             .Where(operation => operation.Status == OperationStatus.Registered)
-            .Where(operation => operation.Portfolio.Id == portfolio.Id)
             .Where(operation => operation.OperationDate <= asOfDate)
             .Where(operation =>
                 operation.InvestmentKind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell)
@@ -66,7 +59,7 @@ public static class InvestmentPositionCalculator
             if (updated < 0m)
             {
                 throw new InvalidOperationException(
-                    $"La vendita di {Math.Abs(delta)} unità dello strumento {instrument.Name} ({instrument.Id}) supera la quantità detenuta ({currentQuantity}) nel portafoglio {portfolio.Name} ({portfolio.Id}) alla data {operation.OperationDate}: posizione non valida.");
+                    $"La vendita di {Math.Abs(delta)} unità dello strumento {instrument.Name} ({instrument.Id}) supera la quantità detenuta ({currentQuantity}) alla data {operation.OperationDate}: posizione non valida.");
             }
 
             instruments[instrument.Id] = instrument;
@@ -75,7 +68,7 @@ public static class InvestmentPositionCalculator
 
         return heldQuantity
             .Where(entry => entry.Value > 0m)
-            .Select(entry => new InvestmentPosition(portfolio, instruments[entry.Key], new Quantity(entry.Value)))
+            .Select(entry => new InvestmentPosition(instruments[entry.Key], new Quantity(entry.Value)))
             .OrderBy(position => position.Instrument.Id)
             .ToList();
     }

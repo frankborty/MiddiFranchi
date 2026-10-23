@@ -1,0 +1,99 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.Financial
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="Close">
+        <div class="modal-card outdated-quotes-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="outdated-quotes-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="outdated-quotes-title">
+                        <MfIcon Name="alert" Size="18" /> Quotazioni non aggiornate
+                    </h2>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" @onclick="Close">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            <p class="section-sub">@Summary</p>
+
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table outdated-quotes-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Strumento</th>
+                            <th scope="col">Classe</th>
+                            <th scope="col">Ultima quotazione</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Items)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.Name</strong>
+                                    <div class="outdated-quotes-meta">
+                                        @if (item.Symbol is { } symbol)
+                                        {
+                                            <span class="status-chip neutral">@symbol</span>
+                                        }
+                                        @if (item.Isin is { } isin)
+                                        {
+                                            <span class="investment-isin">@isin</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <StatusBadge Tone="@AssetClassPalette.Tone(item.AssetClass)">
+                                        @Format.AssetClassLabel(item.AssetClass)
+                                    </StatusBadge>
+                                </td>
+                                <td class="outdated-quotes-date">
+                                    @if (item.PriceDate is { } date)
+                                    {
+                                        <strong>@Format.Date(date)</strong>
+                                        <span>@AgeText(date)</span>
+                                    }
+                                    else
+                                    {
+                                        <strong>Nessuna quotazione</strong>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public IReadOnlyList<InvestmentAssetRow> Items { get; set; } = [];
+
+    [Parameter] public DateOnly ValuationDate { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string Summary => Items.Count == 1
+        ? $"1 strumento non ha una quotazione aggiornata al {Format.Date(ValuationDate)}."
+        : $"{Items.Count} strumenti non hanno una quotazione aggiornata al {Format.Date(ValuationDate)}.";
+
+    private string AgeText(DateOnly date)
+    {
+        var days = ValuationDate.DayNumber - date.DayNumber;
+        return days switch
+        {
+            <= 0 => "oggi",
+            1 => "1 giorno di ritardo",
+            _ => $"{days} giorni di ritardo",
+        };
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}

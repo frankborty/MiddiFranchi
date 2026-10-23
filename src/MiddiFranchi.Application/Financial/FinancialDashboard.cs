@@ -71,38 +71,19 @@ public sealed record DashboardMovement(
 /// <summary>
 /// Valore complessivo degli investimenti solo quando il servizio del patrimonio lo rende
 /// disponibile in EUR; in caso contrario <see cref="Total"/> è null e restano i conteggi
-/// e i valori per portafoglio.
+/// e le posizioni.
 /// </summary>
 public sealed record DashboardInvestments(
     Money? Total,
     int ValuedPositionCount,
     int UnvaluedPositionCount,
-    IReadOnlyList<DashboardPortfolio> Portfolios)
+    IReadOnlyList<DashboardInvestmentPosition> Positions)
 {
-    public bool HasPortfolios => Portfolios.Count > 0;
-
-    public bool HasPositions => ValuedPositionCount + UnvaluedPositionCount > 0;
+    public bool HasPositions => Positions.Count > 0;
 
     public bool HasValuedPositions => ValuedPositionCount > 0;
 
     public bool HasUnvaluedPositions => UnvaluedPositionCount > 0;
-}
-
-public sealed record DashboardPortfolio(
-    Guid PortfolioId,
-    string Name,
-    Currency ReferenceCurrency,
-    Money? Total,
-    IReadOnlyList<DashboardInvestmentPosition> Positions,
-    IReadOnlyList<DashboardInvestmentShare> Distribution)
-{
-    public bool HasValuedPositions => Positions.Any(position => position.IsValuated);
-
-    public bool HasUnvaluedPositions => Positions.Any(position => !position.IsValuated);
-
-    public int ValuedPositionCount => Positions.Count(position => position.IsValuated);
-
-    public int UnvaluedPositionCount => Positions.Count(position => !position.IsValuated);
 }
 
 public sealed record DashboardInvestmentPosition(
@@ -111,8 +92,3 @@ public sealed record DashboardInvestmentPosition(
     Money? Value,
     bool IsValuated,
     string? IncompletenessReason);
-
-public sealed record DashboardInvestmentShare(
-    string Label,
-    Money Value,
-    double Share);

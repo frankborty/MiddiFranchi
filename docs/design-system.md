@@ -148,16 +148,25 @@ colore.
 
 ## Investimenti (`/investments`)
 
-- `.investment-summary-card`: riepilogo complessivo in EUR con `.library-chart` del valore attuale.
-- Il grafico usa l'asse X temporale e mostra il valore attuale alle date con quotazioni o operazioni
-  disponibili. Capitale investito e rendimento restano nel riepilogo testuale.
-- `.investment-portfolio`: sezione per portafoglio con `.portfolio-summary` in EUR e `.asset-grid`.
-- `.asset-card`: nome, sigla (o "Sigla non disponibile"), tipo, quantità, valore attuale, capitale
-  investito e rendimento assoluto/percentuale. `.asset-reason` espone i motivi di incompletezza.
-- Il rendimento è la differenza tra valore attuale e costo residuo medio ponderato (commissioni
-  d'acquisto incluse); dividendi, cedole e commissioni autonome non sono inclusi.
-- Responsive: la griglia asset passa a una colonna e il riepilogo di portafoglio a una colonna; il
-  grafico temporale resta dentro la card senza allargare la pagina.
+- `.investment-summary-card`: quattro KPI senza sottotesto (valore attuale, prezzo di carico,
+  rendimento, cedole e dividendi). Il rendimento usa `.positive`/`.negative` per il colore.
+- Il grafico usa l'asse X temporale e mostra due serie: valore attuale e capitale investito, con una
+  legenda compatta. Intestazione, piè di pagina e tabella dati del componente sono disattivati.
+- `.investment-allocation-card`: torta in stile Conti, senza legenda. Il passaggio del mouse su una
+  fetta mostra classe, valore e quota al centro; il centro predefinito mostra il totale.
+- `.investments-table`: intestazioni ordinabili, ricerca compatta, pillole multi-selezione per
+  classe e attivazione degli archiviati. Lo stato delle quotazioni è in alto a destra della card:
+  verde se tutte le posizioni hanno una quotazione odierna, giallo altrimenti, con l'elenco degli
+  strumenti non aggiornati nel tooltip.
+- Le righe mostrano il tag della classe accanto al ticker, il prezzo attuale prima del prezzo
+  medio (con la percentuale del nominale per le obbligazioni) e nessuna colonna con la data di
+  quotazione. Ogni riga si espande su metriche, dati dell'obbligazione, collegamenti, note e
+  operazioni.
+- Il rendimento è il risultato totale: realizzato + non realizzato + proventi − commissioni
+  autonome. Il dettaglio della riga espone le singole componenti.
+- Non esiste il concetto di portafoglio: il perimetro degli investimenti è unico.
+- Responsive: le colonne secondarie si nascondono, il dettaglio passa a una colonna e il grafico
+  resta dentro la card senza allargare la pagina.
 
 ## Grafici temporali
 
@@ -295,7 +304,7 @@ colore.
 | `/operations` | pagina Movimenti: riepilogo del mese, card Lista a piena larghezza con filtri per colonna e modale di modifica/eliminazione per riga, dialog `+` per entrate/uscite, grafico mensile impilato e donut delle uscite per categoria con dettaglio per sottocategoria |
 | `/categories` | categorie entrata/uscita (stesso pannello della Configurazione) |
 | `/settings` | configurazione generale: conti (aggiunta, impostazioni, eliminazione) e categorie |
-| `/investments` | grafico temporale ApexCharts, capitale investito, rendimento per portafoglio e card asset |
+| `/investments` | cruscotto con KPI, grafico valore/capitale investito, torta per classe e tabella strumenti ordinabile con dettaglio operazioni |
 | `/net-worth` | riepilogo patrimonio alla data selezionata |
 
 Limitazioni dichiarate in pagina: le operazioni registrabili sono solo entrate e uscite (i

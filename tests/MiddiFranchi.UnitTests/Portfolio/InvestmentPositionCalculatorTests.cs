@@ -8,16 +8,12 @@ namespace MiddiFranchi.UnitTests.Portfolio;
 public class InvestmentPositionCalculatorTests
 {
     private static readonly Currency Euro = Currency.Euro;
-    private static readonly InvestmentPortfolio Portfolio = new(
-        Guid.Parse("9a5f8b83-c3d4-4a01-9f9f-4c8a0d3f1e2d"), "Portafoglio principale", Euro);
-    private static readonly InvestmentPortfolio OtherPortfolio = new(
-        Guid.Parse("5b1f5a55-3a5b-4a3f-ac11-2bcbcb9ce6cb"), "Altro portafoglio", Euro);
     private static readonly Instrument Etf = new(
-        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", InstrumentType.Etf, Euro, PriceUnit.PerUnit);
+        Guid.Parse("b1f6c1a9-d3a4-4c5e-9f2a-6c6b5d0e1a2b"), "ETF globale", AssetClass.Equity, Euro, PriceUnit.PerUnit);
     private static readonly Instrument Bond = new(
         Guid.Parse("8f31fbe7-4f8f-4b1f-a187-6c4e6f3c7c42"),
         "Obbligazione società",
-        InstrumentType.Bond,
+        AssetClass.Bond,
         Euro,
         PriceUnit.PercentOfNominal,
         new Money(1000m, Euro));
@@ -27,10 +23,10 @@ public class InvestmentPositionCalculatorTests
     private static readonly DateTimeOffset RecordedAt = new(2026, 3, 19, 9, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void Positions_ShouldReturnNothingForAPortfolioWithoutOperations()
+    public void Positions_ShouldReturnNothingWithoutOperations()
     {
         InvestmentPositionCalculator
-            .Positions(Portfolio, [], AsOf)
+            .Positions([], AsOf)
             .ShouldBeEmpty();
     }
 
@@ -39,10 +35,9 @@ public class InvestmentPositionCalculatorTests
     {
         var operation = Buy(Etf, 2.5m, new DateOnly(2026, 3, 10));
 
-        var positions = InvestmentPositionCalculator.Positions(Portfolio, [operation], AsOf);
+        var positions = InvestmentPositionCalculator.Positions([operation], AsOf);
 
         positions.Count.ShouldBe(1);
-        positions[0].Portfolio.ShouldBe(Portfolio);
         positions[0].Instrument.ShouldBe(Etf);
         positions[0].Quantity.ShouldBe(new Quantity(2.5m));
     }
@@ -51,7 +46,6 @@ public class InvestmentPositionCalculatorTests
     public void Positions_ShouldSumMultipleBuysOfTheSameInstrument()
     {
         var positions = InvestmentPositionCalculator.Positions(
-            Portfolio,
             [Buy(Etf, 1m, new DateOnly(2026, 3, 10)), Buy(Etf, 2.5m, new DateOnly(2026, 3, 20))],
             AsOf);
 
@@ -62,7 +56,6 @@ public class InvestmentPositionCalculatorTests
     public void Positions_ShouldTrackDifferentInstrumentsSeparately()
     {
         var positions = InvestmentPositionCalculator.Positions(
-            Portfolio,
             [Buy(Etf, 2.5m, new DateOnly(2026, 3, 10)), Buy(Bond, 3m, new DateOnly(2026, 3, 20))],
             AsOf);
 
@@ -75,7 +68,6 @@ public class InvestmentPositionCalculatorTests
     public void Positions_ShouldSupportPartialSales()
     {
         var positions = InvestmentPositionCalculator.Positions(
-            Portfolio,
             [Buy(Etf, 2.5m, new DateOnly(2026, 3, 10)), Sell(Etf, 1m, new DateOnly(2026, 3, 20))],
             AsOf);
 
@@ -86,7 +78,6 @@ public class InvestmentPositionCalculatorTests
     public void Positions_ShouldNotListInstrumentsFullySold()
     {
         var positions = InvestmentPositionCalculator.Positions(
-            Portfolio,
             [Buy(Etf, 2.5m, new DateOnly(2026, 3, 10)), Sell(Etf, 2.5m, new DateOnly(2026, 3, 20))],
             AsOf);
 
@@ -103,7 +94,7 @@ public class InvestmentPositionCalculatorTests
         };
 
         var exception = Should.Throw<InvalidOperationException>(
-            () => InvestmentPositionCalculator.Positions(Portfolio, operations, AsOf));
+            () => InvestmentPositionCalculator.Positions(operations, AsOf));
 
         exception.Message.ShouldContain("supera la quantità detenuta");
         exception.Message.ShouldContain(Etf.Name);
@@ -115,7 +106,7 @@ public class InvestmentPositionCalculatorTests
         var operation = Buy(Etf, 2.5m, new DateOnly(2026, 4, 10));
 
         InvestmentPositionCalculator
-            .Positions(Portfolio, [operation], AsOf)
+            .Positions([operation], AsOf)
             .ShouldBeEmpty();
     }
 
@@ -124,7 +115,7 @@ public class InvestmentPositionCalculatorTests
     {
         var operation = Buy(Etf, 2.5m, AsOf);
 
-        var positions = InvestmentPositionCalculator.Positions(Portfolio, [operation], AsOf);
+        var positions = InvestmentPositionCalculator.Positions([operation], AsOf);
 
         positions.Single().Quantity.ShouldBe(new Quantity(2.5m));
     }
@@ -138,24 +129,9 @@ public class InvestmentPositionCalculatorTests
             new DateOnly(2026, 3, 10),
             recordedAt: new DateTimeOffset(2026, 7, 1, 12, 0, 0, TimeSpan.Zero));
 
-        var positions = InvestmentPositionCalculator.Positions(Portfolio, [operation], AsOf);
+        var positions = InvestmentPositionCalculator.Positions([operation], AsOf);
 
         positions.Single().Quantity.ShouldBe(new Quantity(2.5m));
-    }
-
-    [Fact]
-    public void Positions_ShouldIgnoreOperationsOfOtherPortfolios()
-    {
-        var operations = new List<InvestmentOperation>
-        {
-            Buy(Etf, 2.5m, new DateOnly(2026, 3, 10), OtherPortfolio),
-            InvestmentOperation.Dividend(
-                Guid.NewGuid(), Portfolio, Etf, SettlementAccount, Eur(10m), new DateOnly(2026, 3, 20), RecordedAt),
-        };
-
-        var positions = InvestmentPositionCalculator.Positions(Portfolio, operations, AsOf);
-
-        positions.ShouldBeEmpty();
     }
 
     [Fact]
@@ -165,14 +141,14 @@ public class InvestmentPositionCalculatorTests
         {
             Buy(Etf, 2.5m, new DateOnly(2026, 3, 10)),
             InvestmentOperation.Dividend(
-                Guid.NewGuid(), Portfolio, Etf, SettlementAccount, Eur(10m), new DateOnly(2026, 3, 20), RecordedAt),
+                Guid.NewGuid(), Etf, SettlementAccount, Eur(10m), new DateOnly(2026, 3, 20), RecordedAt),
             InvestmentOperation.Coupon(
-                Guid.NewGuid(), Portfolio, Bond, SettlementAccount, Eur(25m), new DateOnly(2026, 3, 25), RecordedAt),
+                Guid.NewGuid(), Bond, SettlementAccount, Eur(25m), new DateOnly(2026, 3, 25), RecordedAt),
             InvestmentOperation.StandaloneFee(
-                Guid.NewGuid(), Portfolio, SettlementAccount, Eur(0.50m), new DateOnly(2026, 3, 28), RecordedAt),
+                Guid.NewGuid(), SettlementAccount, Eur(0.50m), new DateOnly(2026, 3, 28), RecordedAt),
         };
 
-        var positions = InvestmentPositionCalculator.Positions(Portfolio, operations, AsOf);
+        var positions = InvestmentPositionCalculator.Positions(operations, AsOf);
 
         positions.Single().Quantity.ShouldBe(new Quantity(2.5m));
     }
@@ -181,7 +157,6 @@ public class InvestmentPositionCalculatorTests
     public void Positions_ShouldBeIndependentFromTheInputOrder()
     {
         var positions = InvestmentPositionCalculator.Positions(
-            Portfolio,
             [
                 Buy(Etf, 2.5m, new DateOnly(2026, 3, 20)),
                 Buy(Etf, 1m, new DateOnly(2026, 3, 10)),
@@ -203,7 +178,7 @@ public class InvestmentPositionCalculatorTests
         var reversal = new ReversalOperation(Guid.NewGuid(), reversedBuy, new DateOnly(2026, 4, 5), RecordedAt);
         reversal.Id.ShouldNotBe(Guid.Empty);
 
-        var positions = InvestmentPositionCalculator.Positions(Portfolio, [reversedBuy, kept], AsOf);
+        var positions = InvestmentPositionCalculator.Positions([reversedBuy, kept], AsOf);
 
         positions.Single().Quantity.ShouldBe(new Quantity(1m));
         AccountBalanceCalculator
@@ -217,7 +192,7 @@ public class InvestmentPositionCalculatorTests
         var buy = Buy(Etf, 10m, AsOf, recordedAt: new DateTimeOffset(2026, 3, 10, 8, 0, 0, TimeSpan.Zero));
         var sell = Sell(Etf, 5m, AsOf, recordedAt: new DateTimeOffset(2026, 3, 10, 9, 0, 0, TimeSpan.Zero));
 
-        var positions = InvestmentPositionCalculator.Positions(Portfolio, [buy, sell], AsOf);
+        var positions = InvestmentPositionCalculator.Positions([buy, sell], AsOf);
 
         positions.Single().Quantity.ShouldBe(new Quantity(5m));
     }
@@ -229,29 +204,22 @@ public class InvestmentPositionCalculatorTests
         var buy = Buy(Etf, 10m, AsOf, recordedAt: new DateTimeOffset(2026, 3, 10, 8, 0, 0, TimeSpan.Zero));
 
         Should.Throw<InvalidOperationException>(
-            () => InvestmentPositionCalculator.Positions(Portfolio, [buy, sell], AsOf))
+            () => InvestmentPositionCalculator.Positions([buy, sell], AsOf))
             .Message.ShouldContain("supera la quantità detenuta");
-    }
-
-    [Fact]
-    public void Positions_ShouldRejectANullPortfolio()
-    {
-        Should.Throw<ArgumentNullException>(
-            () => InvestmentPositionCalculator.Positions(null!, [], AsOf));
     }
 
     [Fact]
     public void Positions_ShouldRejectANullOperationList()
     {
         Should.Throw<ArgumentNullException>(
-            () => InvestmentPositionCalculator.Positions(Portfolio, null!, AsOf));
+            () => InvestmentPositionCalculator.Positions(null!, AsOf));
     }
 
     [Fact]
     public void Positions_ShouldRejectANullOperationElement()
     {
         Should.Throw<ArgumentNullException>(
-                () => InvestmentPositionCalculator.Positions(Portfolio, [null!], AsOf))
+                () => InvestmentPositionCalculator.Positions([null!], AsOf))
             .ParamName.ShouldBe("operations");
     }
 
@@ -261,7 +229,7 @@ public class InvestmentPositionCalculatorTests
         var operation = Buy(Etf, 1m, new DateOnly(2026, 3, 10));
 
         var exception = Should.Throw<ArgumentException>(
-            () => InvestmentPositionCalculator.Positions(Portfolio, [operation, operation], AsOf));
+            () => InvestmentPositionCalculator.Positions([operation, operation], AsOf));
 
         exception.ParamName.ShouldBe("operations");
         exception.Message.ShouldContain("presente più volte");
@@ -271,11 +239,9 @@ public class InvestmentPositionCalculatorTests
         Instrument instrument,
         decimal quantity,
         DateOnly date,
-        InvestmentPortfolio? portfolio = null,
         DateTimeOffset? recordedAt = null) =>
         InvestmentOperation.Buy(
             Guid.NewGuid(),
-            portfolio ?? Portfolio,
             instrument,
             SettlementAccount,
             new Quantity(quantity),
@@ -291,7 +257,6 @@ public class InvestmentPositionCalculatorTests
         DateTimeOffset? recordedAt = null) =>
         InvestmentOperation.Sell(
             Guid.NewGuid(),
-            Portfolio,
             instrument,
             SettlementAccount,
             new Quantity(quantity),

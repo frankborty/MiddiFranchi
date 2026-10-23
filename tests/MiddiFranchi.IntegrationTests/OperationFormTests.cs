@@ -359,11 +359,32 @@ public class OperationFormTests
             return Task.CompletedTask;
         }
 
+        public Task UpdateInvestmentAsync(
+            InvestmentOperation operation,
+            CancellationToken cancellationToken = default)
+        {
+            var index = Operations.FindIndex(candidate => candidate.Id == operation.Id);
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Operazione non trovata.");
+            }
+
+            Operations[index] = operation;
+            return Task.CompletedTask;
+        }
+
         public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
         {
             Operations.RemoveAll(operation => operation.Id == id || operation.OriginalOperationId == id);
             return Task.CompletedTask;
         }
+
+        public Task<bool> AnyForInstrumentAsync(
+            Guid instrumentId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Operations
+                .OfType<InvestmentOperation>()
+                .Any(operation => operation.Instrument?.Id == instrumentId));
 
         public Task<bool> AnyReferencingAccountAsync(
             Guid accountId,

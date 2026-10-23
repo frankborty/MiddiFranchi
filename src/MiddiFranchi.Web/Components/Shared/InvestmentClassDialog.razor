@@ -1,0 +1,109 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using System.Globalization
+@using MiddiFranchi.Domain.Shared
+
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="Close">
+        <div class="modal-card investment-class-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="investment-class-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="investment-class-title">
+                        <span class="modal-category-dot" style="background: @AssetClassColor" aria-hidden="true"></span>
+                        @AssetClassName
+                    </h2>
+                    <p class="section-sub">@Items.Count strumenti · @Format.Money(Total)</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" @onclick="Close">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (Items.Count > 0)
+            {
+                <div class="expense-pie-layout">
+                    <figure class="expense-pie-figure">
+                        <div class="allocation-donut expense-pie-donut">
+                            <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false">
+                                <circle class="allocation-track" cx="21" cy="21" r="15.9155"
+                                        pathLength="100" />
+                                @foreach (var item in Items)
+                                {
+                                    <circle class="expense-pie-segment" cx="21" cy="21" r="15.9155"
+                                            pathLength="100" transform="rotate(-90 21 21)"
+                                            stroke="@item.Color"
+                                            stroke-dasharray="@DashArray(item.Share)"
+                                            stroke-dashoffset="@DashOffset(item.Offset)" />
+                                }
+                            </svg>
+                            <div class="allocation-center">
+                                <span class="allocation-center-label">Totale</span>
+                                <strong class="allocation-center-value">@Format.Money(Total)</strong>
+                            </div>
+                        </div>
+                    </figure>
+
+                    <ul class="expense-pie-legend">
+                        @foreach (var item in Items)
+                        {
+                            <li class="expense-pie-row">
+                                <span class="expense-pie-dot" style="background: @item.Color" aria-hidden="true"></span>
+                                <span class="expense-pie-label">@item.Name</span>
+                                <span class="expense-pie-share">@Format.Percent(item.Share)</span>
+                                <strong class="expense-pie-amount">
+                                    @Format.Money(item.Value)
+                                    @if (item.TotalResultPercent is { } percent)
+                                    {
+                                        <span class="investment-performance-percent @PercentClass(percent)">
+                                            @Format.SignedPercent(percent)
+                                        </span>
+                                    }
+                                </strong>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+            else
+            {
+                <EmptyState Title="Nessuno strumento valorizzato" Icon="pie" />
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public string AssetClassName { get; set; } = "";
+
+    [Parameter] public string AssetClassColor { get; set; } = "#64748b";
+
+    [Parameter] public IReadOnlyList<InvestmentAllocationItem> Items { get; set; } = [];
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Money Total => new(Items.Sum(item => item.Value.Amount), Currency.Euro);
+
+    private static string DashArray(decimal share)
+    {
+        var value = Math.Clamp(share, 0m, 1m) * 100m;
+        return $"{Invariant(value)} {Invariant(100m - value)}";
+    }
+
+    private static string DashOffset(decimal offset) =>
+        Invariant(-Math.Clamp(offset, 0m, 1m) * 100m);
+
+    private static string Invariant(decimal value) =>
+        value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static string PercentClass(decimal? percent) => percent switch
+    {
+        > 0m => "positive",
+        < 0m => "negative",
+        _ => "neutral",
+    };
+
+    private Task Close() => OnClose.InvokeAsync();
+}

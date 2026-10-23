@@ -63,13 +63,6 @@ internal static class FinancialOperationMaterializer
             .Distinct()
             .ToArray();
 
-        var portfolioIds = records
-            .Select(record => record.PortfolioId)
-            .Where(id => id is not null)
-            .Select(id => id!.Value)
-            .Distinct()
-            .ToArray();
-
         var instrumentIds = records
             .Select(record => record.InstrumentId)
             .Where(id => id is not null)
@@ -89,12 +82,6 @@ internal static class FinancialOperationMaterializer
                 .AsNoTracking()
                 .Where(category => categoryIds.Contains(category.Id))
                 .ToListAsync(cancellationToken);
-        var portfolioRecords = portfolioIds.Length == 0
-            ? []
-            : await context.Portfolios
-                .AsNoTracking()
-                .Where(portfolio => portfolioIds.Contains(portfolio.Id))
-                .ToListAsync(cancellationToken);
         var instrumentRecords = instrumentIds.Length == 0
             ? []
             : await context.Instruments
@@ -104,7 +91,6 @@ internal static class FinancialOperationMaterializer
 
         var accounts = accountRecords.ToDictionary(account => account.Id, PersistenceMapper.ToDomain);
         var categories = categoryRecords.ToDictionary(category => category.Id, PersistenceMapper.ToDomain);
-        var portfolios = portfolioRecords.ToDictionary(portfolio => portfolio.Id, PersistenceMapper.ToDomain);
         var instruments = instrumentRecords.ToDictionary(instrument => instrument.Id, PersistenceMapper.ToDomain);
 
         var fees = feeRecords
@@ -124,6 +110,6 @@ internal static class FinancialOperationMaterializer
                     .ToArray());
 
         return PersistenceMapper.ToDomainOperations(
-            records, accounts, categories, portfolios, instruments, fees);
+            records, accounts, categories, instruments, fees);
     }
 }

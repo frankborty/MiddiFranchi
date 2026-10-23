@@ -7,25 +7,23 @@ namespace MiddiFranchi.Application.Financial;
 
 /// <summary>
 /// Costruisce il riepilogo investimenti alla data corrente. Tutti i valori sono in EUR.
-/// La valorizzazione usa <see cref="PortfolioValuationCalculator"/>; il costo residuo usa
-/// <see cref="InvestmentCostBasisCalculator"/>. Nessun valore mancante diventa zero.
+/// La valorizzazione usa <see cref="InvestmentValuationCalculator"/>; il costo residuo usa
+/// <see cref="InvestmentCostBasisCalculator"/> e il risultato totale usa
+/// <see cref="InvestmentResultCalculator"/>. Nessun valore mancante diventa zero.
 /// </summary>
 public sealed class InvestmentOverviewService
 {
     private static readonly Currency Euro = Currency.Euro;
 
-    private readonly IInvestmentPortfolioRepository _portfolios;
     private readonly IFinancialOperationRepository _operations;
     private readonly IPriceObservationRepository _prices;
     private readonly Func<DateOnly> _currentUtcDate;
 
     public InvestmentOverviewService(
-        IInvestmentPortfolioRepository portfolios,
         IFinancialOperationRepository operations,
         IPriceObservationRepository prices,
         Func<DateOnly>? currentUtcDateProvider = null)
     {
-        _portfolios = portfolios;
         _operations = operations;
         _prices = prices;
         _currentUtcDate = currentUtcDateProvider ?? (() => DateOnly.FromDateTime(DateTime.UtcNow));
@@ -34,53 +32,38 @@ public sealed class InvestmentOverviewService
     public async Task<InvestmentOverview> LoadAsync(CancellationToken cancellationToken = default)
     {
         var valuationDate = _currentUtcDate();
-        var portfolios = await _portfolios.ListAsync(cancellationToken);
-        var operations = await _operations.ListAsync(cancellationToken);
-        var investmentOperations = operations.OfType<InvestmentOperation>().ToArray();
+        var investmentOperations = (await _operations.ListAsync(cancellationToken))
+            .OfType<InvestmentOperation>()
+            .ToArray();
         var prices = await _prices.ListAsync(cancellationToken);
 
-        var portfolioOverviews = new List<InvestmentPortfolioOverview>(portfolios.Count);
-        foreach (var portfolio in portfolios)
-        {
-            var valuation = PortfolioValuationCalculator.Valuate(
-                portfolio,
-                investmentOperations,
-                prices,
-                valuationDate,
-                ValuationPolicy.Unbounded);
-            var costBases = InvestmentCostBasisCalculator.Calculate(
-                portfolio,
-                investmentOperations,
-                valuationDate);
+        var valuation = InvestmentValuationCalculator.Valuate(
+            investmentOperations,
+            prices,
+            valuationDate,
+            ValuationPolicy.Unbounded);
+        var costBases = InvestmentCostBasisCalculator.Calculate(investmentOperations, valuationDate);
+        var results = InvestmentResultCalculator.Calculate(
+            investmentOperations,
+            prices,
+            valuationDate,
+            ValuationPolicy.Unbounded);
+        var resultsByInstrument = results.Assets.ToDictionary(result => result.Instrument.Id);
 
-            portfolioOverviews.Add(BuildPortfolio(portfolio, valuation, costBases));
-        }
-
-        var history = BuildHistory(valuationDate, portfolios, investmentOperations, prices);
-
-        return BuildOverview(valuationDate, portfolioOverviews, history);
-    }
-
-    private static InvestmentPortfolioOverview BuildPortfolio(
-        InvestmentPortfolio portfolio,
-        PortfolioValuation valuation,
-        IReadOnlyList<InvestmentCostBasis> costBases)
-    {
         var assets = new List<InvestmentAssetOverview>(valuation.Positions.Count);
-
         foreach (var position in valuation.Positions)
         {
             var instrument = position.Position.Instrument;
             var costBasis = costBases.FirstOrDefault(cost => cost.Instrument.Id == instrument.Id);
-            var invested = costBasis?.CostBasisEur;
+            var result = resultsByInstrument.GetValueOrDefault(instrument.Id);
+            var invested = costBasis?.CostBasis;
             var current = position.Value;
-            Money? performance = invested is { } investedValue && current is { } currentValue
+            Money? unrealized = invested is { } investedValue && current is { } currentValue
                 ? currentValue - investedValue
                 : null;
-            var performancePercent = performance is { } performanceValue &&
-                                     invested is { } investedBase &&
-                                     investedBase.Amount > 0m
-                ? performanceValue.Amount / investedBase.Amount
+            var total = result?.TotalResult;
+            var totalPercent = total is { } totalValue && invested is { } investedBase && investedBase.Amount > 0m
+                ? totalValue.Amount / investedBase.Amount
                 : (decimal?)null;
             var reason = BuildAssetReason(position, costBasis);
 
@@ -88,111 +71,58 @@ public sealed class InvestmentOverviewService
                 instrument.Id,
                 instrument.Name,
                 instrument.Symbol,
-                instrument.Type,
+                instrument.AssetClass,
                 position.Position.Quantity,
                 invested,
+                costBasis?.AverageCost,
                 current,
-                performance,
-                performancePercent,
+                unrealized,
+                result?.RealizedResult ?? new Money(0m, instrument.QuoteCurrency),
+                result?.Income ?? new Money(0m, instrument.QuoteCurrency),
+                result?.OtherFees ?? new Money(0m, instrument.QuoteCurrency),
+                total,
+                totalPercent,
                 reason is null,
                 reason));
         }
 
-        var complete = assets.Count > 0 && assets.All(asset => asset.IsComplete);
+        var history = BuildHistory(valuationDate, investmentOperations, prices);
+
+        return BuildOverview(valuationDate, assets, results, history);
+    }
+
+    private static InvestmentOverview BuildOverview(
+        DateOnly valuationDate,
+        IReadOnlyList<InvestmentAssetOverview> assets,
+        InvestmentResultSet results,
+        InvestmentHistory history)
+    {
+        var complete = results.IsComplete && assets.All(asset => asset.IsComplete);
         var reasons = assets
             .Where(asset => !asset.IsComplete)
             .Select(asset => asset.IncompletenessReason!)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        Money? investedTotal = complete
-            ? new Money(assets.Sum(asset => asset.InvestedCapital!.Value.Amount), portfolio.ReferenceCurrency)
+        Money? invested = complete
+            ? new Money(assets.Sum(asset => asset.InvestedCapital!.Value.Amount), Euro)
             : null;
-        Money? currentTotal = complete
-            ? new Money(assets.Sum(asset => asset.CurrentValue!.Value.Amount), portfolio.ReferenceCurrency)
+        Money? current = complete
+            ? new Money(assets.Sum(asset => asset.CurrentValue!.Value.Amount), Euro)
             : null;
-        Money? performanceTotal = investedTotal is { } investedMoney && currentTotal is { } currentMoney
+        Money? performance = invested is { } investedMoney && current is { } currentMoney
             ? currentMoney - investedMoney
             : null;
-        var performancePercentTotal = performanceTotal is { } performanceMoney &&
-                                      investedTotal is { } investedForPercent &&
-                                      investedForPercent.Amount > 0m
+        var performancePercent = performance is { } performanceMoney &&
+                                 invested is { } investedForPercent &&
+                                 investedForPercent.Amount > 0m
             ? performanceMoney.Amount / investedForPercent.Amount
             : (decimal?)null;
-
-        if (assets.Count == 0)
-        {
-            reasons = ["Nessuna posizione aperta alla data di valutazione."];
-        }
-
-        return new InvestmentPortfolioOverview(
-            portfolio.Id,
-            portfolio.Name,
-            portfolio.ReferenceCurrency,
-            investedTotal,
-            currentTotal,
-            performanceTotal,
-            performancePercentTotal,
-            complete,
-            reasons,
-            assets);
-    }
-
-    private static InvestmentOverview BuildOverview(
-        DateOnly valuationDate,
-        IReadOnlyList<InvestmentPortfolioOverview> portfolios,
-        InvestmentHistory history)
-    {
-        var activePortfolios = portfolios
-            .Where(portfolio => portfolio.Assets.Count > 0)
-            .ToArray();
-        var assetCount = activePortfolios.Sum(portfolio => portfolio.Assets.Count);
-
-        if (assetCount == 0)
-        {
-            return new InvestmentOverview(
-                valuationDate,
-                null,
-                null,
-                null,
-                null,
-                false,
-                ["Nessuna posizione aperta alla data di valutazione."],
-                portfolios,
-                history);
-        }
-
-        var complete = activePortfolios.All(portfolio => portfolio.IsComplete);
-        if (!complete)
-        {
-            var reasons = activePortfolios
-                .SelectMany(portfolio => portfolio.IncompletenessReasons)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-
-            return new InvestmentOverview(
-                valuationDate,
-                null,
-                null,
-                null,
-                null,
-                false,
-                reasons.Length > 0
-                    ? reasons
-                    : ["Alcune posizioni non hanno un valore o un costo residuo disponibile."],
-                portfolios,
-                history);
-        }
-
-        var invested = new Money(
-            activePortfolios.Sum(portfolio => portfolio.InvestedCapital!.Value.Amount),
-            Euro);
-        var current = new Money(
-            activePortfolios.Sum(portfolio => portfolio.CurrentValue!.Value.Amount),
-            Euro);
-        var performance = current - invested;
-        var performancePercent = invested.Amount > 0m
-            ? performance.Amount / invested.Amount
+        var total = complete ? results.TotalResult : null;
+        var totalPercent = total is { } totalMoney &&
+                           invested is { } totalBase &&
+                           totalBase.Amount > 0m
+            ? totalMoney.Amount / totalBase.Amount
             : (decimal?)null;
 
         return new InvestmentOverview(
@@ -201,15 +131,19 @@ public sealed class InvestmentOverviewService
             current,
             performance,
             performancePercent,
-            true,
-            [],
-            portfolios,
+            results.RealizedResult,
+            results.Income,
+            results.OtherFees,
+            total,
+            totalPercent,
+            complete,
+            complete ? [] : reasons,
+            assets,
             history);
     }
 
     private static InvestmentHistory BuildHistory(
         DateOnly valuationDate,
-        IReadOnlyList<InvestmentPortfolio> portfolios,
         IReadOnlyList<InvestmentOperation> operations,
         IReadOnlyList<PriceObservation> prices)
     {
@@ -265,71 +199,55 @@ public sealed class InvestmentOverviewService
 
         foreach (var date in dates)
         {
-            decimal? investedTotal = 0m;
-            decimal? currentTotal = 0m;
+            var valuation = InvestmentValuationCalculator.Valuate(
+                operations,
+                prices,
+                date,
+                ValuationPolicy.Unbounded);
+            var costBases = InvestmentCostBasisCalculator.Calculate(operations, date);
 
-            foreach (var portfolio in portfolios)
+            Money? current;
+            if (valuation.Positions.Count == 0)
             {
-                var valuation = PortfolioValuationCalculator.Valuate(
-                    portfolio, operations, prices, date, ValuationPolicy.Unbounded);
-                var costBases = InvestmentCostBasisCalculator.Calculate(
-                    portfolio, operations, date);
-
-                Money? current;
-                if (valuation.Positions.Count == 0)
-                {
-                    current = new Money(0m, portfolio.ReferenceCurrency);
-                }
-                else if (valuation.IsComplete)
-                {
-                    current = new Money(
-                        valuation.Positions.Sum(position => position.Value!.Value.Amount),
-                        portfolio.ReferenceCurrency);
-                }
-                else
-                {
-                    current = null;
-                    reasons.Add("Una o più posizioni non sono valorizzate alla data storica: mancano quotazioni.");
-                }
-
-                Money? invested;
-                if (valuation.Positions.Count == 0)
-                {
-                    invested = new Money(0m, Euro);
-                }
-                else
-                {
-                    var costsByInstrument = costBases.ToDictionary(cost => cost.Instrument.Id);
-                    var allCostsAvailable = valuation.Positions.All(position =>
-                        costsByInstrument.TryGetValue(position.Position.Instrument.Id, out var cost) &&
-                        cost.CostBasisEur is not null);
-
-                    if (allCostsAvailable)
-                    {
-                        invested = new Money(
-                            valuation.Positions.Sum(position =>
-                                costsByInstrument[position.Position.Instrument.Id].CostBasisEur!.Value.Amount),
-                            Euro);
-                    }
-                    else
-                    {
-                        invested = null;
-                        reasons.Add("Il costo residuo non è determinabile per una o più posizioni alla data storica.");
-                    }
-                }
-
-                investedTotal = investedTotal is null || invested is null
-                    ? null
-                    : investedTotal + invested.Value.Amount;
-                currentTotal = currentTotal is null || current is null
-                    ? null
-                    : currentTotal + current.Value.Amount;
+                current = new Money(0m, Euro);
+            }
+            else if (valuation.IsComplete)
+            {
+                current = new Money(
+                    valuation.Positions.Sum(position => position.Value!.Value.Amount),
+                    Euro);
+            }
+            else
+            {
+                current = null;
+                reasons.Add("Una o più posizioni non sono valorizzate alla data storica: mancano quotazioni.");
             }
 
-            points.Add(new InvestmentHistoryPoint(
-                date,
-                investedTotal is { } investedValue ? new Money(investedValue, Euro) : null,
-                currentTotal is { } currentValue ? new Money(currentValue, Euro) : null));
+            Money? invested;
+            if (valuation.Positions.Count == 0)
+            {
+                invested = new Money(0m, Euro);
+            }
+            else
+            {
+                var costsByInstrument = costBases.ToDictionary(cost => cost.Instrument.Id);
+                var allCostsAvailable = valuation.Positions.All(position =>
+                    costsByInstrument.ContainsKey(position.Position.Instrument.Id));
+
+                invested = allCostsAvailable
+                    ? new Money(
+                        valuation.Positions.Sum(position =>
+                            costsByInstrument[position.Position.Instrument.Id].CostBasis.Amount),
+                        Euro)
+                    : null;
+
+                if (!allCostsAvailable)
+                {
+                    reasons.Add("Il costo residuo non è determinabile per una o più posizioni alla data storica.");
+                }
+            }
+
+            points.Add(new InvestmentHistoryPoint(date, invested, current));
         }
 
         var complete = points.All(point =>

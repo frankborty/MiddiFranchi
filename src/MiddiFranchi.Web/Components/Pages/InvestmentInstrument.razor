@@ -1,0 +1,856 @@
+@page "/investments/instruments/{InstrumentId:guid}"
+@rendermode InteractiveServer
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Portfolio
+@using MiddiFranchi.Domain.Shared
+@inject InvestmentWorkspaceService Workspace
+@inject InvestmentAssetService AssetService
+@inject NavigationManager Navigation
+
+<PageTitle>@(_asset?.Name ?? "Strumento") — MiddiFranchi</PageTitle>
+
+<header class="dashboard-header">
+    <div class="instrument-header-copy">
+        <a class="instrument-back" href="/investments">
+            <MfIcon Name="arrow-left" Size="16" /> Investimenti
+        </a>
+        <h1 class="account-detail-title">
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="pie" Size="20" /></span>
+            @(_asset?.Name ?? "Strumento")
+        </h1>
+        @if (_asset is { } headerAsset)
+        {
+            <div class="instrument-header-meta">
+                <StatusBadge Tone="@AssetClassPalette.Tone(headerAsset.AssetClass)">
+                    @Format.AssetClassLabel(headerAsset.AssetClass)
+                </StatusBadge>
+                @if (headerAsset.Symbol is { } symbol)
+                {
+                    <span class="status-chip neutral">@symbol</span>
+                }
+                @if (headerAsset.Isin is { } isin)
+                {
+                    <span class="investment-isin">@isin</span>
+                }
+                @if (headerAsset.ReferenceUrl is { } referenceUrl)
+                {
+                    <a class="investment-link" href="@referenceUrl" target="_blank" rel="noopener noreferrer">
+                        <MfIcon Name="external-link" Size="14" /> Scheda
+                    </a>
+                }
+                @if (headerAsset.Isin is { } justEtfIsin)
+                {
+                    <a class="investment-link" href="@JustEtfUrl(justEtfIsin)" target="_blank" rel="noopener noreferrer">
+                        <MfIcon Name="link" Size="14" /> JustETF
+                    </a>
+                }
+            </div>
+        }
+    </div>
+    @if (_asset is { } actionAsset)
+    {
+        <div class="instrument-header-actions">
+            @if (!actionAsset.IsArchived)
+            {
+                <button type="button" class="primary-button"
+                        @onclick="() => OpenNewOperation(actionAsset, InvestmentOperationKind.Buy)">
+                    <MfIcon Name="plus" Size="16" /> Registra operazione
+                </button>
+            }
+            <button type="button" class="secondary-button" @onclick="OpenEditAsset">
+                <MfIcon Name="edit" Size="16" /> Modifica
+            </button>
+        </div>
+    }
+</header>
+
+@if (_loading)
+{
+    <section class="card dashboard-loading" aria-live="polite">
+        <p class="page-status" role="status">Caricamento dello strumento…</p>
+    </section>
+}
+else if (_loadError is not null)
+{
+    <section class="card">
+        <p class="alert alert-error" role="alert">@_loadError</p>
+        <div class="form-actions">
+            <a class="secondary-button" href="/investments">Torna agli investimenti</a>
+        </div>
+    </section>
+}
+else if (_asset is { } asset)
+{
+    @if (_message is not null)
+    {
+        <p class="alert alert-success" role="status">@_message</p>
+    }
+    @if (_actionError is not null)
+    {
+        <p class="alert alert-error" role="alert">@_actionError</p>
+    }
+
+    <div class="investments-kpi-grid five-up">
+        <StatTile Label="Valore attuale" Value="@MoneyText(asset.CurrentValue)" />
+        <StatTile Label="Capitale investito" Value="@MoneyText(asset.InvestedCapital)" />
+        <StatTile Label="Prezzo medio" Value="@MoneyText(asset.AverageCost)" />
+        <StatTile Label="Rendimento"
+                  Value="@MoneySigned(asset.TotalResult)"
+                  ValueClass="@ResultClass(asset.TotalResult)" />
+        <StatTile Label="Rendimento %"
+                  Value="@SignedPercent(asset.TotalResultPercent)"
+                  ValueClass="@ResultClass(asset.TotalResultPercent)" />
+    </div>
+
+    <div class="bento instrument-charts">
+        <section class="card investment-chart-card" aria-labelledby="instrument-value-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="instrument-value-title"><MfIcon Name="trend" Size="18" /> Valore nel tempo</h2>
+                </div>
+                <div class="investment-chart-legend" aria-hidden="true">
+                    <span><span class="investment-class-dot" style="background:#f97316"></span> Valore attuale</span>
+                    <span><span class="investment-class-dot" style="background:#0c8fa5"></span> Capitale investito</span>
+                </div>
+            </div>
+            @if (ValueSeries.Count > 0)
+            {
+                <ApexTimeSeriesChart Title=""
+                                     Currency="@Currency.Euro"
+                                     Series="@ValueSeries"
+                                     XAxisLabelMode="@HistoryLabelMode"
+                                     Height="@(260)"
+                                     ShowMarkers="false"
+                                     ShowHeader="false"
+                                     ShowFooter="false"
+                                     ShowDataTable="false" />
+            }
+            else
+            {
+                <p class="page-status">Dati insufficienti per il grafico.</p>
+            }
+        </section>
+
+        <section class="card investment-chart-card" aria-labelledby="instrument-return-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="instrument-return-title"><MfIcon Name="trend" Size="18" /> Rendimento nel tempo</h2>
+                </div>
+                <div class="investment-chart-legend" aria-hidden="true">
+                    <span><span class="investment-class-dot" style="background:#8b5cf6"></span> Rendimento %</span>
+                </div>
+            </div>
+            @if (ReturnSeries.Count > 0)
+            {
+                <ApexTimeSeriesChart Title=""
+                                     Currency="@Currency.Euro"
+                                     Series="@ReturnSeries"
+                                     PercentageValues="true"
+                                     XAxisLabelMode="@HistoryLabelMode"
+                                     Height="@(260)"
+                                     ShowMarkers="false"
+                                     ShowHeader="false"
+                                     ShowFooter="false"
+                                     ShowDataTable="false" />
+            }
+            else
+            {
+                <p class="page-status">Dati insufficienti per il grafico.</p>
+            }
+        </section>
+    </div>
+
+    <section class="card investment-operations-card" aria-labelledby="instrument-operations-title">
+        <div class="section-head">
+            <div>
+                <h2 id="instrument-operations-title"><MfIcon Name="list" Size="18" /> Operazioni</h2>
+            </div>
+        </div>
+
+        @if (asset.Operations.Count == 0)
+        {
+            <p class="page-status">Nessuna operazione registrata.</p>
+        }
+        else
+        {
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table investment-operations-table">
+                    <caption class="table-hint">Operazioni dello strumento</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Data</th>
+                            <th scope="col">Tipo</th>
+                            <th scope="col" class="num">Quantità</th>
+                            <th scope="col" class="num">Prezzo</th>
+                            <th scope="col" class="num">Importo</th>
+                            <th scope="col" class="num">Commissioni</th>
+                            <th scope="col" class="hide-sm">Conto</th>
+                            <th scope="col" class="hide-sm">Note</th>
+                            <th scope="col"><span class="visually-hidden">Azioni</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var operation in asset.Operations)
+                        {
+                            <tr class="@(operation.IsReversed ? "investment-operation-reversed" : "")">
+                                <td>@Format.Date(operation.OperationDate)</td>
+                                <td>
+                                    <StatusBadge Tone="@OperationTone(operation.Kind)">
+                                        @Format.InvestmentOperationKindLabel(operation.Kind)
+                                    </StatusBadge>
+                                </td>
+                                <td class="num">@(operation.Quantity is { } quantity ? Format.Quantity(quantity) : "—")</td>
+                                <td class="num">@OperationPrice(operation, asset)</td>
+                                <td class="num">@OperationAmount(operation)</td>
+                                <td class="num">@(operation.Fees is { } fees ? Format.Money(fees) : "—")</td>
+                                <td class="hide-sm">@operation.SettlementAccountName</td>
+                                <td class="hide-sm">@(operation.Description ?? "—")</td>
+                                <td class="num investment-operation-actions">
+                                    @if (operation.IsReversed)
+                                    {
+                                        <StatusBadge Tone="warning">Stornata</StatusBadge>
+                                    }
+                                    else if (_confirmDeleteOperationId == operation.Id)
+                                    {
+                                        <button type="button" class="delete-button compact"
+                                                @onclick="() => DeleteOperationAsync(operation)">Conferma</button>
+                                        <button type="button" class="secondary-button"
+                                                @onclick="CancelOperationDelete">Annulla</button>
+                                    }
+                                    else
+                                    {
+                                        @if (CanEditOperation(operation))
+                                        {
+                                            <button type="button" class="icon-button"
+                                                    aria-label="Modifica operazione"
+                                                    @onclick="() => OpenEditOperation(asset, operation)">
+                                                <MfIcon Name="edit" Size="16" />
+                                            </button>
+                                        }
+                                        <button type="button" class="icon-button"
+                                                aria-label="Elimina operazione"
+                                                @onclick="() => RequestOperationDelete(operation)">
+                                            <MfIcon Name="trash" Size="16" />
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <div class="bento instrument-bottom">
+        <section class="card" aria-labelledby="instrument-quote-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="instrument-quote-title"><MfIcon Name="refresh" Size="18" /> Quotazione</h2>
+                </div>
+                @if (!asset.IsArchived)
+                {
+                    <button type="button" class="secondary-button" @onclick="TogglePriceForm">
+                        Aggiorna quotazione
+                    </button>
+                }
+            </div>
+
+            <div class="instrument-quote-grid">
+                <div>
+                    <span class="investment-detail-label">Prezzo attuale</span>
+                    <strong>@(asset.CurrentUnitPrice is { } unitPrice ? Format.Money(unitPrice) : "—")</strong>
+                </div>
+                <div>
+                    <span class="investment-detail-label">Ultima quotazione</span>
+                    <strong>@(asset.PriceDate is { } priceDate ? Format.Date(priceDate) : "Nessuna")</strong>
+                </div>
+                <div>
+                    <span class="investment-detail-label">Fonte</span>
+                    <strong>@(asset.PriceSource ?? "—")</strong>
+                </div>
+            </div>
+
+            @if (_showPriceForm)
+            {
+                <form class="investment-price-form" @onsubmit="SavePriceAsync">
+                    <label>
+                        <span>@(asset.PriceUnit == PriceUnit.PercentOfNominal ? "Prezzo (% del nominale)" : "Prezzo per unità (EUR)")</span>
+                        <input type="number" inputmode="decimal" step="any" min="0"
+                               required aria-required="true" @bind="_priceValueText" />
+                    </label>
+                    <label>
+                        <span>Data</span>
+                        <input type="date" required aria-required="true" @bind="_priceDate" />
+                    </label>
+                    <button type="submit" class="primary-button" disabled="@_priceSaving">Salva</button>
+                    <button type="button" class="secondary-button" @onclick="CancelPrice">Annulla</button>
+                </form>
+                @if (_priceError is not null)
+                {
+                    <p class="alert alert-error" role="alert">@_priceError</p>
+                }
+            }
+        </section>
+
+        <section class="card" aria-labelledby="instrument-info-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="instrument-info-title"><MfIcon Name="info" Size="18" /> Informazioni</h2>
+                </div>
+            </div>
+
+            <div class="instrument-info-grid">
+                <div>
+                    <span class="investment-detail-label">Stato</span>
+                    <strong>@(asset.IsArchived ? "Archiviato" : "Attivo")</strong>
+                </div>
+                @if (asset.AssetClass == AssetClass.Bond)
+                {
+                    <div>
+                        <span class="investment-detail-label">Scadenza</span>
+                        <strong>@(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")</strong>
+                    </div>
+                    <div>
+                        <span class="investment-detail-label">Rendimento annuo</span>
+                        <strong>@(asset.CouponRate is { } coupon ? NumberPercent(coupon) : "Non indicato")</strong>
+                    </div>
+                    <div>
+                        <span class="investment-detail-label">Nominale per unità</span>
+                        <strong>@(asset.NotionalValue is { } notional ? Format.Money(notional) : "—")</strong>
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(asset.Notes))
+            {
+                <div class="investment-note">
+                    <MfIcon Name="doc" Size="16" />
+                    <p>@asset.Notes</p>
+                </div>
+            }
+
+            @if (asset.Warnings.Count > 0)
+            {
+                <ul class="investment-reasons" aria-label="Avvisi sullo strumento">
+                    @foreach (var warning in asset.Warnings)
+                    {
+                        <li>@warning</li>
+                    }
+                </ul>
+            }
+
+            <div class="investment-actions instrument-management-actions">
+                @if (asset.IsArchived)
+                {
+                    <button type="button" class="secondary-button" @onclick="ReactivateAssetAsync">
+                        <MfIcon Name="refresh" Size="16" /> Riattiva
+                    </button>
+                }
+                else if (asset.Quantity is null)
+                {
+                    <button type="button" class="secondary-button" @onclick="RequestArchive">
+                        <MfIcon Name="archive" Size="16" /> Archivia
+                    </button>
+                }
+                else
+                {
+                    <button type="button" class="secondary-button" @onclick="OpenFullSaleAsync">
+                        <MfIcon Name="archive" Size="16" /> Vendi tutto e archivia
+                    </button>
+                }
+
+                @if (CanDelete(asset))
+                {
+                    <button type="button" class="delete-button compact" @onclick="RequestAssetDelete">
+                        <MfIcon Name="trash" Size="16" /> Elimina
+                    </button>
+                }
+            </div>
+
+            @if (_confirmArchive)
+            {
+                <div class="alert alert-warning investment-confirm" role="alert">
+                    <div>Archiviare «@asset.Name»? Lo strumento resterà visibile tra gli archiviati.</div>
+                    <div class="form-actions">
+                        <button type="button" class="primary-button" @onclick="ArchiveAsync">Archivia</button>
+                        <button type="button" class="secondary-button" @onclick="CancelArchive">Annulla</button>
+                    </div>
+                </div>
+            }
+
+            @if (_confirmAssetDelete)
+            {
+                <div class="alert alert-warning investment-confirm" role="alert">
+                    <div>Eliminare definitivamente «@asset.Name»? L'operazione non è reversibile.</div>
+                    <div class="form-actions">
+                        <button type="button" class="danger-button" @onclick="DeleteAssetAsync">
+                            <MfIcon Name="trash" Size="16" /> Elimina definitivamente
+                        </button>
+                        <button type="button" class="secondary-button" @onclick="CancelAssetDelete">Annulla</button>
+                    </div>
+                </div>
+            }
+        </section>
+    </div>
+}
+
+<InvestmentOperationDialog Open="_operationDialogOpen"
+                           Asset="_asset"
+                           Operation="_operationBeingEdited"
+                           SettlementAccounts="@(_workspace?.SettlementAccounts ?? Array.Empty<InvestmentOption>())"
+                           PresetKind="_operationPresetKind"
+                           LockKind="_operationLockKind"
+                           PresetQuantity="_operationPresetQuantity"
+                           PresetPrice="_operationPresetPrice"
+                           OnClose="CloseOperationDialog"
+                           OnSaved="OnOperationSaved" />
+
+<InvestmentAssetDialog Open="_assetDialogOpen"
+                       Asset="_asset"
+                       CanDelete="@(_asset is { } dialogAsset && CanDelete(dialogAsset))"
+                       OnClose="CloseAssetDialog"
+                       OnSaved="OnAssetSaved"
+                       OnDeleted="OnAssetDeleted" />
+
+@code {
+    private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
+
+    [Parameter]
+    public Guid InstrumentId { get; set; }
+
+    private InvestmentWorkspace? _workspace;
+    private InvestmentAssetRow? _asset;
+    private bool _loading = true;
+    private string? _loadError;
+    private string? _message;
+    private string? _actionError;
+
+    private bool _assetDialogOpen;
+
+    private bool _operationDialogOpen;
+    private InvestmentOperationRow? _operationBeingEdited;
+    private InvestmentOperationKind _operationPresetKind = InvestmentOperationKind.Buy;
+    private bool _operationLockKind;
+    private decimal? _operationPresetQuantity;
+    private decimal? _operationPresetPrice;
+    private bool _archiveAfterOperation;
+    private Guid? _confirmDeleteOperationId;
+
+    private bool _showPriceForm;
+    private string _priceValueText = "";
+    private DateOnly _priceDate = DateOnly.FromDateTime(DateTime.UtcNow);
+    private string? _priceError;
+    private bool _priceSaving;
+
+    private bool _confirmArchive;
+    private bool _confirmAssetDelete;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+
+        try
+        {
+            _workspace = await Workspace.LoadAsync();
+            _asset = FindAsset();
+            if (_asset is null)
+            {
+                _loadError = "Strumento non trovato.";
+            }
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile caricare lo strumento. Verificare la connessione al database.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _workspace = await Workspace.LoadAsync();
+            _asset = FindAsset();
+            _loadError = _asset is null ? "Strumento non trovato." : null;
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile aggiornare lo strumento. Verificare la connessione al database.";
+        }
+    }
+
+    private InvestmentAssetRow? FindAsset() =>
+        _workspace?.Assets.FirstOrDefault(asset => asset.InstrumentId == InstrumentId);
+
+    private IReadOnlyList<InvestmentHistoryPoint> HistoryPoints =>
+        _asset?.History ?? [];
+
+    private IReadOnlyList<TimeSeriesSeries> ValueSeries =>
+        HistoryPoints.Count < 2
+            ? []
+            : [
+                new(
+                    "Valore attuale",
+                    HistoryPoints
+                        .Select(point => new TimeSeriesPoint(point.Date, point.CurrentValue?.Amount))
+                        .ToArray(),
+                    Color: "#f97316"),
+                new(
+                    "Capitale investito",
+                    HistoryPoints
+                        .Select(point => new TimeSeriesPoint(point.Date, point.InvestedCapital?.Amount))
+                        .ToArray(),
+                    Color: "#0c8fa5"),
+            ];
+
+    private IReadOnlyList<TimeSeriesSeries> ReturnSeries =>
+        HistoryPoints.Count < 2
+            ? []
+            : [
+                new(
+                    "Rendimento %",
+                    HistoryPoints
+                        .Select(point => new TimeSeriesPoint(
+                            point.Date,
+                            point.CurrentValue is { } current &&
+                            point.InvestedCapital is { Amount: > 0m } invested
+                                ? (current.Amount - invested.Amount) / invested.Amount
+                                : null))
+                        .ToArray(),
+                    Color: "#8b5cf6"),
+            ];
+
+    private string HistoryLabelMode
+    {
+        get
+        {
+            if (HistoryPoints.Count < 2)
+            {
+                return "short";
+            }
+
+            var days = HistoryPoints[^1].Date.DayNumber - HistoryPoints[0].Date.DayNumber;
+            return days > 730 ? "year" : days > 120 ? "month" : "short";
+        }
+    }
+
+    private void OpenNewOperation(InvestmentAssetRow asset, InvestmentOperationKind kind)
+    {
+        _message = null;
+        _actionError = null;
+        _operationBeingEdited = null;
+        _operationPresetKind = kind;
+        _operationLockKind = false;
+        _operationPresetQuantity = null;
+        _operationPresetPrice = asset.LatestPrice;
+        _archiveAfterOperation = false;
+        _operationDialogOpen = true;
+    }
+
+    private void OpenFullSaleAsync()
+    {
+        if (_asset is not { } asset)
+        {
+            return;
+        }
+
+        _message = null;
+        _actionError = null;
+        _operationBeingEdited = null;
+        _operationPresetKind = InvestmentOperationKind.Sell;
+        _operationLockKind = true;
+        _operationPresetQuantity = asset.Quantity?.Value;
+        _operationPresetPrice = asset.LatestPrice;
+        _archiveAfterOperation = true;
+        _operationDialogOpen = true;
+    }
+
+    private void OpenEditOperation(InvestmentAssetRow asset, InvestmentOperationRow operation)
+    {
+        _message = null;
+        _actionError = null;
+        _operationBeingEdited = operation;
+        _operationPresetKind = operation.Kind;
+        _operationLockKind = true;
+        _operationPresetQuantity = null;
+        _operationPresetPrice = null;
+        _archiveAfterOperation = false;
+        _operationDialogOpen = true;
+    }
+
+    private void CloseOperationDialog() => _operationDialogOpen = false;
+
+    private async Task OnOperationSaved()
+    {
+        var shouldArchive = _archiveAfterOperation;
+        _archiveAfterOperation = false;
+        _message = "Operazione salvata.";
+        _actionError = null;
+        await ReloadAsync();
+
+        if (shouldArchive)
+        {
+            try
+            {
+                await AssetService.ArchiveAsync(InstrumentId);
+                _message = "Strumento venduto e archiviato.";
+                await ReloadAsync();
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+            {
+                _actionError = exception.Message;
+            }
+        }
+    }
+
+    private void RequestOperationDelete(InvestmentOperationRow operation)
+    {
+        _confirmDeleteOperationId = operation.Id;
+        _confirmArchive = false;
+        _confirmAssetDelete = false;
+    }
+
+    private void CancelOperationDelete() => _confirmDeleteOperationId = null;
+
+    private async Task DeleteOperationAsync(InvestmentOperationRow operation)
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.DeleteOperationAsync(operation.Id);
+            _confirmDeleteOperationId = null;
+            _message = "Operazione eliminata.";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private void OpenEditAsset()
+    {
+        _message = null;
+        _actionError = null;
+        _assetDialogOpen = true;
+    }
+
+    private void CloseAssetDialog() => _assetDialogOpen = false;
+
+    private async Task OnAssetSaved()
+    {
+        _message = "Strumento salvato.";
+        await ReloadAsync();
+    }
+
+    private async Task OnAssetDeleted()
+    {
+        Navigation.NavigateTo("investments");
+    }
+
+    private void TogglePriceForm()
+    {
+        if (_showPriceForm)
+        {
+            CancelPrice();
+            return;
+        }
+
+        _showPriceForm = true;
+        _priceValueText = _asset?.LatestPrice?.ToString(CultureInfo.InvariantCulture) ?? "";
+        _priceDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        _priceError = null;
+    }
+
+    private void CancelPrice()
+    {
+        _showPriceForm = false;
+        _priceError = null;
+    }
+
+    private async Task SavePriceAsync()
+    {
+        if (_priceSaving)
+        {
+            return;
+        }
+
+        _priceError = null;
+        if (!TryParseDecimal(_priceValueText, out var price) || price <= 0m)
+        {
+            _priceError = "La quotazione deve essere positiva.";
+            return;
+        }
+
+        _priceSaving = true;
+        try
+        {
+            await AssetService.RecordPriceAsync(new RecordPriceRequest(InstrumentId, price, _priceDate));
+            _showPriceForm = false;
+            _message = "Quotazione aggiornata.";
+            await ReloadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _priceError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _priceError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _priceError = "Impossibile salvare la quotazione. Verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _priceSaving = false;
+        }
+    }
+
+    private void RequestArchive()
+    {
+        _confirmArchive = true;
+        _confirmAssetDelete = false;
+    }
+
+    private void CancelArchive() => _confirmArchive = false;
+
+    private async Task ArchiveAsync()
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.ArchiveAsync(InstrumentId);
+            _confirmArchive = false;
+            _message = "Strumento archiviato.";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private async Task ReactivateAssetAsync()
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.ReactivateAsync(InstrumentId);
+            _message = "Strumento riattivato.";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private void RequestAssetDelete()
+    {
+        _confirmAssetDelete = true;
+        _confirmArchive = false;
+    }
+
+    private void CancelAssetDelete() => _confirmAssetDelete = false;
+
+    private async Task DeleteAssetAsync()
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.DeleteAsync(InstrumentId);
+            Navigation.NavigateTo("investments");
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private static bool CanDelete(InvestmentAssetRow asset) =>
+        !asset.HasOperations && asset.PriceDate is null;
+
+    private static bool CanEditOperation(InvestmentOperationRow operation) =>
+        operation.Kind is InvestmentOperationKind.Buy or
+            InvestmentOperationKind.Sell or
+            InvestmentOperationKind.Dividend or
+            InvestmentOperationKind.Coupon;
+
+    private static string OperationTone(InvestmentOperationKind kind) => kind switch
+    {
+        InvestmentOperationKind.Buy => "income",
+        InvestmentOperationKind.Sell => "expense",
+        InvestmentOperationKind.Dividend => "brand",
+        InvestmentOperationKind.Coupon => "teal",
+        _ => "neutral",
+    };
+
+    private static string OperationPrice(InvestmentOperationRow operation, InvestmentAssetRow asset)
+    {
+        if (operation.Price is not { } price)
+        {
+            return "—";
+        }
+
+        return operation.PriceUnit == PriceUnit.PercentOfNominal
+            ? NumberPercent(price)
+            : Format.Money(new Money(price, asset.QuoteCurrency));
+    }
+
+    private static string OperationAmount(InvestmentOperationRow operation) =>
+        operation.Kind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell
+            ? operation.GrossAmount is { } gross ? Format.Money(gross) : "—"
+            : operation.Amount is { } amount ? Format.Money(amount) : "—";
+
+    private static string MoneyText(Money? value) =>
+        value is { } money ? Format.Money(money) : "—";
+
+    private static string MoneySigned(Money? value) =>
+        value is { } money ? Format.MoneySigned(money) : "—";
+
+    private static string SignedPercent(decimal? value) =>
+        value is { } percent ? Format.SignedPercent(percent) : "—";
+
+    private static string ResultClass(Money? value) => value switch
+    {
+        { Amount: > 0m } => "positive",
+        { Amount: < 0m } => "negative",
+        _ => "neutral",
+    };
+
+    private static string ResultClass(decimal? value) => value switch
+    {
+        > 0m => "positive",
+        < 0m => "negative",
+        _ => "neutral",
+    };
+
+    private static string NumberPercent(decimal value) =>
+        $"{value.ToString("N2", ItalianCulture)} %";
+
+    private static string JustEtfUrl(string isin) =>
+        $"https://www.justetf.com/it/etf-profile.html?isin={isin}";
+
+    private static bool TryParseDecimal(string? text, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+            || decimal.TryParse(text, NumberStyles.Float, ItalianCulture, out value);
+    }
+}

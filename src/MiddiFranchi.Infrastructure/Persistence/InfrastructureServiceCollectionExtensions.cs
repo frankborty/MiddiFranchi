@@ -28,7 +28,6 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
-        services.AddScoped<IInvestmentPortfolioRepository, InvestmentPortfolioRepository>();
         services.AddScoped<IInstrumentRepository, InstrumentRepository>();
         services.AddScoped<IFinancialOperationRepository, FinancialOperationRepository>();
         services.AddScoped<IAccountPostingRepository, AccountPostingRepository>();

@@ -25,6 +25,8 @@ builder.Services.AddScoped<AccountOverviewService>();
 builder.Services.AddScoped<NetWorthOverviewService>();
 builder.Services.AddScoped<FinancialDashboardService>();
 builder.Services.AddScoped<InvestmentOverviewService>();
+builder.Services.AddScoped<InvestmentAssetService>();
+builder.Services.AddScoped<InvestmentWorkspaceService>();
 builder.Services.AddScoped<DashboardOverviewService>();
 builder.Services.AddScoped<SpecialAccountsSeeder>();
 builder.Services.AddScoped<DefaultCategoriesSeeder>();

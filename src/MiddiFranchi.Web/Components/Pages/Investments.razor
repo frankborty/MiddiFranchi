@@ -1,29 +1,23 @@
 @page "/investments"
 @rendermode InteractiveServer
+@using System.Globalization
 @using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
 @using MiddiFranchi.Domain.Portfolio
 @using MiddiFranchi.Domain.Shared
-@inject InvestmentOverviewService InvestmentService
+@inject InvestmentWorkspaceService Workspace
+@inject InvestmentAssetService AssetService
 
 <PageTitle>Investimenti</PageTitle>
 
 <header class="dashboard-header">
     <div>
-        <h1>Investimenti</h1>
-        <p class="page-intro">
-            Capitale investito, valore attuale e rendimento delle posizioni. Il rendimento è
-            calcolato sul costo residuo e non include dividendi o cedole.
-        </p>
+        <h1 class="account-detail-title">
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="pie" Size="20" /></span>
+            Investimenti
+        </h1>
     </div>
-    @if (_overview is not null)
-    {
-        <div class="dashboard-header-meta">
-            <StatusBadge Tone="investments">
-                <MfIcon Name="calendar" Size="14" /> Dati al @Format.Date(_overview.ValuationDate)
-            </StatusBadge>
-            <span class="table-hint">@_overview.Portfolios.Count portafogli · @_overview.AssetCount asset</span>
-        </div>
-    }
+    <a class="secondary-button" href="/investments/advanced">Statistiche avanzate</a>
 </header>
 
 @if (_loading)
@@ -42,253 +36,757 @@ else if (_loadError is not null)
         </div>
     </section>
 }
-else if (_overview is { } overview)
+else if (_workspace is { } workspace)
 {
-    @if (!overview.HasPortfolios)
+    @if (_message is not null)
     {
-        <EmptyState Title="Nessun portafoglio registrato"
-                    Hint="I portafogli e le posizioni d'investimento compaiono qui quando presenti."
-                    Icon="chart" />
+        <p class="alert alert-success" role="status">@_message</p>
+    }
+    @if (_actionError is not null)
+    {
+        <p class="alert alert-error" role="alert">@_actionError</p>
+    }
+
+    @if (workspace.CatalogCount == 0)
+    {
+        <section class="card">
+            <EmptyState Title="Nessuno strumento in catalogo" Icon="chart" />
+        </section>
     }
     else
     {
-        @if (overview.HasAssets)
-        {
-            <section class="card investment-summary-card" aria-labelledby="investment-summary-title">
-                <div class="section-head">
-                    <div>
-                        <h2 id="investment-summary-title"><MfIcon Name="chart" Size="18" /> Riepilogo complessivo</h2>
-                        <p class="section-sub">Capitale investito e valore attuale in EUR.</p>
-                    </div>
-                    <StatusBadge Tone="@(overview.IsComplete ? "income" : "warning")">
-                        @(overview.IsComplete ? "Dati completi" : "Dati incompleti")
-                    </StatusBadge>
+        <section class="card investment-summary-card" aria-labelledby="investment-summary-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="investment-summary-title"><MfIcon Name="pie" Size="18" /> Riepilogo complessivo</h2>
                 </div>
+            </div>
 
-                @if (overview.History.Points.Count >= 2)
-                {
-                    <ApexTimeSeriesChart Title="Valore nel tempo"
-                                         Description="Valore attuale alle date con quotazioni o operazioni disponibili."
-                                         Currency="@overview.History.Currency"
-                                         Series="@BuildHistorySeries(overview.History)" />
-                }
-                else
-                {
-                    <p class="page-status">
-                        Non ci sono ancora almeno due date storiche per disegnare l'andamento.
-                    </p>
-                }
+            <div class="investments-kpi-grid five-up">
+                <StatTile Label="Valore attuale"
+                          Hero="@true"
+                          Value="@ValueOrUnavailable(workspace.Overview.CurrentValue)" />
+                <StatTile Label="Prezzo di carico"
+                          Value="@ValueOrUnavailable(workspace.Overview.InvestedCapital)" />
+                <StatTile Label="Rendimento"
+                          Value="@ResultValue(workspace.Overview.TotalResult)"
+                          ValueClass="@ResultClass(workspace.Overview.TotalResult)" />
+                <StatTile Label="Rendimento %"
+                          Value="@ResultPercentValue(workspace.Overview.TotalResultPercent)"
+                          ValueClass="@ResultPercentClass(workspace.Overview.TotalResultPercent)" />
+                <StatTile Label="Cedole e dividendi"
+                          Value="@Format.Money(workspace.TotalIncome)" />
+            </div>
 
-                @if (overview.IsComplete &&
-                     overview.InvestedCapital is { } invested &&
-                     overview.Performance is { } performance &&
-                     overview.PerformancePercent is { } performancePercent)
-                {
-                    <p class="investment-summary-meta">
-                        Capitale investito <strong>@Format.Money(invested)</strong> ·
-                        Rendimento
-                        <span class="investment-summary-performance @PerformanceClass(performance)">
-                            @Format.MoneySigned(performance) @Format.SignedPercent(performancePercent)
-                        </span>
-                        · @overview.Portfolios.Count portafogli · @overview.AssetCount asset
-                    </p>
-                }
-                else if (!overview.IsComplete)
-                {
-                    <div class="alert alert-warning" role="status">
-                        Il valore corrente non è calcolabile: mancano dati necessari. Nessun valore
-                        è stato stimato o sostituito con zero.
-                    </div>
-                    @if (overview.IncompletenessReasons.Count > 0)
-                    {
-                        <ul class="investment-reasons" aria-label="Motivi dell'incompletezza del riepilogo investimenti">
-                            @foreach (var reason in overview.IncompletenessReasons)
-                            {
-                                <li>@reason</li>
-                            }
-                        </ul>
-                    }
-                }
-
-                @if (!overview.History.IsComplete && overview.History.IncompletenessReasons.Count > 0)
+            @if (workspace.Overview.AssetCount == 0)
+            {
+                <p class="page-status">
+                    Nessuna posizione aperta: registra un acquisto per iniziare a calcolare valore e
+                    rendimento.
+                </p>
+            }
+            else if (!workspace.Overview.IsComplete)
+            {
+                <div class="alert alert-warning" role="status">
+                    Il valore complessivo non è calcolabile: mancano dati necessari. Nessun valore è stato
+                    sostituito con zero.
+                </div>
+                @if (workspace.Overview.IncompletenessReasons.Count > 0)
                 {
                     <details class="investment-details">
-                        <summary>Dettagli sui punti storici non calcolabili</summary>
+                        <summary>Motivi dell'incompletezza</summary>
                         <ul class="investment-reasons">
-                            @foreach (var reason in overview.History.IncompletenessReasons)
+                            @foreach (var reason in workspace.Overview.IncompletenessReasons)
                             {
                                 <li>@reason</li>
                             }
                         </ul>
                     </details>
                 }
-            </section>
-        }
-        else
-        {
-            <section class="card">
-                <EmptyState Title="Nessuna posizione aperta"
-                            Hint="Le posizioni si costruiscono dalle operazioni d'investimento registrate."
-                            Icon="coin" />
-            </section>
-        }
+            }
+        </section>
 
-        @foreach (var portfolio in overview.Portfolios)
-        {
-            <section class="card investment-portfolio" aria-labelledby="portfolio-@portfolio.PortfolioId">
+        <div class="bento compact-pie-row">
+            <InvestmentPerformanceChart Workspace="workspace" ShowPerformanceToggle="false" />
+
+            <section class="card investment-allocation-card" aria-labelledby="investment-allocation-title">
                 <div class="section-head">
                     <div>
-                        <h2 id="portfolio-@portfolio.PortfolioId">
-                            <MfIcon Name="pie" Size="18" /> @portfolio.Name
-                        </h2>
-                        <p class="section-sub">
-                            @portfolio.Assets.Count asset
-                        </p>
+                        <h2 id="investment-allocation-title"><MfIcon Name="pie" Size="18" /> Per classe di attività</h2>
                     </div>
-                    <StatusBadge Tone="@(portfolio.IsComplete ? "income" : "warning")">
-                        @(portfolio.IsComplete ? "Dati completi" : "Dati incompleti")
-                    </StatusBadge>
                 </div>
 
-                @if (portfolio.HasAssets)
+                @if (AllocationSegments.Count == 0)
                 {
-                    <dl class="portfolio-summary">
-                        <div class="portfolio-summary-item">
-                            <dt>Capitale investito</dt>
-                            <dd><AmountValue Value="@portfolio.InvestedCapital" UnavailableText="Non disponibile" Tone="neutral" /></dd>
-                        </div>
-                        <div class="portfolio-summary-item">
-                            <dt>Valore attuale</dt>
-                            <dd><AmountValue Value="@portfolio.CurrentValue" UnavailableText="Non disponibile" Tone="balance" /></dd>
-                        </div>
-                        <div class="portfolio-summary-item">
-                            <dt>Rendimento</dt>
-                            <dd>
-                                @if (portfolio.Performance is { } portfolioPerformance)
-                                {
-                                    <span class="portfolio-performance @PerformanceClass(portfolioPerformance)">
-                                        <AmountValue Value="@portfolioPerformance" Signed="true" />
-                                        @if (portfolio.PerformancePercent is { } portfolioPercent)
-                                        {
-                                            <span class="portfolio-performance-percent">@Format.SignedPercent(portfolioPercent)</span>
-                                        }
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="amount amount-neutral">Non calcolabile</span>
-                                }
-                            </dd>
-                        </div>
-                    </dl>
-
-                    <div class="asset-grid">
-                        @foreach (var asset in portfolio.Assets)
-                        {
-                            <article class="asset-card" aria-labelledby="asset-@asset.InstrumentId">
-                                <div class="asset-card-head">
-                                    <div>
-                                        <h3 id="asset-@asset.InstrumentId">@asset.Name</h3>
-                                        <div class="asset-meta">
-                                            <StatusBadge Tone="@(asset.Symbol is null ? "warning" : "investments")">
-                                                @(asset.Symbol ?? "Sigla non disponibile")
-                                            </StatusBadge>
-                                            <span>@Format.InstrumentTypeLabel(asset.Type)</span>
-                                            <span aria-hidden="true">·</span>
-                                            <span>@Format.Quantity(asset.Quantity)</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="asset-value">
-                                    <span class="asset-value-label">Valore attuale</span>
-                                    @if (asset.CurrentValue is { } currentValue)
+                    <EmptyState Title="Nessuna posizione valorizzata" Icon="pie" />
+                }
+                else
+                {
+                    <div class="alternative-pie-layout">
+                        <figure class="alternative-pie-figure">
+                            <div class="allocation-donut alternative-pie-donut">
+                                <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false"
+                                     @onmouseleave="ClearAllocationHover">
+                                    <circle class="allocation-track" cx="21" cy="21" r="15.9155"
+                                            pathLength="100" />
+                                    @foreach (var segment in AllocationSegments)
                                     {
-                                        <strong>@Format.Money(currentValue)</strong>
+                                        <circle class="expense-pie-segment alternative-pie-segment @(_allocationHover?.Label == segment.Label ? "hovered" : "")"
+                                                cx="21" cy="21" r="15.9155"
+                                                pathLength="100" transform="rotate(-90 21 21)"
+                                                stroke="@segment.Color"
+                                                stroke-dasharray="@segment.DashArray"
+                                                stroke-dashoffset="@segment.DashOffset"
+                                                @onmouseover="() => SetAllocationHover(segment)"
+                                                @onclick="() => OpenAllocationDialog(segment)">
+                                            <title>@segment.Label: @Format.Money(new Money(segment.Value, Currency.Euro)) (@Format.Percent(segment.Share))</title>
+                                        </circle>
+                                    }
+                                </svg>
+                                <div class="allocation-center alternative-pie-center">
+                                    @if (_allocationHover is { } hover)
+                                    {
+                                        <span class="allocation-center-label" style="color: @hover.Color">@hover.Label</span>
+                                        <strong class="allocation-center-value">@Format.Money(new Money(hover.Value, Currency.Euro))</strong>
+                                        <span class="allocation-center-sub">@Format.Percent(hover.Share)</span>
                                     }
                                     else
                                     {
-                                        <strong class="asset-value-missing">Non valorizzato</strong>
+                                        <span class="allocation-center-label">Totale</span>
+                                        <strong class="allocation-center-value">@Format.Money(new Money(AllocationTotal, Currency.Euro))</strong>
+                                        <span class="allocation-center-sub">@AllocationSegments.Count classi</span>
                                     }
                                 </div>
-
-                                <dl class="asset-stats">
-                                    <div>
-                                        <dt>Capitale investito</dt>
-                                        <dd><AmountValue Value="@asset.InvestedCapital" UnavailableText="Non disponibile" Tone="neutral" /></dd>
-                                    </div>
-                                    <div>
-                                        <dt>Rendimento</dt>
-                                        <dd>
-                                            @if (asset.Performance is { } assetPerformance)
-                                            {
-                                                <span class="asset-performance @PerformanceClass(assetPerformance)">
-                                                    <AmountValue Value="@assetPerformance" Signed="true" />
-                                                    @if (asset.PerformancePercent is { } assetPercent)
-                                                    {
-                                                        <span class="asset-performance-percent">@Format.SignedPercent(assetPercent)</span>
-                                                    }
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span class="amount amount-neutral">Non calcolabile</span>
-                                            }
-                                        </dd>
-                                    </div>
-                                </dl>
-
-                                @if (asset.IncompletenessReason is not null)
-                                {
-                                    <p class="asset-reason">
-                                        <MfIcon Name="alert" Size="14" /> @asset.IncompletenessReason
-                                    </p>
-                                }
-                            </article>
-                        }
+                            </div>
+                            <figcaption class="visually-hidden">
+                                Distribuzione del valore attuale per classe di attività.
+                            </figcaption>
+                        </figure>
                     </div>
+                }
+            </section>
+        </div>
+
+        <section class="card investments-table-card" aria-labelledby="investments-table-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="investments-table-title"><MfIcon Name="list" Size="18" /> Strumenti</h2>
+                </div>
+                @if (QuotesUpToDate)
+                {
+                    <StatusBadge Tone="income" Title="@QuoteStatusTooltip">@QuoteStatusLabel</StatusBadge>
                 }
                 else
                 {
-                    <EmptyState Title="Nessuna posizione aperta"
-                                Hint="Le posizioni si costruiscono dalle operazioni d'acquisto e vendita fino alla data corrente."
-                                Icon="coin" />
+                    <button type="button" class="investment-quote-status-button"
+                            title="@QuoteStatusTooltip" aria-haspopup="dialog"
+                            @onclick="OpenOutdatedQuotesDialog">
+                        <StatusBadge Tone="warning">@QuoteStatusLabel</StatusBadge>
+                    </button>
                 }
+            </div>
 
-                @if (!portfolio.IsComplete && portfolio.IncompletenessReasons.Count > 0)
-                {
-                    <details class="investment-details">
-                        <summary>Dettagli sui dati mancanti del portafoglio</summary>
-                        <ul class="investment-reasons">
-                            @foreach (var reason in portfolio.IncompletenessReasons)
+            <div class="investment-toolbar">
+                <div class="category-search investment-search-compact">
+                    <MfIcon Name="search" Size="16" />
+                    <input type="search" placeholder="Cerca"
+                           aria-label="Cerca strumenti" @bind="_search" @bind:event="oninput" />
+                    @if (!string.IsNullOrWhiteSpace(_search))
+                    {
+                        <button type="button" class="category-search-clear" aria-label="Azzera ricerca"
+                                @onclick="ClearSearch">
+                            <MfIcon Name="close" Size="14" />
+                        </button>
+                    }
+                </div>
+
+                <div class="investment-class-pills" role="group" aria-label="Filtra per classe di attività">
+                    <button type="button" class="investment-class-pill @(_classFilters.Count == 0 ? "active" : "")"
+                            aria-pressed="@(_classFilters.Count == 0 ? "true" : "false")"
+                            @onclick="() => SetClassFilter(null)">
+                        Tutte
+                    </button>
+                    @foreach (var assetClass in ClassesPresent)
+                    {
+                        <button type="button"
+                                class="investment-class-pill @(_classFilters.Contains(assetClass) ? "active" : "")"
+                                style="@PillStyle(assetClass)"
+                                aria-pressed="@(_classFilters.Contains(assetClass) ? "true" : "false")"
+                                @onclick="() => SetClassFilter(assetClass)">
+                            <span class="investment-class-dot" style="background:@AssetClassPalette.Color(assetClass)"></span>
+                            @Format.AssetClassLabel(assetClass)
+                        </button>
+                    }
+                </div>
+
+                <button type="button"
+                        class="investment-archived-toggle @(_showArchived ? "active" : "")"
+                        aria-pressed="@(_showArchived ? "true" : "false")"
+                        @onclick="ToggleShowArchived">
+                    @(_showArchived ? "Nascondi archiviati" : "Mostra archiviati")
+                </button>
+            </div>
+
+            @if (FilteredAssets.Count == 0)
+            {
+                <EmptyState Title="Nessuno strumento corrisponde ai filtri" Icon="filter" />
+            }
+            else
+            {
+                <div class="table-scroll" tabindex="0">
+                    <table class="data-table investments-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">
+                                    <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.Name)">
+                                        Strumento @SortArrow(SortColumn.Name)
+                                    </button>
+                                </th>
+                                <th scope="col" class="num hide-sm">
+                                    <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.Quantity)">
+                                        Quantità @SortArrow(SortColumn.Quantity)
+                                    </button>
+                                </th>
+                                <th scope="col" class="num hide-sm">
+                                    <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.CurrentPrice)">
+                                        Prezzo attuale @SortArrow(SortColumn.CurrentPrice)
+                                    </button>
+                                </th>
+                                <th scope="col" class="num hide-sm">
+                                    <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.AverageCost)">
+                                        Prezzo medio @SortArrow(SortColumn.AverageCost)
+                                    </button>
+                                </th>
+                                <th scope="col" class="num">
+                                    <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.CurrentValue)">
+                                        Valore attuale @SortArrow(SortColumn.CurrentValue)
+                                    </button>
+                                </th>
+                                <th scope="col" class="num">
+                                    <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.TotalResult)">
+                                        Rendimento @SortArrow(SortColumn.TotalResult)
+                                    </button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var asset in FilteredAssets)
                             {
-                                <li>@reason</li>
-                            }
-                        </ul>
-                    </details>
-                }
-            </section>
-        }
+                                <tr class="investment-row @(asset.IsArchived ? "archived" : "")">
+                                    <td>
+                                        <div class="investment-name">
+                                            <a class="investment-expand investment-detail-link"
+                                               href="/investments/instruments/@asset.InstrumentId"
+                                               aria-label="Apri dettagli di @asset.Name">
+                                                <MfIcon Name="arrow-right" Size="16" />
+                                            </a>
+                                            <div class="investment-name-copy">
+                                                <a class="investment-name-link"
+                                                   href="/investments/instruments/@asset.InstrumentId">
+                                                    <strong>@asset.Name</strong>
+                                                </a>
+                                                <div class="investment-name-meta">
+                                                    @if (asset.Symbol is { } symbol)
+                                                    {
+                                                        <span class="status-chip neutral">@symbol</span>
+                                                    }
+                                                    <StatusBadge Tone="@AssetClassPalette.Tone(asset.AssetClass)">
+                                                        @Format.AssetClassLabel(asset.AssetClass)
+                                                    </StatusBadge>
+                                                    @if (asset.Isin is { } isin)
+                                                    {
+                                                        <span class="investment-isin">@isin</span>
+                                                    }
+                                                    <a class="investment-link"
+                                                       href="/investments/instruments/@asset.InstrumentId">
+                                                        <MfIcon Name="arrow-right" Size="14" /> Dettaglio
+                                                    </a>
+                                                    @if (asset.ReferenceUrl is { } referenceUrl)
+                                                    {
+                                                        <a class="investment-link" href="@referenceUrl" target="_blank"
+                                                           rel="noopener noreferrer" aria-label="Scheda di @asset.Name">
+                                                            <MfIcon Name="external-link" Size="14" /> Scheda
+                                                        </a>
+                                                    }
+                                                    @if (asset.Isin is { } justEtfIsin)
+                                                    {
+                                                        <a class="investment-link" href="@JustEtfUrl(justEtfIsin)"
+                                                           target="_blank" rel="noopener noreferrer"
+                                                           aria-label="Pagina JustETF di @asset.Name">
+                                                            <MfIcon Name="link" Size="14" /> JustETF
+                                                        </a>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="num hide-sm">@QuantityText(asset)</td>
+                                    <td class="num hide-sm">
+                                        @if (asset.CurrentUnitPrice is { } currentPrice)
+                                        {
+                                            <span class="investment-strong">@Format.Money(currentPrice)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="investment-muted">—</span>
+                                        }
+                                    </td>
+                                    <td class="num hide-sm">
+                                        @if (asset.AverageCost is { } averageCost)
+                                        {
+                                            <span class="investment-strong">@Format.Money(averageCost)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="investment-muted">—</span>
+                                        }
+                                    </td>
+                                    <td class="num">
+                                        @if (asset.CurrentValue is { } currentValue)
+                                        {
+                                            <span class="investment-strong">@Format.Money(currentValue)</span>
+                                        }
+                                        else if (asset.Quantity is not null)
+                                        {
+                                            <span class="status-chip warning">Non valorizzato</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="investment-muted">—</span>
+                                        }
+                                    </td>
+                                    <td class="num">
+                                        @if (asset.TotalResult is { } total)
+                                        {
+                                            <span class="investment-performance @ResultClass(total)">
+                                                @Format.MoneySigned(total)
+                                                @if (asset.TotalResultPercent is { } percent)
+                                                {
+                                                    <span class="investment-performance-percent">@Format.SignedPercent(percent)</span>
+                                                }
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="investment-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
 
-        <section class="dashboard-note" aria-label="Note sui rendimenti">
-            <MfIcon Name="info" Size="18" />
-            <p>
-                <strong>Come è calcolato il rendimento.</strong> Il capitale investito è il costo
-                residuo medio ponderato, commissioni d'acquisto incluse. Il rendimento è la differenza
-                tra valore attuale e capitale investito; dividendi, cedole e commissioni autonome non
-                sono inclusi. Le posizioni non valorizzate o senza costo storico non vengono trattate
-                come zero. Il grafico usa le date con quotazioni o operazioni disponibili e non
-                interpola i valori mancanti. La sigla è quella registrata nello strumento; se assente
-                viene mostrato “Sigla non disponibile”.
-            </p>
+                                @if (_expanded.Contains(asset.InstrumentId))
+                                {
+                                    <tr class="investment-detail-row">
+                                        <td colspan="6">
+                                            <div class="investment-detail" id="investment-detail-@asset.InstrumentId">
+                                                <div class="investment-detail-grid">
+                                                    <div>
+                                                        <span class="investment-detail-label">Quantità</span>
+                                                        <strong>@QuantityText(asset)</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Prezzo medio di carico</span>
+                                                        <strong>@(asset.AverageCost is { } average ? Format.Money(average) : "—")</strong>
+                                                        @if (asset.AverageCostPercentOfNominal is { } averagePercent)
+                                                        {
+                                                            <span class="investment-subvalue">@NumberPercent(averagePercent) del nominale</span>
+                                                        }
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Costo residuo</span>
+                                                        <strong>@(asset.InvestedCapital is { } invested ? Format.Money(invested) : "—")</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Valore attuale</span>
+                                                        <strong>@(asset.CurrentValue is { } current ? Format.Money(current) : "Non valorizzato")</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Rendimento totale</span>
+                                                        @if (asset.TotalResult is { } detailTotal)
+                                                        {
+                                                            <strong class="investment-performance @ResultClass(detailTotal)">
+                                                                @Format.MoneySigned(detailTotal)
+                                                                @if (asset.TotalResultPercent is { } detailPercent)
+                                                                {
+                                                                    <span class="investment-performance-percent">@Format.SignedPercent(detailPercent)</span>
+                                                                }
+                                                            </strong>
+                                                        }
+                                                        else
+                                                        {
+                                                            <strong class="investment-muted">—</strong>
+                                                        }
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Rendimento non realizzato</span>
+                                                        <strong class="investment-performance @ResultClass(asset.UnrealizedResult)">
+                                                            @(asset.UnrealizedResult is { } unrealized ? Format.MoneySigned(unrealized) : "—")
+                                                        </strong>
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Plusvalenze realizzate</span>
+                                                        <strong>@Format.MoneySigned(asset.RealizedResult)</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Cedole e dividendi</span>
+                                                        <strong>@Format.Money(asset.Income)</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Commissioni autonome</span>
+                                                        <strong>@Format.Money(asset.OtherFees)</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span class="investment-detail-label">Quotazione</span>
+                                                        <strong>@(asset.PriceDate is { } date ? Format.Date(date) : "Nessuna")</strong>
+                                                        @if (asset.LatestPrice is { } latestPrice)
+                                                        {
+                                                            <span class="investment-subvalue">
+                                                                @latestPrice.ToString("N4", ItalianCulture)
+                                                                @(asset.PriceUnit == PriceUnit.PercentOfNominal ? "% del nominale" : "EUR")
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                @if (asset.AssetClass == AssetClass.Bond)
+                                                {
+                                                    <div class="investment-bond-box">
+                                                        <span class="category-eyebrow">Obbligazione</span>
+                                                        <div class="investment-bond-grid">
+                                                            <div>
+                                                                <span class="investment-detail-label">Scadenza</span>
+                                                                <strong>@(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")</strong>
+                                                                <span class="investment-subvalue">@MaturityText(asset)</span>
+                                                            </div>
+                                                            <div>
+                                                                <span class="investment-detail-label">Rendimento annuo</span>
+                                                                <strong>@(asset.CouponRate is { } coupon ? NumberPercent(coupon) : "Non indicato")</strong>
+                                                            </div>
+                                                            <div>
+                                                                <span class="investment-detail-label">Nominale per unità</span>
+                                                                <strong>@(asset.NotionalValue is { } notional ? Format.Money(notional) : "—")</strong>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
+
+                                                @if (!string.IsNullOrWhiteSpace(asset.Notes))
+                                                {
+                                                    <div class="investment-note">
+                                                        <MfIcon Name="doc" Size="16" />
+                                                        <p>@asset.Notes</p>
+                                                    </div>
+                                                }
+
+                                                @if (asset.Warnings.Count > 0)
+                                                {
+                                                    <ul class="investment-reasons" aria-label="Avvisi sullo strumento">
+                                                        @foreach (var warning in asset.Warnings)
+                                                        {
+                                                            <li>@warning</li>
+                                                        }
+                                                    </ul>
+                                                }
+
+                                                <div class="investment-actions">
+                                                    @if (!asset.IsArchived)
+                                                    {
+                                                        <button type="button" class="primary-button"
+                                                                @onclick="() => OpenNewOperation(asset, InvestmentOperationKind.Buy)">
+                                                            <MfIcon Name="plus" Size="16" /> Registra operazione
+                                                        </button>
+                                                    }
+                                                    @if (!asset.IsArchived)
+                                                    {
+                                                        <button type="button" class="secondary-button"
+                                                                @onclick="() => TogglePriceEditor(asset)">
+                                                            <MfIcon Name="refresh" Size="16" /> Aggiorna quotazione
+                                                        </button>
+                                                    }
+                                                    <button type="button" class="secondary-button"
+                                                            @onclick="() => OpenEditAsset(asset)">
+                                                        <MfIcon Name="edit" Size="16" /> Modifica
+                                                    </button>
+
+                                                    @if (asset.IsArchived)
+                                                    {
+                                                        <button type="button" class="secondary-button"
+                                                                @onclick="() => ReactivateAssetAsync(asset)">
+                                                            <MfIcon Name="refresh" Size="16" /> Riattiva
+                                                        </button>
+                                                    }
+                                                    else if (asset.Quantity is null)
+                                                    {
+                                                        <button type="button" class="secondary-button"
+                                                                @onclick="() => RequestArchive(asset)">
+                                                            <MfIcon Name="archive" Size="16" /> Archivia
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="secondary-button"
+                                                                @onclick="() => OpenFullSale(asset)">
+                                                            <MfIcon Name="archive" Size="16" /> Vendi tutto e archivia
+                                                        </button>
+                                                    }
+
+                                                    @if (CanDelete(asset))
+                                                    {
+                                                        <button type="button" class="delete-button compact"
+                                                                @onclick="() => RequestAssetDelete(asset)">
+                                                            <MfIcon Name="trash" Size="16" /> Elimina
+                                                        </button>
+                                                    }
+                                                </div>
+
+                                                @if (_archiveConfirmId == asset.InstrumentId)
+                                                {
+                                                    <div class="alert alert-warning investment-confirm" role="alert">
+                                                        <div>Archiviare «@asset.Name»? Lo strumento resterà visibile tra gli archiviati.</div>
+                                                        <div class="form-actions">
+                                                            <button type="button" class="primary-button"
+                                                                    @onclick="() => ArchiveAsync(asset)">Archivia</button>
+                                                            <button type="button" class="secondary-button"
+                                                                    @onclick="CancelArchive">Annulla</button>
+                                                        </div>
+                                                    </div>
+                                                }
+
+                                                @if (_confirmAssetDeleteId == asset.InstrumentId)
+                                                {
+                                                    <div class="alert alert-warning investment-confirm" role="alert">
+                                                        <div>Eliminare definitivamente «@asset.Name»? L'operazione non è reversibile.</div>
+                                                        <div class="form-actions">
+                                                            <button type="button" class="danger-button"
+                                                                    @onclick="() => DeleteAssetAsync(asset)">
+                                                                <MfIcon Name="trash" Size="16" /> Elimina definitivamente
+                                                            </button>
+                                                            <button type="button" class="secondary-button"
+                                                                    @onclick="CancelAssetDelete">Annulla</button>
+                                                        </div>
+                                                    </div>
+                                                }
+
+                                                @if (_priceEditorId == asset.InstrumentId)
+                                                {
+                                                    <form class="investment-price-form" @onsubmit="SavePriceAsync">
+                                                        <label>
+                                                            <span>@(asset.PriceUnit == PriceUnit.PercentOfNominal ? "Prezzo (% del nominale)" : "Prezzo per unità (EUR)")</span>
+                                                            <input type="number" inputmode="decimal" step="any" min="0"
+                                                                   required aria-required="true" @bind="_priceValueText" />
+                                                        </label>
+                                                        <label>
+                                                            <span>Data</span>
+                                                            <input type="date" required aria-required="true" @bind="_priceDate" />
+                                                        </label>
+                                                        <button type="submit" class="primary-button" disabled="@_priceSaving">
+                                                            Salva quotazione
+                                                        </button>
+                                                        <button type="button" class="secondary-button"
+                                                                @onclick="CancelPrice">Annulla</button>
+                                                    </form>
+                                                    @if (_priceError is not null)
+                                                    {
+                                                        <p class="alert alert-error" role="alert">@_priceError</p>
+                                                    }
+                                                }
+
+                                                <div class="investment-operations">
+                                                    <div class="investment-operations-head">
+                                                        <h3><MfIcon Name="list" Size="16" /> Operazioni</h3>
+                                                        <span class="table-hint">@asset.Operations.Count registrate</span>
+                                                    </div>
+
+                                                    @if (asset.Operations.Count == 0)
+                                                    {
+                                                        <p class="table-hint">
+                                                            Nessuna operazione registrata. Registra un acquisto per aprire la posizione.
+                                                        </p>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="table-scroll" tabindex="0">
+                                                            <table class="data-table investment-operations-table">
+                                                                <caption class="table-hint">Operazioni dello strumento</caption>
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th scope="col">Data</th>
+                                                                        <th scope="col">Tipo</th>
+                                                                        <th scope="col" class="num">Quantità</th>
+                                                                        <th scope="col" class="num">Prezzo</th>
+                                                                        <th scope="col" class="num">Importo</th>
+                                                                        <th scope="col" class="num">Commissioni</th>
+                                                                        <th scope="col" class="hide-sm">Conto</th>
+                                                                        <th scope="col" class="hide-sm">Note</th>
+                                                                        <th scope="col"><span class="visually-hidden">Azioni</span></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    @foreach (var operation in asset.Operations)
+                                                                    {
+                                                                        <tr class="@(operation.IsReversed ? "investment-operation-reversed" : "")">
+                                                                            <td>@Format.Date(operation.OperationDate)</td>
+                                                                            <td>
+                                                                                <StatusBadge Tone="@OperationTone(operation.Kind)">
+                                                                                    @Format.InvestmentOperationKindLabel(operation.Kind)
+                                                                                </StatusBadge>
+                                                                            </td>
+                                                                            <td class="num">@(operation.Quantity is { } quantity ? Format.Quantity(quantity) : "—")</td>
+                                                                            <td class="num">@OperationPrice(operation, asset)</td>
+                                                                            <td class="num">@OperationAmount(operation)</td>
+                                                                            <td class="num">@(operation.Fees is { } fees ? Format.Money(fees) : "—")</td>
+                                                                            <td class="hide-sm">@operation.SettlementAccountName</td>
+                                                                            <td class="hide-sm">@(operation.Description ?? "—")</td>
+                                                                            <td class="num investment-operation-actions">
+                                                                                @if (operation.IsReversed)
+                                                                                {
+                                                                                    <StatusBadge Tone="warning">Stornata</StatusBadge>
+                                                                                }
+                                                                                else if (_confirmDeleteOperationId == operation.Id)
+                                                                                {
+                                                                                    <button type="button" class="delete-button compact"
+                                                                                            @onclick="() => DeleteOperationAsync(operation)">Conferma</button>
+                                                                                    <button type="button" class="secondary-button"
+                                                                                            @onclick="CancelOperationDelete">Annulla</button>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    @if (CanEditOperation(operation))
+                                                                                    {
+                                                                                        <button type="button" class="icon-button"
+                                                                                                aria-label="Modifica operazione"
+                                                                                                @onclick="() => OpenEditOperation(asset, operation)">
+                                                                                            <MfIcon Name="edit" Size="16" />
+                                                                                        </button>
+                                                                                    }
+                                                                                    <button type="button" class="icon-button"
+                                                                                            aria-label="Elimina operazione"
+                                                                                            @onclick="() => RequestOperationDelete(operation)">
+                                                                                        <MfIcon Name="trash" Size="16" />
+                                                                                    </button>
+                                                                                }
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </section>
+
     }
 }
 
+<InvestmentAssetDialog Open="_assetDialogOpen"
+                       Asset="_assetBeingEdited"
+                       CanDelete="@(_assetBeingEdited is { } assetToDelete && CanDelete(assetToDelete))"
+                       OnClose="CloseAssetDialog"
+                       OnSaved="OnAssetSaved"
+                       OnDeleted="OnAssetDeleted" />
+
+<InvestmentOperationDialog Open="_operationDialogOpen"
+                           Asset="_operationAsset"
+                           Operation="_operationBeingEdited"
+                           SettlementAccounts="@(_workspace?.SettlementAccounts ?? Array.Empty<InvestmentOption>())"
+                           PresetKind="_operationPresetKind"
+                           LockKind="_operationLockKind"
+                           PresetQuantity="_operationPresetQuantity"
+                           PresetPrice="_operationPresetPrice"
+                           OnClose="CloseOperationDialog"
+                           OnSaved="OnOperationSaved" />
+
+<OutdatedQuotesDialog Open="_outdatedQuotesOpen"
+                      Items="OutdatedQuotes"
+                      ValuationDate="@(_workspace?.Overview.ValuationDate ?? DateOnly.FromDateTime(DateTime.Today))"
+                      OnClose="CloseOutdatedQuotesDialog" />
+
+<InvestmentClassDialog Open="_allocationDialogOpen"
+                       AssetClassName="@AllocationDialogClassName"
+                       AssetClassColor="@AllocationDialogColor"
+                       Items="AllocationDialogItems"
+                       OnClose="CloseAllocationDialog" />
+
 @code {
-    private InvestmentOverview? _overview;
+    private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
+
+    private static readonly string[] InstrumentColors =
+    [
+        "#f97316",
+        "#0c8fa5",
+        "#22c55e",
+        "#8b5cf6",
+        "#eab308",
+        "#ef4444",
+        "#64748b",
+        "#06b6d4",
+    ];
+
+    private InvestmentWorkspace? _workspace;
     private bool _loading = true;
     private string? _loadError;
+    private string? _message;
+    private string? _actionError;
+
+    private string _search = "";
+    private readonly HashSet<AssetClass> _classFilters = [];
+    private bool _showArchived;
+    private SortColumn _sortColumn = SortColumn.CurrentValue;
+    private bool _sortDescending = true;
+    private AllocationSegment? _allocationHover;
+    private bool _allocationDialogOpen;
+    private AssetClass? _allocationDialogClass;
+    private readonly HashSet<Guid> _expanded = [];
+
+    private bool _outdatedQuotesOpen;
+    private bool _assetDialogOpen;
+    private InvestmentAssetRow? _assetBeingEdited;
+
+    private bool _operationDialogOpen;
+    private InvestmentAssetRow? _operationAsset;
+    private InvestmentOperationRow? _operationBeingEdited;
+    private InvestmentOperationKind _operationPresetKind = InvestmentOperationKind.Buy;
+    private bool _operationLockKind;
+    private decimal? _operationPresetQuantity;
+    private decimal? _operationPresetPrice;
+    private bool _archiveAfterOperation;
+
+    private Guid? _archiveConfirmId;
+    private Guid? _confirmAssetDeleteId;
+    private Guid? _confirmDeleteOperationId;
+
+    private Guid? _priceEditorId;
+    private string _priceValueText = "";
+    private DateOnly _priceDate = DateOnly.FromDateTime(DateTime.UtcNow);
+    private string? _priceError;
+    private bool _priceSaving;
+
+    private enum SortColumn
+    {
+        Name,
+        Quantity,
+        CurrentPrice,
+        AverageCost,
+        CurrentValue,
+        TotalResult,
+    }
+
+    private sealed record AllocationSegment(
+        string Label,
+        string Color,
+        decimal Value,
+        decimal Share,
+        string DashArray,
+        string DashOffset,
+        AssetClass AssetClass);
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -296,11 +794,11 @@ else if (_overview is { } overview)
     {
         _loading = true;
         _loadError = null;
-        _overview = null;
+        _workspace = null;
 
         try
         {
-            _overview = await InvestmentService.LoadAsync();
+            _workspace = await Workspace.LoadAsync();
         }
         catch (InvalidOperationException exception)
             when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
@@ -317,22 +815,640 @@ else if (_overview is { } overview)
         }
     }
 
-    private static string PerformanceClass(Money? performance) => performance switch
+    private async Task ReloadAsync()
+    {
+        if (_workspace is null)
+        {
+            await LoadAsync();
+            return;
+        }
+
+        try
+        {
+            _workspace = await Workspace.LoadAsync();
+            _loadError = null;
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile aggiornare gli investimenti. Verificare la connessione al database e riprovare.";
+        }
+    }
+
+    private IReadOnlyList<InvestmentAssetRow> FilteredAssets
+    {
+        get
+        {
+            if (_workspace is null)
+            {
+                return [];
+            }
+
+            IEnumerable<InvestmentAssetRow> rows = _workspace.Assets;
+            if (!_showArchived)
+            {
+                rows = rows.Where(asset => !asset.IsArchived);
+            }
+
+            if (_classFilters.Count > 0)
+            {
+                rows = rows.Where(asset => _classFilters.Contains(asset.AssetClass));
+            }
+
+            var term = _search.Trim();
+            if (term.Length > 0)
+            {
+                rows = rows.Where(asset =>
+                    Contains(asset.Name, term) ||
+                    Contains(asset.Symbol, term) ||
+                    Contains(asset.Isin, term));
+            }
+
+            return SortRows(rows);
+        }
+    }
+
+    private IReadOnlyList<InvestmentAssetRow> SortRows(IEnumerable<InvestmentAssetRow> rows) =>
+        _sortColumn switch
+        {
+            SortColumn.Name => Order(rows, asset => asset.Name, StringComparer.CurrentCultureIgnoreCase),
+            SortColumn.Quantity => Order(rows, asset => asset.Quantity?.Value ?? decimal.MinValue),
+            SortColumn.CurrentPrice => Order(rows, asset => asset.CurrentUnitPrice?.Amount ?? decimal.MinValue),
+            SortColumn.AverageCost => Order(rows, asset => asset.AverageCost?.Amount ?? decimal.MinValue),
+            SortColumn.CurrentValue => Order(rows, asset => asset.CurrentValue?.Amount ?? decimal.MinValue),
+            SortColumn.TotalResult => Order(rows, asset => asset.TotalResult?.Amount ?? decimal.MinValue),
+            _ => Order(rows, asset => asset.CurrentValue?.Amount ?? decimal.MinValue),
+        };
+
+    private IReadOnlyList<InvestmentAssetRow> Order<TKey>(
+        IEnumerable<InvestmentAssetRow> rows,
+        Func<InvestmentAssetRow, TKey> key,
+        IComparer<TKey>? comparer = null) =>
+        (_sortDescending
+                ? rows.OrderByDescending(key, comparer)
+                : rows.OrderBy(key, comparer))
+            .ThenBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(asset => asset.InstrumentId)
+            .ToArray();
+
+    private IReadOnlyList<AssetClass> ClassesPresent =>
+        _workspace is null
+            ? []
+            : _workspace.Assets
+                .Select(asset => asset.AssetClass)
+                .Distinct()
+                .OrderBy(assetClass => Format.AssetClassLabel(assetClass))
+                .ToArray();
+
+    private IReadOnlyList<InvestmentAssetRow> OutdatedQuotes
+    {
+        get
+        {
+            if (_workspace is not { } workspace)
+            {
+                return [];
+            }
+
+            return workspace.Assets
+                .Where(asset => asset.Quantity is not null)
+                .Where(asset => asset.PriceDate != workspace.Overview.ValuationDate)
+                .OrderBy(asset => asset.PriceDate ?? DateOnly.MinValue)
+                .ThenBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+        }
+    }
+
+    private bool QuotesUpToDate => OutdatedQuotes.Count == 0;
+
+    private string QuoteStatusLabel
+    {
+        get
+        {
+            if (_workspace is not { } workspace)
+            {
+                return "";
+            }
+
+            if (QuotesUpToDate)
+            {
+                return $"Quotazioni al {Format.Date(workspace.Overview.ValuationDate)}";
+            }
+
+            var open = workspace.Assets.Where(asset => asset.Quantity is not null).ToArray();
+            if (open.Any(asset => asset.PriceDate is null))
+            {
+                return "Quotazioni incomplete";
+            }
+
+            var oldest = open.Min(asset => asset.PriceDate!.Value);
+            return $"Quotazioni al {Format.Date(oldest)}";
+        }
+    }
+
+    private string QuoteStatusTooltip =>
+        OutdatedQuotes.Count == 0
+            ? "Tutte le posizioni hanno una quotazione alla data di oggi."
+            : "Strumenti non aggiornati: " + string.Join(
+                "; ",
+                OutdatedQuotes.Select(asset =>
+                    $"{asset.Name} ({(asset.PriceDate is { } date ? Format.Date(date) : "nessuna quotazione")})"));
+
+    private IReadOnlyList<AllocationSegment> AllocationSegments
+    {
+        get
+        {
+            if (_workspace is null)
+            {
+                return [];
+            }
+
+            var allocation = _workspace.Allocation
+                .Where(item => item.Value is { Amount: > 0m })
+                .ToArray();
+            var total = allocation.Sum(item => item.Value!.Value.Amount);
+            if (total <= 0m)
+            {
+                return [];
+            }
+
+            var segments = new List<AllocationSegment>(allocation.Length);
+            var offset = 0m;
+
+            foreach (var item in allocation)
+            {
+                var value = item.Value.GetValueOrDefault().Amount;
+                var share = value / total;
+                var length = share * 100m;
+                segments.Add(new AllocationSegment(
+                    Format.AssetClassLabel(item.AssetClass),
+                    AssetClassPalette.Color(item.AssetClass),
+                    value,
+                    share,
+                    $"{FormatRatio(length)} {FormatRatio(100m - length)}",
+                    $"-{FormatRatio(offset * 100m)}",
+                    item.AssetClass));
+                offset += share;
+            }
+
+            return segments;
+        }
+    }
+
+    private decimal AllocationTotal => AllocationSegments.Sum(segment => segment.Value);
+
+    private static string FormatRatio(decimal value) =>
+        value.ToString("0.####", CultureInfo.InvariantCulture);
+
+    private static bool Contains(string? value, string term) =>
+        value is not null && value.Contains(term, StringComparison.CurrentCultureIgnoreCase);
+
+    private static string ValueOrUnavailable(Money? value) =>
+        value is { } money ? Format.Money(money) : "Non disponibile";
+
+    private static string ResultValue(Money? result) =>
+        result is { } money ? Format.MoneySigned(money) : "Non disponibile";
+
+    private static string ResultPercentValue(decimal? percent) =>
+        percent is { } value ? Format.SignedPercent(value) : "Non disponibile";
+
+    private static string ResultPercentClass(decimal? percent) => percent switch
+    {
+        > 0m => "positive",
+        < 0m => "negative",
+        _ => "neutral",
+    };
+
+    private static string ResultClass(Money? result) => result switch
     {
         { Amount: > 0m } => "positive",
         { Amount: < 0m } => "negative",
         _ => "neutral",
     };
 
-    private static IReadOnlyList<TimeSeriesSeries> BuildHistorySeries(InvestmentHistory history) =>
-    [
-        new(
-            "Valore attuale",
-            history.Points
-                .Select(point => new TimeSeriesPoint(
-                    point.Date,
-                    point.CurrentValue?.Amount))
-                .ToArray(),
-            Color: "#f97316"),
-    ];
+    private static string QuantityText(InvestmentAssetRow asset) =>
+        asset.Quantity is { } quantity ? Format.Quantity(quantity) : "—";
+
+    private static string NumberPercent(decimal value) =>
+        $"{value.ToString("N2", ItalianCulture)} %";
+
+    private static string OperationTone(InvestmentOperationKind kind) => kind switch
+    {
+        InvestmentOperationKind.Buy => "income",
+        InvestmentOperationKind.Sell => "expense",
+        InvestmentOperationKind.Dividend => "brand",
+        InvestmentOperationKind.Coupon => "teal",
+        _ => "neutral",
+    };
+
+    private static string OperationPrice(InvestmentOperationRow operation, InvestmentAssetRow asset)
+    {
+        if (operation.Price is not { } price)
+        {
+            return "—";
+        }
+
+        return operation.PriceUnit == PriceUnit.PercentOfNominal
+            ? NumberPercent(price)
+            : Format.Money(new Money(price, asset.QuoteCurrency));
+    }
+
+    private static string OperationAmount(InvestmentOperationRow operation) =>
+        operation.Kind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell
+            ? operation.GrossAmount is { } gross ? Format.Money(gross) : "—"
+            : operation.Amount is { } amount ? Format.Money(amount) : "—";
+
+    private string MaturityText(InvestmentAssetRow asset)
+    {
+        if (asset.MaturityDate is not { } maturity || _workspace is null)
+        {
+            return "Data non indicata";
+        }
+
+        var days = maturity.DayNumber - _workspace.Overview.ValuationDate.DayNumber;
+        return days switch
+        {
+            < 0 => $"Scaduta da {-days} giorni",
+            0 => "Scade oggi",
+            _ => $"Mancano {days} giorni",
+        };
+    }
+
+    private static string JustEtfUrl(string isin) =>
+        $"https://www.justetf.com/it/etf-profile.html?isin={isin}";
+
+    private void OpenOutdatedQuotesDialog() => _outdatedQuotesOpen = true;
+
+    private void CloseOutdatedQuotesDialog() => _outdatedQuotesOpen = false;
+
+
+    private static bool CanDelete(InvestmentAssetRow asset) =>
+        !asset.HasOperations && asset.PriceDate is null;
+
+    private static bool CanEditOperation(InvestmentOperationRow operation) =>
+        operation.Kind is InvestmentOperationKind.Buy or
+            InvestmentOperationKind.Sell or
+            InvestmentOperationKind.Dividend or
+            InvestmentOperationKind.Coupon;
+
+    private static string PillStyle(AssetClass assetClass)
+    {
+        var color = AssetClassPalette.Color(assetClass);
+        return $"--pill-color: {color}; --pill-tint: {color}22";
+    }
+
+    private void ClearSearch() => _search = "";
+
+    private void SetClassFilter(AssetClass? assetClass)
+    {
+        if (assetClass is null)
+        {
+            _classFilters.Clear();
+            return;
+        }
+
+        if (!_classFilters.Add(assetClass.Value))
+        {
+            _classFilters.Remove(assetClass.Value);
+        }
+    }
+
+    private void ToggleShowArchived() => _showArchived = !_showArchived;
+
+    private void SetAllocationHover(AllocationSegment segment) => _allocationHover = segment;
+
+    private void ClearAllocationHover() => _allocationHover = null;
+
+    private void OpenAllocationDialog(AllocationSegment segment)
+    {
+        _allocationDialogClass = segment.AssetClass;
+        _allocationDialogOpen = true;
+    }
+
+    private void CloseAllocationDialog()
+    {
+        _allocationDialogOpen = false;
+        _allocationDialogClass = null;
+    }
+
+    private string AllocationDialogClassName =>
+        _allocationDialogClass is { } assetClass ? Format.AssetClassLabel(assetClass) : "";
+
+    private string AllocationDialogColor =>
+        _allocationDialogClass is { } assetClass ? AssetClassPalette.Color(assetClass) : "#64748b";
+
+    private IReadOnlyList<InvestmentAllocationItem> AllocationDialogItems
+    {
+        get
+        {
+            if (_allocationDialogClass is not { } assetClass || _workspace is null)
+            {
+                return [];
+            }
+
+            var assets = _workspace.Assets
+                .Where(asset => asset.AssetClass == assetClass)
+                .Where(asset => asset.CurrentValue is { Amount: > 0m })
+                .OrderByDescending(asset => asset.CurrentValue!.Value.Amount)
+                .ToArray();
+            var total = assets.Sum(asset => asset.CurrentValue!.Value.Amount);
+            var offset = 0m;
+            var items = new List<InvestmentAllocationItem>(assets.Length);
+
+            for (var index = 0; index < assets.Length; index++)
+            {
+                var asset = assets[index];
+                var value = asset.CurrentValue!.Value;
+                var share = total > 0m ? value.Amount / total : 0m;
+                items.Add(new InvestmentAllocationItem(
+                    asset.Name,
+                    value,
+                    share,
+                    offset,
+                    InstrumentColors[index % InstrumentColors.Length],
+                    asset.TotalResultPercent));
+                offset += share;
+            }
+
+            return items;
+        }
+    }
+
+    private void ToggleSort(SortColumn column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortDescending = !_sortDescending;
+            return;
+        }
+
+        _sortColumn = column;
+        _sortDescending = column != SortColumn.Name;
+    }
+
+    private string SortArrow(SortColumn column) =>
+        _sortColumn == column ? (_sortDescending ? "↓" : "↑") : "";
+
+    private void ToggleExpanded(Guid instrumentId)
+    {
+        if (!_expanded.Add(instrumentId))
+        {
+            _expanded.Remove(instrumentId);
+        }
+    }
+
+    private void OpenEditAsset(InvestmentAssetRow asset)
+    {
+        _message = null;
+        _actionError = null;
+        _assetBeingEdited = asset;
+        _assetDialogOpen = true;
+    }
+
+    private void CloseAssetDialog() => _assetDialogOpen = false;
+
+    private async Task OnAssetSaved()
+    {
+        _message = "Strumento salvato.";
+        _actionError = null;
+        await ReloadAsync();
+    }
+
+    private async Task OnAssetDeleted()
+    {
+        _message = "Strumento eliminato.";
+        _actionError = null;
+        _expanded.Remove(_assetBeingEdited?.InstrumentId ?? Guid.Empty);
+        await ReloadAsync();
+    }
+
+    private void OpenNewOperation(InvestmentAssetRow asset, InvestmentOperationKind kind)
+    {
+        _message = null;
+        _actionError = null;
+        _operationAsset = asset;
+        _operationBeingEdited = null;
+        _operationPresetKind = kind;
+        _operationLockKind = false;
+        _operationPresetQuantity = null;
+        _operationPresetPrice = asset.LatestPrice;
+        _archiveAfterOperation = false;
+        _operationDialogOpen = true;
+    }
+
+    private void OpenFullSale(InvestmentAssetRow asset)
+    {
+        _message = null;
+        _actionError = null;
+        _operationAsset = asset;
+        _operationBeingEdited = null;
+        _operationPresetKind = InvestmentOperationKind.Sell;
+        _operationLockKind = true;
+        _operationPresetQuantity = asset.Quantity?.Value;
+        _operationPresetPrice = asset.LatestPrice;
+        _archiveAfterOperation = true;
+        _operationDialogOpen = true;
+    }
+
+    private void OpenEditOperation(InvestmentAssetRow asset, InvestmentOperationRow operation)
+    {
+        _message = null;
+        _actionError = null;
+        _operationAsset = asset;
+        _operationBeingEdited = operation;
+        _operationPresetKind = operation.Kind;
+        _operationLockKind = true;
+        _operationPresetQuantity = null;
+        _operationPresetPrice = null;
+        _archiveAfterOperation = false;
+        _operationDialogOpen = true;
+    }
+
+    private void CloseOperationDialog() => _operationDialogOpen = false;
+
+    private async Task OnOperationSaved()
+    {
+        var shouldArchive = _archiveAfterOperation;
+        var assetId = _operationAsset?.InstrumentId;
+        _archiveAfterOperation = false;
+
+        _message = "Operazione salvata.";
+        _actionError = null;
+        await ReloadAsync();
+
+        if (shouldArchive && assetId is { } id)
+        {
+            try
+            {
+                await AssetService.ArchiveAsync(id);
+                _message = "Strumento venduto e archiviato.";
+                await ReloadAsync();
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+            {
+                _actionError = exception.Message;
+            }
+        }
+    }
+
+    private void RequestArchive(InvestmentAssetRow asset)
+    {
+        _archiveConfirmId = asset.InstrumentId;
+        _confirmAssetDeleteId = null;
+        _confirmDeleteOperationId = null;
+    }
+
+    private void CancelArchive() => _archiveConfirmId = null;
+
+    private async Task ArchiveAsync(InvestmentAssetRow asset)
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.ArchiveAsync(asset.InstrumentId);
+            _archiveConfirmId = null;
+            _message = $"«{asset.Name}» archiviato.";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private async Task ReactivateAssetAsync(InvestmentAssetRow asset)
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.ReactivateAsync(asset.InstrumentId);
+            _message = $"«{asset.Name}» riattivato.";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private void RequestAssetDelete(InvestmentAssetRow asset)
+    {
+        _confirmAssetDeleteId = asset.InstrumentId;
+        _archiveConfirmId = null;
+        _confirmDeleteOperationId = null;
+    }
+
+    private void CancelAssetDelete() => _confirmAssetDeleteId = null;
+
+    private async Task DeleteAssetAsync(InvestmentAssetRow asset)
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.DeleteAsync(asset.InstrumentId);
+            _confirmAssetDeleteId = null;
+            _expanded.Remove(asset.InstrumentId);
+            _message = $"«{asset.Name}» eliminato.";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private void RequestOperationDelete(InvestmentOperationRow operation)
+    {
+        _confirmDeleteOperationId = operation.Id;
+        _archiveConfirmId = null;
+        _confirmAssetDeleteId = null;
+    }
+
+    private void CancelOperationDelete() => _confirmDeleteOperationId = null;
+
+    private async Task DeleteOperationAsync(InvestmentOperationRow operation)
+    {
+        _actionError = null;
+        try
+        {
+            await AssetService.DeleteOperationAsync(operation.Id);
+            _confirmDeleteOperationId = null;
+            _message = "Operazione eliminata.";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+    }
+
+    private void TogglePriceEditor(InvestmentAssetRow asset)
+    {
+        if (_priceEditorId == asset.InstrumentId)
+        {
+            CancelPrice();
+            return;
+        }
+
+        _priceEditorId = asset.InstrumentId;
+        _priceValueText = asset.LatestPrice?.ToString(CultureInfo.InvariantCulture) ?? "";
+        _priceDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        _priceError = null;
+    }
+
+    private void CancelPrice()
+    {
+        _priceEditorId = null;
+        _priceError = null;
+    }
+
+    private async Task SavePriceAsync()
+    {
+        if (_priceEditorId is not { } instrumentId || _priceSaving)
+        {
+            return;
+        }
+
+        _priceError = null;
+        if (!TryParseDecimal(_priceValueText, out var price) || price <= 0m)
+        {
+            _priceError = "La quotazione deve essere positiva.";
+            return;
+        }
+
+        _priceSaving = true;
+        try
+        {
+            await AssetService.RecordPriceAsync(new RecordPriceRequest(instrumentId, price, _priceDate));
+            _priceEditorId = null;
+            _message = "Quotazione aggiornata.";
+            await ReloadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _priceError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _priceError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _priceError = "Impossibile salvare la quotazione. Verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _priceSaving = false;
+        }
+    }
+
+    private static bool TryParseDecimal(string? text, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+            || decimal.TryParse(text, NumberStyles.Float, ItalianCulture, out value);
+    }
 }

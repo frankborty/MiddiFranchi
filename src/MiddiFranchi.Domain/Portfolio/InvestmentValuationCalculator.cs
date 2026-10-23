@@ -4,20 +4,14 @@ using MiddiFranchi.Domain.Shared;
 
 namespace MiddiFranchi.Domain.Portfolio;
 
-public static class PortfolioValuationCalculator
+public static class InvestmentValuationCalculator
 {
-    public static PortfolioValuation Valuate(
-        InvestmentPortfolio portfolio,
+    public static InvestmentValuation Valuate(
         IEnumerable<InvestmentOperation> operations,
         IEnumerable<PriceObservation> priceObservations,
         DateOnly valuationDate,
         ValuationPolicy? valuationPolicy = null)
     {
-        if (portfolio is null)
-        {
-            throw new ArgumentNullException(nameof(portfolio));
-        }
-
         if (operations is null)
         {
             throw new ArgumentNullException(nameof(operations));
@@ -30,12 +24,12 @@ public static class PortfolioValuationCalculator
 
         var policy = valuationPolicy ?? ValuationPolicy.Unbounded;
         var priceList = priceObservations as IReadOnlyCollection<PriceObservation> ?? priceObservations.ToArray();
-        var positions = InvestmentPositionCalculator.Positions(portfolio, operations, valuationDate);
+        var positions = InvestmentPositionCalculator.Positions(operations, valuationDate);
         var valuations = positions
             .Select(position => ValuatePosition(position, priceList, valuationDate, policy))
             .ToList();
 
-        return new PortfolioValuation(portfolio, valuationDate, valuations);
+        return new InvestmentValuation(valuationDate, valuations);
     }
 
     private static InvestmentPositionValuation ValuatePosition(

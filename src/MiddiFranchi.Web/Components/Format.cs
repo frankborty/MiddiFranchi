@@ -81,14 +81,45 @@ public static class Format
         _ => kind.ToString(),
     };
 
-    public static string InstrumentTypeLabel(InstrumentType type) => type switch
+    public static string InvestmentOperationKindLabel(InvestmentOperationKind kind) => kind switch
     {
-        InstrumentType.Share => "Azione",
-        InstrumentType.Etf => "ETF",
-        InstrumentType.Fund => "Fondo",
-        InstrumentType.Bond => "Obbligazione",
-        InstrumentType.Other => "Altro",
-        _ => type.ToString(),
+        InvestmentOperationKind.Buy => "Acquisto",
+        InvestmentOperationKind.Sell => "Vendita",
+        InvestmentOperationKind.Dividend => "Dividendo",
+        InvestmentOperationKind.Coupon => "Cedola",
+        InvestmentOperationKind.StandaloneFee => "Commissione",
+        InvestmentOperationKind.TransferIn => "Trasferimento in entrata",
+        InvestmentOperationKind.TransferOut => "Trasferimento in uscita",
+        InvestmentOperationKind.QuantityEvent => "Evento di quantità",
+        _ => kind.ToString(),
+    };
+
+    public static string AssetClassLabel(AssetClass assetClass) => assetClass switch
+    {
+        AssetClass.Equity => "Azionario",
+        AssetClass.Bond => "Obbligazionario",
+        AssetClass.MoneyMarket => "Monetario",
+        AssetClass.RealEstate => "Immobiliare",
+        AssetClass.Commodity => "Materie prime",
+        AssetClass.Crypto => "Cripto",
+        AssetClass.Mixed => "Bilanciato",
+        AssetClass.Pension => "Previdenza",
+        AssetClass.Other => "Altro",
+        _ => assetClass.ToString(),
+    };
+
+    public static string InstrumentStatusLabel(InstrumentStatus status) => status switch
+    {
+        InstrumentStatus.Active => "Attivo",
+        InstrumentStatus.Archived => "Archiviato",
+        _ => status.ToString(),
+    };
+
+    public static string PriceUnitLabel(PriceUnit unit) => unit switch
+    {
+        PriceUnit.PerUnit => "Per unità",
+        PriceUnit.PercentOfNominal => "% del nominale",
+        _ => unit.ToString(),
     };
 
     public static string Quantity(Quantity quantity) =>

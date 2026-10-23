@@ -69,7 +69,7 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
             table.HasCheckConstraint(
                 "CK_FinancialOperations_InvestmentFields",
                 "\"Kind\" <> 'Investment' OR (\"InvestmentKind\" IS NOT NULL AND " +
-                "\"PortfolioId\" IS NOT NULL AND \"SettlementAccountId\" IS NOT NULL)");
+                "\"SettlementAccountId\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_FinancialOperations_OrdinaryFields",
                 "\"Kind\" NOT IN ('Income', 'Expense') OR (" +
@@ -83,7 +83,7 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
             table.HasCheckConstraint(
                 "CK_FinancialOperations_NonInvestmentFields",
                 "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND " +
-                "\"PortfolioId\" IS NULL AND \"InstrumentId\" IS NULL AND " +
+                "\"InstrumentId\" IS NULL AND " +
                 "\"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND " +
                 "\"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND " +
                 "\"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");
@@ -165,10 +165,6 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
             .WithMany()
             .HasForeignKey(operation => operation.DestinationAccountId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(operation => operation.Portfolio)
-            .WithMany()
-            .HasForeignKey(operation => operation.PortfolioId)
-            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(operation => operation.Instrument)
             .WithMany()
             .HasForeignKey(operation => operation.InstrumentId)
@@ -185,7 +181,6 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
         builder.HasIndex(operation => operation.OperationDate);
         builder.HasIndex(operation => operation.Kind);
         builder.HasIndex(operation => operation.AccountId);
-        builder.HasIndex(operation => operation.PortfolioId);
         builder.HasIndex(operation => operation.InstrumentId);
         builder.HasIndex(operation => operation.OriginalOperationId).IsUnique();
     }

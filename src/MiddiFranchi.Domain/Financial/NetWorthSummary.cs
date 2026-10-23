@@ -9,7 +9,7 @@ public sealed record NetWorthSummary
         DateOnly valuationDate,
         Currency reportingCurrency,
         IReadOnlyList<AccountBalanceEntry> accounts,
-        IReadOnlyList<PortfolioValuation> investments,
+        InvestmentValuation investments,
         Money? accountsSubtotal,
         Money? investmentsSubtotal,
         Money? totalValue,
@@ -38,7 +38,7 @@ public sealed record NetWorthSummary
         ValuationDate = valuationDate;
         ReportingCurrency = reportingCurrency;
         Accounts = accounts.ToArray();
-        Investments = investments.ToArray();
+        Investments = investments;
         AccountsSubtotal = accountsSubtotal;
         InvestmentsSubtotal = investmentsSubtotal;
         TotalValue = totalValue;
@@ -51,7 +51,7 @@ public sealed record NetWorthSummary
 
     public IReadOnlyList<AccountBalanceEntry> Accounts { get; }
 
-    public IReadOnlyList<PortfolioValuation> Investments { get; }
+    public InvestmentValuation Investments { get; }
 
     public Money? AccountsSubtotal { get; }
 

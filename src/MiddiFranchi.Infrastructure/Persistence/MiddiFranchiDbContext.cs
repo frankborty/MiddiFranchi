@@ -14,7 +14,6 @@ public sealed class MiddiFranchiDbContext : DbContext
 
     public DbSet<CategoryRecord> Categories => Set<CategoryRecord>();
 
-    public DbSet<InvestmentPortfolioRecord> Portfolios => Set<InvestmentPortfolioRecord>();
 
     public DbSet<InstrumentRecord> Instruments => Set<InstrumentRecord>();
 

@@ -1,0 +1,386 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.Financial
+
+<section class="card investment-chart-card" aria-labelledby="investment-chart-title">
+    <div class="section-head">
+        <div>
+            <h2 id="investment-chart-title"><MfIcon Name="trend" Size="18" /> Valore nel tempo</h2>
+        </div>
+        <div class="investment-chart-legend" aria-hidden="true">
+            @if (_showPerformanceLine)
+            {
+                <span>
+                    <span class="investment-class-dot" style="background:@PerformanceColor"></span>
+                    Rendimento @(_performancePercent ? "in %" : "in €")
+                </span>
+            }
+            else
+            {
+                <span><span class="investment-class-dot" style="background:#f97316"></span> Valore attuale</span>
+                <span><span class="investment-class-dot" style="background:#0c8fa5"></span> Capitale investito</span>
+            }
+        </div>
+    </div>
+    @if (Workspace.Overview.History.Points.Count > 0)
+    {
+        <div class="investment-chart-controls" role="group" aria-label="Intervallo del grafico">
+            @foreach (var range in ChartRanges)
+            {
+                <button type="button"
+                        class="investment-chart-range @(IsChartRange(range.Value) ? "active" : "")"
+                        aria-pressed="@(IsChartRange(range.Value) ? "true" : "false")"
+                        @onclick="() => SetChartRange(range.Value)">@range.Label</button>
+            }
+            @if (ShowPerformanceToggle)
+            {
+                <button type="button"
+                        class="investment-chart-toggle @(_showPerformanceLine ? "active" : "")"
+                        aria-pressed="@(_showPerformanceLine ? "true" : "false")"
+                        @onclick="TogglePerformanceLine">
+                    <span class="investment-chart-toggle-dot"
+                          style="background:@PerformanceColor"></span>
+                    Rendimento
+                </button>
+                @if (_showPerformanceLine)
+                {
+                    <div class="investment-chart-units" role="group" aria-label="Unità del rendimento">
+                        <button type="button"
+                                class="investment-chart-unit @(_performancePercent ? "active" : "")"
+                                aria-pressed="@(_performancePercent ? "true" : "false")"
+                                @onclick="() => SetPerformancePercent(true)">%</button>
+                        <button type="button"
+                                class="investment-chart-unit @(!_performancePercent ? "active" : "")"
+                                aria-pressed="@(!_performancePercent ? "true" : "false")"
+                                @onclick="() => SetPerformancePercent(false)">€</button>
+                    </div>
+                }
+            }
+            <label class="investment-chart-year">
+                <span class="visually-hidden">Anno del grafico</span>
+                <select value="@(_chartYear?.ToString() ?? "")" @onchange="OnChartYearChanged">
+                    <option value="">Tutti gli anni</option>
+                    @foreach (var year in HistoryYears)
+                    {
+                        <option value="@year">@year</option>
+                    }
+                </select>
+            </label>
+        </div>
+    }
+    @if (ChartPoints.Count >= 2)
+    {
+        <ApexTimeSeriesChart Title=""
+                             Currency="@Workspace.Overview.History.Currency"
+                             Series="@BuildHistorySeries(ChartPoints)"
+                             RangeSeries="@BuildHistoryRangeSeries(ChartPoints)"
+                             PercentageValues="@(_showPerformanceLine && _performancePercent)"
+                             XAxisMin="@ChartAxisMin"
+                             XAxisMax="@ChartAxisMax"
+                             XAxisLabelMode="@ChartAxisLabelMode"
+                             ShowMarkers="false"
+                             ShowHeader="false"
+                             ShowFooter="false"
+                             ShowDataTable="false" />
+    }
+    else
+    {
+        <p class="page-status">Dati insufficienti per il periodo selezionato.</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public InvestmentWorkspace Workspace { get; set; } = default!;
+
+    [Parameter]
+    public bool ShowPerformanceToggle { get; set; } = true;
+
+    private ChartRange _chartRange = ChartRange.Max;
+    private int? _chartYear;
+    private bool _showPerformanceLine;
+    private bool _performancePercent = true;
+
+    private const string PerformanceColor = "#8b5cf6";
+
+    private static readonly (ChartRange Value, string Label)[] ChartRanges =
+    [
+        (ChartRange.SevenDays, "7G"),
+        (ChartRange.OneMonth, "1M"),
+        (ChartRange.SixMonths, "6M"),
+        (ChartRange.YearToDate, "YTD"),
+        (ChartRange.OneYear, "1A"),
+        (ChartRange.Max, "Max"),
+    ];
+
+    protected override void OnParametersSet()
+    {
+        if (!ShowPerformanceToggle)
+        {
+            _showPerformanceLine = false;
+        }
+    }
+
+    private IReadOnlyList<InvestmentHistoryPoint> ChartPoints
+    {
+        get
+        {
+            var all = Workspace.Overview.History.Points;
+            if (all.Count == 0)
+            {
+                return all;
+            }
+
+            var (from, to) = ChartWindow(Workspace.Overview.ValuationDate);
+            if (from is null && to is null)
+            {
+                return all;
+            }
+
+            var points = all
+                .Where(point => (from is null || point.Date > from) && (to is null || point.Date <= to))
+                .ToList();
+
+            if (from is { } start)
+            {
+                var last = all.LastOrDefault(point => point.Date <= start);
+                if (last is not null)
+                {
+                    points.Insert(0, new InvestmentHistoryPoint(start, last.InvestedCapital, last.CurrentValue));
+                }
+            }
+
+            return points;
+        }
+    }
+
+    private IReadOnlyList<int> HistoryYears =>
+        Workspace.Overview.History.Points
+            .Select(point => point.Date.Year)
+            .Distinct()
+            .OrderByDescending(year => year)
+            .ToArray();
+
+    private DateTime? ChartAxisMin =>
+        ChartWindow(Workspace.Overview.ValuationDate).From?.ToDateTime(TimeOnly.MinValue);
+
+    private DateTime? ChartAxisMax =>
+        ChartWindow(Workspace.Overview.ValuationDate).To?.ToDateTime(TimeOnly.MinValue);
+
+    private string ChartAxisLabelMode =>
+        _chartYear is not null
+            ? "month"
+            : _chartRange switch
+            {
+                ChartRange.SevenDays or ChartRange.OneMonth => "short",
+                ChartRange.SixMonths or ChartRange.YearToDate or ChartRange.OneYear => "month",
+                _ => "year",
+            };
+
+    private bool IsChartRange(ChartRange range) => _chartYear is null && _chartRange == range;
+
+    private void SetChartRange(ChartRange range)
+    {
+        _chartRange = range;
+        _chartYear = null;
+    }
+
+    private void OnChartYearChanged(ChangeEventArgs args) =>
+        _chartYear = int.TryParse(args.Value?.ToString(), out var year) ? year : null;
+
+    private (DateOnly? From, DateOnly? To) ChartWindow(DateOnly valuationDate)
+    {
+        if (_chartYear is { } year)
+        {
+            var to = year == valuationDate.Year ? valuationDate : new DateOnly(year, 12, 31);
+            return (new DateOnly(year, 1, 1), to);
+        }
+
+        return _chartRange switch
+        {
+            ChartRange.SevenDays => (valuationDate.AddDays(-7), valuationDate),
+            ChartRange.OneMonth => (valuationDate.AddMonths(-1), valuationDate),
+            ChartRange.SixMonths => (valuationDate.AddMonths(-6), valuationDate),
+            ChartRange.YearToDate => (new DateOnly(valuationDate.Year, 1, 1), valuationDate),
+            ChartRange.OneYear => (valuationDate.AddYears(-1), valuationDate),
+            _ => (null, null),
+        };
+    }
+
+    private IReadOnlyList<TimeSeriesSeries> BuildHistorySeries(
+        IReadOnlyList<InvestmentHistoryPoint> points)
+    {
+        if (_showPerformanceLine)
+        {
+            return
+            [
+                new(
+                    "Rendimento",
+                    points
+                        .Select(point => new TimeSeriesPoint(point.Date, PerformanceValue(point)))
+                        .ToArray(),
+                    Color: PerformanceColor),
+            ];
+        }
+
+        return
+        [
+            new(
+                "Valore attuale",
+                points
+                    .Select(point => new TimeSeriesPoint(point.Date, point.CurrentValue?.Amount))
+                    .ToArray(),
+                Color: "#f97316"),
+            new(
+                "Capitale investito",
+                points
+                    .Select(point => new TimeSeriesPoint(point.Date, point.InvestedCapital?.Amount))
+                    .ToArray(),
+                Color: "#0c8fa5"),
+        ];
+    }
+
+    private IReadOnlyList<TimeSeriesRangeSeries> BuildHistoryRangeSeries(
+        IReadOnlyList<InvestmentHistoryPoint> points)
+    {
+        const string green = "#22c55e";
+        const string red = "#ef4444";
+
+        if (_showPerformanceLine)
+        {
+            var performance = points
+                .Select(point => (
+                    point.Date,
+                    Value: PerformanceValue(point),
+                    Baseline: 0m))
+                .Where(sample => sample.Value is not null)
+                .Select(sample => (sample.Date, Value: sample.Value!.Value, sample.Baseline))
+                .ToArray();
+            return BuildBandSeries(performance, green, red, 0.16);
+        }
+
+        var values = points
+            .Where(point => point.CurrentValue is not null && point.InvestedCapital is not null)
+            .Select(point => (
+                point.Date,
+                Value: point.CurrentValue!.Value.Amount,
+                Baseline: point.InvestedCapital!.Value.Amount))
+            .ToArray();
+        return BuildBandSeries(values, green, red, 0.22);
+    }
+
+    private static IReadOnlyList<TimeSeriesRangeSeries> BuildBandSeries(
+        IReadOnlyList<(DateOnly Date, decimal Value, decimal Baseline)> samples,
+        string positiveColor,
+        string negativeColor,
+        double opacity)
+    {
+        if (samples.Count < 2)
+        {
+            return [];
+        }
+
+        var bands = new List<TimeSeriesRangeSeries>();
+        var run = new List<TimeSeriesRangePoint>();
+        var previous = samples[0];
+        run.Add(ToBandPoint(previous));
+        var positive = previous.Value > previous.Baseline;
+
+        for (var index = 1; index < samples.Count; index++)
+        {
+            var sample = samples[index];
+            var sign = sample.Value > sample.Baseline;
+            if (sign == positive)
+            {
+                run.Add(ToBandPoint(sample));
+                previous = sample;
+                continue;
+            }
+
+            var first = previous.Value - previous.Baseline;
+            var second = sample.Value - sample.Baseline;
+            var ratio = first / (first - second);
+            var crossingDay = previous.Date.DayNumber +
+                              ratio * (sample.Date.DayNumber - previous.Date.DayNumber);
+            var crossingDate = DateOnly.FromDayNumber(
+                (int)Math.Round(crossingDay, MidpointRounding.AwayFromZero));
+            var crossingValue = previous.Value + ratio * (sample.Value - previous.Value);
+
+            if (crossingDate <= previous.Date)
+            {
+                Flush();
+                run.Add(ToBandPoint(previous));
+                positive = sign;
+                run.Add(ToBandPoint(sample));
+            }
+            else if (crossingDate >= sample.Date)
+            {
+                run.Add(ToBandPoint(sample));
+                Flush();
+                run.Add(ToBandPoint(sample));
+                positive = sign;
+            }
+            else
+            {
+                var crossing = new TimeSeriesRangePoint(crossingDate, crossingValue, crossingValue);
+                run.Add(crossing);
+                Flush();
+                run.Add(crossing);
+                positive = sign;
+                run.Add(ToBandPoint(sample));
+            }
+
+            previous = sample;
+        }
+
+        Flush();
+        return bands;
+
+        void Flush()
+        {
+            if (run.Count >= 2)
+            {
+                bands.Add(new TimeSeriesRangeSeries(
+                    "Area",
+                    run.ToArray(),
+                    positive ? positiveColor : negativeColor,
+                    opacity));
+            }
+
+            run.Clear();
+        }
+
+        static TimeSeriesRangePoint ToBandPoint(
+            (DateOnly Date, decimal Value, decimal Baseline) sample) =>
+            new(sample.Date, Math.Max(sample.Value, sample.Baseline), Math.Min(sample.Value, sample.Baseline));
+    }
+
+    private decimal? PerformanceValue(InvestmentHistoryPoint point)
+    {
+        if (point.CurrentValue is not { } current || point.InvestedCapital is not { } invested)
+        {
+            return null;
+        }
+
+        var result = current.Amount - invested.Amount;
+        if (!_performancePercent)
+        {
+            return result;
+        }
+
+        return invested.Amount > 0m ? result / invested.Amount : null;
+    }
+
+    private void SetPerformancePercent(bool percent) => _performancePercent = percent;
+
+    private void TogglePerformanceLine() => _showPerformanceLine = !_showPerformanceLine;
+
+    private enum ChartRange
+    {
+        SevenDays,
+        OneMonth,
+        SixMonths,
+        YearToDate,
+        OneYear,
+        Max,
+    }
+}
