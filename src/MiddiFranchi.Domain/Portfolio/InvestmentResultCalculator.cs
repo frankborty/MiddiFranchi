@@ -91,6 +91,10 @@ public static class InvestmentResultCalculator
                 case InvestmentOperationKind.Dividend:
                 case InvestmentOperationKind.Coupon:
                     state.Income += operation.Amount!.Value.Value.Amount;
+                    state.OtherFees += Fees(
+                        operation,
+                        state.Instrument.QuoteCurrency,
+                        FeeKind.TaxWithheld);
                     break;
                 case InvestmentOperationKind.StandaloneFee:
                     state.OtherFees += StandaloneFee(operation);
@@ -116,7 +120,7 @@ public static class InvestmentResultCalculator
         var unitPrice = operation.UnitPrice
             ?? throw new InvalidOperationException(
                 $"L'acquisto {operation.Id} non ha un prezzo unitario effettivo.");
-        var fees = Fees(operation, FeeKind.BuyFee, state.Instrument.QuoteCurrency);
+        var fees = Fees(operation, state.Instrument.QuoteCurrency, FeeKind.BuyFee);
 
         state.Quantity += quantity;
         state.Cost += unitPrice.Price.Amount * quantity + fees;
@@ -134,7 +138,11 @@ public static class InvestmentResultCalculator
         var unitPrice = operation.UnitPrice
             ?? throw new InvalidOperationException(
                 $"La vendita {operation.Id} non ha un prezzo unitario effettivo.");
-        var fees = Fees(operation, FeeKind.SellFee, state.Instrument.QuoteCurrency);
+        var fees = Fees(
+            operation,
+            state.Instrument.QuoteCurrency,
+            FeeKind.SellFee,
+            FeeKind.TaxWithheld);
         var averageCost = state.Cost / state.Quantity;
         var allocatedCost = averageCost * quantity;
         var proceeds = unitPrice.Price.Amount * quantity - fees;
@@ -149,12 +157,15 @@ public static class InvestmentResultCalculator
         }
     }
 
-    private static decimal Fees(InvestmentOperation operation, FeeKind expectedKind, Currency currency)
+    private static decimal Fees(
+        InvestmentOperation operation,
+        Currency currency,
+        params FeeKind[] allowedKinds)
     {
         var total = 0m;
         foreach (var fee in operation.Fees)
         {
-            if (fee.Kind != expectedKind)
+            if (!allowedKinds.Contains(fee.Kind))
             {
                 throw new InvalidOperationException(
                     $"L'operazione {operation.Id} contiene una commissione di tipo {fee.Kind}, non ammessa nel calcolo del risultato.");

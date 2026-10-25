@@ -514,7 +514,7 @@ else if (_workspace is { } workspace)
                 var current = asset.CurrentValue!.Value.Amount;
                 var invested = asset.InvestedCapital?.Amount ?? current;
                 var gain = Math.Max(0m, current - invested);
-                total += gain * DefaultTaxRate;
+                total += gain * (asset.TaxRate / 100m);
             }
 
             return total;
@@ -622,8 +622,6 @@ else if (_workspace is { } workspace)
         < 0m => "negative",
         _ => "neutral",
     };
-
-    private const decimal DefaultTaxRate = 0.26m;
 
     private sealed record CashFlow(DateOnly Date, decimal Amount);
 

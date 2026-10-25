@@ -25,7 +25,6 @@ public class InvestmentAssetServiceTests
         _accounts.Accounts.Add(_account);
         _service = new InvestmentAssetService(
             _instruments,
-            _accounts,
             _operations,
             _prices,
             () => Today);
@@ -41,7 +40,17 @@ public class InvestmentAssetServiceTests
         created.Isin.ShouldBe("IE00B4L5Y983");
         created.Symbol.ShouldBe("v3ma");
         created.Status.ShouldBe(InstrumentStatus.Active);
+        created.TaxRate.ShouldBe(Instrument.DefaultTaxRate);
         _instruments.Instruments.ShouldHaveSingleItem().ShouldBe(created);
+    }
+
+    [Fact]
+    public async Task Create_ShouldPersistTheConfiguredTaxRate()
+    {
+        var created = await CreateAsync(taxRate: 12.5m);
+
+        created.TaxRate.ShouldBe(12.5m);
+        _instruments.Instruments.ShouldHaveSingleItem().TaxRate.ShouldBe(12.5m);
     }
 
     [Fact]
@@ -77,7 +86,7 @@ public class InvestmentAssetServiceTests
 
         buy.InvestmentKind.ShouldBe(InvestmentOperationKind.Buy);
         buy.Instrument.ShouldNotBeNull().Id.ShouldBe(instrument.Id);
-        buy.SettlementAccount.Id.ShouldBe(_account.Id);
+        buy.SettlementAccount.ShouldBeNull();
         buy.Quantity!.Value.Value.ShouldBe(2m);
         _operations.Operations.ShouldContain(buy);
     }
@@ -102,7 +111,6 @@ public class InvestmentAssetServiceTests
 
         var dividend = await _service.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
             instrument.Id,
-            _account.Id,
             InvestmentOperationKind.Dividend,
             Today,
             Amount: 12.5m));
@@ -119,7 +127,6 @@ public class InvestmentAssetServiceTests
 
         var updated = await _service.UpdateOperationAsync(new UpdateInvestmentOperationRequest(
             buy.Id,
-            _account.Id,
             Today,
             Quantity: 3m,
             Price: 12m));
@@ -235,12 +242,14 @@ public class InvestmentAssetServiceTests
             PriceUnit.PerUnit,
             Symbol: "NEW",
             Isin: "IE00B4L5Y983",
-            Notes: "Nota"));
+            Notes: "Nota",
+            TaxRate: 12.5m));
 
         updated.Name.ShouldBe("ETF aggiornato");
         updated.AssetClass.ShouldBe(AssetClass.Mixed);
         updated.Isin.ShouldBe("IE00B4L5Y983");
         updated.Notes.ShouldBe("Nota");
+        updated.TaxRate.ShouldBe(12.5m);
         _instruments.Instruments.ShouldHaveSingleItem().Name.ShouldBe("ETF aggiornato");
     }
 
@@ -285,14 +294,16 @@ public class InvestmentAssetServiceTests
         PriceUnit priceUnit = PriceUnit.PerUnit,
         Money? notional = null,
         string? symbol = null,
-        string? isin = null) =>
+        string? isin = null,
+        decimal taxRate = Instrument.DefaultTaxRate) =>
         _service.CreateAsync(new NewInvestmentAsset(
             name,
             assetClass,
             priceUnit,
             notional,
             symbol,
-            isin));
+            isin,
+            TaxRate: taxRate));
 
     private Task<InvestmentOperation> BuyAsync(
         Instrument instrument,
@@ -301,7 +312,6 @@ public class InvestmentAssetServiceTests
         DateOnly? date = null) =>
         _service.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
             instrument.Id,
-            _account.Id,
             InvestmentOperationKind.Buy,
             date ?? Today,
             quantity,
@@ -314,7 +324,6 @@ public class InvestmentAssetServiceTests
         DateOnly? date = null) =>
         _service.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
             instrument.Id,
-            _account.Id,
             InvestmentOperationKind.Sell,
             date ?? Today,
             quantity,

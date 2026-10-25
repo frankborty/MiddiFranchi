@@ -171,13 +171,14 @@
             <p class="import-columns">
                 external_id, name, asset_class, status, symbol, isin, quote_currency,
                 price_unit, notional_value, notional_currency, reference_url, notes,
-                maturity_date, coupon_rate
+                maturity_date, coupon_rate, tax_rate
             </p>
             <p class="import-notes">
                 <strong>asset_class</strong>: Equity, Bond, MoneyMarket, RealEstate, Commodity,
                 Crypto, Mixed, Pension, Other ·
                 <strong>price_unit</strong>: PerUnit, PercentOfNominal ·
-                <strong>status</strong>: Active, Archived.
+                <strong>status</strong>: Active, Archived ·
+                <strong>tax_rate</strong>: aliquota in percentuale (0-100, default 26).
             </p>
         </section>
         <section class="import-syntax-card">

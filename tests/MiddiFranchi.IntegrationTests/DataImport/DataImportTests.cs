@@ -166,7 +166,7 @@ public class DataImportTests : PostgresTestBase
             instruments,
             prices,
             operations,
-            new InvestmentAssetService(instruments, accounts, operations, prices),
+            new InvestmentAssetService(instruments, operations, prices),
             new EfTransactionRunner(Context),
             new DataMaintenanceGate());
 

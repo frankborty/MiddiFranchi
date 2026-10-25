@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+# Local data imports (personal financial data)
+import/
+
 # User-specific files
 *.rsuser
 *.suo

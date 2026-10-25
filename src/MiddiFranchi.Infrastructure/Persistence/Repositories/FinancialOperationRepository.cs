@@ -196,7 +196,7 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
             record.OperationDate = operation.OperationDate;
             record.Description = operation.Description;
             record.InstrumentId = operation.Instrument?.Id;
-            record.SettlementAccountId = operation.SettlementAccount.Id;
+            record.SettlementAccountId = operation.SettlementAccount?.Id;
             record.QuantityValue = operation.Quantity?.Value;
             record.QuotedPriceUnit = operation.QuotedPrice?.Unit;
             record.QuotedPricePriceAmount = operation.QuotedPrice?.PricePerUnit?.Price.Amount;
@@ -216,7 +216,7 @@ public sealed class FinancialOperationRepository : IFinancialOperationRepository
                     Kind = fee.Kind,
                     AmountAmount = fee.Amount.Value.Amount,
                     AmountCurrencyCode = fee.Amount.Value.Currency.Code,
-                    DebitAccountId = fee.DebitAccount.Id,
+                    DebitAccountId = fee.DebitAccount?.Id,
                 }));
 
             await _context.SaveChangesAsync(cancellationToken);

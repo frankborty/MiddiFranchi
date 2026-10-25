@@ -13,7 +13,6 @@ public sealed record InvestmentWorkspace(
     IReadOnlyList<InvestmentAssetRow> Assets,
     IReadOnlyList<InvestmentClassAllocation> Allocation,
     Money TotalIncome,
-    IReadOnlyList<InvestmentOption> SettlementAccounts,
     int ArchivedCount,
     int CatalogCount);
 
@@ -31,6 +30,7 @@ public sealed record InvestmentAssetRow(
     Money? NotionalValue,
     DateOnly? MaturityDate,
     decimal? CouponRate,
+    decimal TaxRate,
     Quantity? Quantity,
     Money? AverageCost,
     decimal? AverageCostPercentOfNominal,
@@ -73,7 +73,8 @@ public sealed record InvestmentOperationRow(
     Money? Amount,
     string? Description,
     string SettlementAccountName,
-    bool IsReversed);
+    bool IsReversed,
+    Money? Tax = null);
 
 public sealed record InvestmentClassAllocation(
     AssetClass AssetClass,

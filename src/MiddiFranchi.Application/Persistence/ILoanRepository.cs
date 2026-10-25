@@ -12,6 +12,8 @@ public interface ILoanRepository
 
     Task AddAsync(Loan loan, CancellationToken cancellationToken = default);
 
+    Task UpdateAsync(Loan loan, CancellationToken cancellationToken = default);
+
     /// <summary>Elimina il prestito e tutte le sue rilevazioni.</summary>
     Task DeleteAsync(Guid loanId, CancellationToken cancellationToken = default);
 }

@@ -58,6 +58,18 @@ public sealed class LoanRepository : ILoanRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateAsync(Loan loan, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(loan);
+
+        var record = await _context.Loans
+            .SingleOrDefaultAsync(candidate => candidate.Id == loan.Id, cancellationToken)
+            ?? throw new InvalidOperationException($"Il prestito {loan.Id} non esiste.");
+
+        record.Borrower = loan.Borrower;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task DeleteAsync(Guid loanId, CancellationToken cancellationToken = default)
     {
         var loan = await _context.Loans
@@ -202,6 +214,7 @@ public sealed class LoanReadingRepository : ILoanReadingRepository
         record.AmountAmount = reading.Amount.Amount;
         record.AmountCurrencyCode = reading.Amount.Currency.Code;
         record.ValidAt = reading.ValidAt;
+        record.Note = reading.Note;
 
         await _context.SaveChangesAsync(cancellationToken);
     }

@@ -1,0 +1,218 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using System.Globalization
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
+@inject LoanService LoansService
+
+@if (Open && Reading is { } reading)
+{
+    <div class="modal-backdrop" @onclick="CloseAsync">
+        <div class="modal-card loan-reading-edit" role="dialog" aria-modal="true"
+             aria-labelledby="loan-reading-edit-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="loan-reading-edit-title">Modifica rilevazione</h2>
+                    <p class="section-sub">
+                        <MfIcon Name="loan" Size="16" /> Prestito di @reading.Loan.Borrower
+                    </p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="alert alert-error" role="alert">@_error</p>
+            }
+
+            <form class="form-grid" @onsubmit="SaveAsync">
+                <label>
+                    <span>Importo in EUR *</span>
+                    <input type="text" inputmode="decimal" required aria-required="true" autofocus
+                           @bind="_amount" @bind:event="oninput" />
+                </label>
+                <label>
+                    <span>Data *</span>
+                    <input type="date" required aria-required="true" @bind="_validAt" @bind:event="oninput" />
+                </label>
+                <label class="loan-repayment-note">
+                    <span>Nota (facoltativa)</span>
+                    <textarea maxlength="500" @bind="_note"></textarea>
+                </label>
+                <div class="form-actions">
+                    @if (_confirmingDelete)
+                    {
+                        <button type="button" class="danger-button" disabled="@_saving" @onclick="DeleteAsync">
+                            <MfIcon Name="trash" Size="16" /> Elimina
+                        </button>
+                        <button type="button" class="secondary-button" disabled="@_saving" @onclick="CancelDelete">Annulla</button>
+                    }
+                    else
+                    {
+                        <button type="submit" class="primary-button" disabled="@_saving">Salva</button>
+                        <button type="button" class="delete-button" disabled="@_saving" @onclick="StartDelete">
+                            <MfIcon Name="trash" Size="16" /> Elimina
+                        </button>
+                        <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Chiudi</button>
+                    }
+                </div>
+            </form>
+
+            @if (_confirmingDelete)
+            {
+                <p class="alert alert-warning reading-delete-confirm" role="alert">
+                    Eliminare la rilevazione del @Format.Date(reading.ValidAt) di
+                    @Format.Money(reading.Amount)? L'operazione non è reversibile.
+                </p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public LoanReading? Reading { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<LoanReading> OnSaved { get; set; }
+
+    [Parameter] public EventCallback<LoanReading> OnDeleted { get; set; }
+
+    private bool _wasOpen;
+    private bool _saving;
+    private bool _confirmingDelete;
+    private string? _error;
+    private string _amount = "";
+    private DateOnly? _validAt;
+    private string _note = "";
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen || Reading is not { } reading)
+        {
+            return;
+        }
+
+        _wasOpen = true;
+        _saving = false;
+        _confirmingDelete = false;
+        _error = null;
+        _amount = DecimalText.Format(reading.Amount.Amount);
+        _validAt = reading.ValidAt;
+        _note = reading.Note ?? "";
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    private void StartDelete()
+    {
+        _error = null;
+        _confirmingDelete = true;
+    }
+
+    private void CancelDelete()
+    {
+        _confirmingDelete = false;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || Reading is not { } reading)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (!TryParseAmount(_amount, out var amount) || amount < 0m)
+        {
+            _error = "L'importo è obbligatorio e deve essere un numero non negativo.";
+            return;
+        }
+
+        if (_validAt is null)
+        {
+            _error = "La data della rilevazione è obbligatoria.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var updated = await LoansService.UpdateReadingAsync(
+                reading.Id,
+                new Money(amount, reading.Loan.Account.Currency),
+                _validAt.Value,
+                _note);
+            await OnSaved.InvokeAsync(updated);
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Aggiornamento non riuscito: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_saving || !_confirmingDelete || Reading is not { } reading)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        try
+        {
+            await LoansService.DeleteReadingAsync(reading.Id);
+            await OnDeleted.InvokeAsync(reading);
+            await OnClose.InvokeAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static bool TryParseAmount(string text, out decimal amount) =>
+        DecimalText.TryParse(text, out amount);
+}

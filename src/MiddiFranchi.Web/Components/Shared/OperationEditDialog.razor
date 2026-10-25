@@ -73,7 +73,7 @@
 
                 <label>
                     <span>Importo *</span>
-                    <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00" required aria-required="true" @bind="_amountText" />
+                    <input type="text" inputmode="decimal" placeholder="0,00" required aria-required="true" @bind="_amountText" />
                 </label>
                 <label>
                     <span>Data *</span>
@@ -190,8 +190,7 @@
         _categoryId = operation.CategoryId?.ToString() ?? "";
         _categoryName = operation.CategoryName ?? "";
         _filterByCategory = !string.IsNullOrWhiteSpace(_categoryName);
-        _amountText = Math.Abs(operation.Amount.GetValueOrDefault().Amount)
-            .ToString("0.##", CultureInfo.InvariantCulture);
+        _amountText = DecimalText.Format(Math.Abs(operation.Amount.GetValueOrDefault().Amount));
         _validAt = operation.OperationDate;
         _description = operation.Description;
     }
@@ -323,15 +322,6 @@
     private static string SubcategoryLabel(Category category) =>
         string.IsNullOrWhiteSpace(category.Subcategory) ? "Generale" : category.Subcategory;
 
-    private static bool TryParseAmount(string? text, out decimal amount)
-    {
-        amount = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
-            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
-    }
+    private static bool TryParseAmount(string? text, out decimal amount) =>
+        DecimalText.TryParse(text, out amount);
 }

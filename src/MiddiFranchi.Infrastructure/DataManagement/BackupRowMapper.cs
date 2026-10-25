@@ -59,7 +59,8 @@ internal static class BackupRowMapper
         record.ReferenceUrl,
         record.Notes,
         record.MaturityDate,
-        record.CouponRate);
+        record.CouponRate,
+        record.TaxRate);
 
     public static InstrumentRecord ToRecord(InstrumentBackup backup) => new()
     {
@@ -77,6 +78,7 @@ internal static class BackupRowMapper
         Notes = backup.Notes,
         MaturityDate = backup.MaturityDate,
         CouponRate = backup.CouponRate,
+        TaxRate = backup.TaxRate,
     };
 
     public static FinancialOperationBackup ToBackup(FinancialOperationRecord record) => new(
@@ -227,7 +229,8 @@ internal static class BackupRowMapper
         record.AmountAmount,
         record.AmountCurrencyCode,
         record.ValidAt,
-        record.RecordedAt);
+        record.RecordedAt,
+        record.Note);
 
     public static LoanReadingRecord ToRecord(LoanReadingBackup backup) => new()
     {
@@ -237,5 +240,6 @@ internal static class BackupRowMapper
         AmountCurrencyCode = backup.AmountCurrencyCode,
         ValidAt = backup.ValidAt,
         RecordedAt = backup.RecordedAt,
+        Note = backup.Note,
     };
 }

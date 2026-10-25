@@ -82,6 +82,104 @@ public class LoanServiceTests
     }
 
     [Fact]
+    public async Task RenameAsync_ShouldUpdateTheBorrowerAndKeepTheIdentity()
+    {
+        var loan = await _service.CreateAsync(new NewLoan(
+            _loansAccount.Id, "Mario", new Money(100m, Euro), new DateOnly(2026, 9, 1)));
+
+        var renamed = await _service.RenameAsync(loan.Id, "  Mario Rossi  ");
+
+        renamed.Id.ShouldBe(loan.Id);
+        renamed.Borrower.ShouldBe("Mario Rossi");
+        _loans.Loans.ShouldHaveSingleItem().Borrower.ShouldBe("Mario Rossi");
+    }
+
+    [Fact]
+    public async Task RenameAsync_ShouldRejectAnEmptyName()
+    {
+        var loan = await _service.CreateAsync(new NewLoan(
+            _loansAccount.Id, "Mario", null, null));
+
+        await Should.ThrowAsync<ArgumentException>(
+            () => _service.RenameAsync(loan.Id, "   "));
+
+        _loans.Loans.ShouldHaveSingleItem().Borrower.ShouldBe("Mario");
+    }
+
+    [Fact]
+    public async Task RegisterRepaymentAsync_ShouldReduceTheOutstandingAndRebuildTheAggregate()
+    {
+        var loan = await _service.CreateAsync(new NewLoan(
+            _loansAccount.Id, "Mario", new Money(100m, Euro), new DateOnly(2026, 9, 1)));
+
+        var reading = await _service.RegisterRepaymentAsync(
+            loan.Id, new Money(40m, Euro), new DateOnly(2026, 10, 1), "  Acconto  ");
+
+        reading.Amount.ShouldBe(new Money(60m, Euro));
+        reading.Note.ShouldBe("Acconto");
+        reading.ValidAt.ShouldBe(new DateOnly(2026, 10, 1));
+        _readings.Readings.Count.ShouldBe(2);
+        ManualBalances.Latest(_manualBalances.Readings, _loansAccount.Id)!
+            .Amount.ShouldBe(new Money(60m, Euro));
+        var overview = await _service.GetAsync(loan.Id);
+        overview.ShouldNotBeNull().CurrentAmount.ShouldBe(new Money(60m, Euro));
+    }
+
+    [Fact]
+    public async Task UpdateReadingAsync_ShouldPreserveTheNote()
+    {
+        var loan = await _service.CreateAsync(new NewLoan(
+            _loansAccount.Id, "Mario", new Money(100m, Euro), new DateOnly(2026, 9, 1)));
+        var repayment = await _service.RegisterRepaymentAsync(
+            loan.Id, new Money(40m, Euro), new DateOnly(2026, 10, 1), "Acconto");
+
+        var updated = await _service.UpdateReadingAsync(
+            repayment.Id, new Money(30m, Euro), new DateOnly(2026, 10, 2), "Acconto");
+
+        updated.Amount.ShouldBe(new Money(30m, Euro));
+        updated.Note.ShouldBe("Acconto");
+    }
+
+    [Fact]
+    public async Task RegisterRepaymentAsync_ShouldRejectAnAmountAboveTheOutstanding()
+    {
+        var loan = await _service.CreateAsync(new NewLoan(
+            _loansAccount.Id, "Mario", new Money(100m, Euro), new DateOnly(2026, 9, 1)));
+
+        var exception = await Should.ThrowAsync<ArgumentException>(
+            () => _service.RegisterRepaymentAsync(loan.Id, new Money(101m, Euro), Today));
+
+        exception.Message.ShouldContain("supera");
+        _readings.Readings.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RegisterRepaymentAsync_ShouldRequireAReadingAtTheDate()
+    {
+        var loan = await _service.CreateAsync(new NewLoan(
+            _loansAccount.Id, "Mario", null, null));
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.RegisterRepaymentAsync(loan.Id, new Money(10m, Euro), Today));
+
+        exception.Message.ShouldContain("rilevazioni");
+        _readings.Readings.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RegisterRepaymentAsync_ShouldRejectFutureDates()
+    {
+        var loan = await _service.CreateAsync(new NewLoan(
+            _loansAccount.Id, "Mario", new Money(100m, Euro), new DateOnly(2026, 9, 1)));
+
+        var exception = await Should.ThrowAsync<ArgumentException>(
+            () => _service.RegisterRepaymentAsync(loan.Id, new Money(10m, Euro), Today.AddDays(1)));
+
+        exception.Message.ShouldContain("successiva alla data corrente");
+        _readings.Readings.ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public async Task AddReadingAsync_ShouldAggregateTheLatestReadingOfEachLoan()
     {
         var mario = await _service.CreateAsync(new NewLoan(
@@ -116,7 +214,7 @@ public class LoanServiceTests
         var reading = _readings.Readings.ShouldHaveSingleItem();
 
         var updated = await _service.UpdateReadingAsync(
-            reading.Id, new Money(80m, Euro), new DateOnly(2026, 9, 15));
+            reading.Id, new Money(80m, Euro), new DateOnly(2026, 9, 15), null);
         ManualBalances.Latest(_manualBalances.Readings, _loansAccount.Id)!
             .Amount.ShouldBe(new Money(80m, Euro));
         updated.RecordedAt.ShouldBe(reading.RecordedAt);

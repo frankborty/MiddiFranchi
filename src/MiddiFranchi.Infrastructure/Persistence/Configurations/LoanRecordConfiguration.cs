@@ -40,6 +40,7 @@ internal sealed class LoanReadingRecordConfiguration : IEntityTypeConfiguration<
         builder.Property(reading => reading.AmountAmount).IsNumeric();
         builder.Property(reading => reading.AmountCurrencyCode).IsCurrencyCode();
         builder.Property(reading => reading.RecordedAt).HasColumnType("timestamptz").IsRequired();
+        builder.Property(reading => reading.Note).IsOptionalText();
 
         builder.HasOne(reading => reading.Loan)
             .WithMany(loan => loan.Readings)

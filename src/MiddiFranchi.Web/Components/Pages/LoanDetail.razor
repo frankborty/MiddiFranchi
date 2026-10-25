@@ -1,10 +1,10 @@
-@page "/accounts/{AccountId:guid}/loans/{LoanId:guid}"
+@page "/accounts/{AccountKey}/loans/{LoanKey}"
 @rendermode InteractiveServer
-@using System.Globalization
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Financial
 @using MiddiFranchi.Domain.Shared
 @inject LoanService LoansService
+@inject AccountService AccountsService
 @inject NavigationManager Navigation
 
 <PageTitle>@(_loan?.Loan.Borrower ?? "Prestito")</PageTitle>
@@ -16,25 +16,51 @@
 else if (_loadError is not null)
 {
     <p class="alert alert-error" role="alert">@_loadError</p>
-    <p class="page-status"><a class="primary-link" href="accounts/@AccountId">Torna al conto Prestiti</a></p>
+    <p class="page-status"><a class="primary-link" href="accounts/@AccountLinkKey">Torna al conto Prestiti</a></p>
 }
 else if (_loan is null)
 {
     <EmptyState Title="Il prestito richiesto non esiste"
                 Hint="Il link può essere errato oppure il prestito è stato eliminato."
-                Icon="loan" Href="@($"accounts/{AccountId}")" ActionLabel="Torna al conto Prestiti" />
+                Icon="loan" Href="@($"accounts/{AccountLinkKey}")" ActionLabel="Torna al conto Prestiti" />
 }
 else
 {
     <nav class="balance-back" aria-label="Navigazione locale">
-        <a class="primary-link" href="accounts/@AccountId">
+        <a class="primary-link" href="accounts/@AccountLinkKey">
             <MfIcon Name="loan" Size="16" /> @_loan.Loan.Account.Name
         </a>
     </nav>
-    <h1 class="account-detail-title">
-        <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="loan" Size="18" /></span>
-        @_loan.Loan.Borrower
-    </h1>
+    <div class="account-detail-header">
+        <h1 class="account-detail-title">
+            <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="loan" Size="18" /></span>
+            @if (_renaming)
+            {
+                <input class="inline-edit" type="text" maxlength="200" aria-label="Nome del prestito" @bind="_borrowerName" />
+            }
+            else
+            {
+                @_loan.Loan.Borrower
+            }
+        </h1>
+        <div class="form-actions">
+            @if (_renaming)
+            {
+                <button type="button" class="primary-button" disabled="@_savingName" @onclick="SaveNameAsync">Salva</button>
+                <button type="button" class="secondary-button" disabled="@_savingName" @onclick="CancelRename">Annulla</button>
+            }
+            else
+            {
+                <button type="button" class="icon-button" aria-label="Rinomina prestito" title="Rinomina prestito" @onclick="StartRename">
+                    <MfIcon Name="edit" Size="20" />
+                </button>
+            }
+        </div>
+    </div>
+    @if (_renameError is not null)
+    {
+        <p class="alert alert-error" role="alert">@_renameError</p>
+    }
     <p class="page-intro">
         Prestito del conto @_loan.Loan.Account.Name.
         @if (!_loan.IsActive)
@@ -42,6 +68,11 @@ else
             <StatusBadge Tone="neutral">Estinto</StatusBadge>
         }
     </p>
+    <div class="form-actions loan-detail-actions">
+        <button type="button" class="primary-button" @onclick="OpenRepaymentDialog">
+            <MfIcon Name="cash" Size="18" /> Registra restituzione
+        </button>
+    </div>
 
     <section class="card accounts-chart-card" aria-labelledby="loan-chart-title">
         <div class="section-head">
@@ -95,18 +126,13 @@ else
     <section class="card">
         <div class="section-head">
             <div>
-                <h2>Storico delle rilevazioni</h2>
-                <p class="section-sub">Clicca una riga per modificarla o eliminarla.</p>
+                <h2>Storico</h2>
             </div>
         </div>
 
         @if (_historyMessage is not null)
         {
             <p class="alert alert-success" role="status">@_historyMessage</p>
-        }
-        @if (_historyError is not null)
-        {
-            <p class="alert alert-error" role="alert">@_historyError</p>
         }
 
         @if (_loan.Readings.Count == 0)
@@ -117,67 +143,29 @@ else
         }
         else
         {
-            @if (PendingDeleteReading is { } pending)
-            {
-                <div class="alert alert-warning" role="alert">
-                    <div>
-                        Eliminare la rilevazione del @Format.Date(pending.ValidAt) di
-                        @Format.Money(pending.Amount)? L'operazione non è reversibile.
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="danger-button" disabled="@_savingReading" @onclick="ConfirmDeleteReadingAsync">
-                            <MfIcon Name="trash" Size="16" /> Elimina
-                        </button>
-                        <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="CancelDeleteReading">Annulla</button>
-                    </div>
-                </div>
-            }
-
             <div class="table-scroll" tabindex="0">
-                <table class="data-table history-table">
+                <table class="data-table history-table history-table-loan">
                     <thead>
                         <tr>
                             <th scope="col">Data</th>
                             <th scope="col">Registrata il</th>
                             <th scope="col" class="num">Importo</th>
+                            <th scope="col">Nota</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var reading in _loan.Readings)
                         {
-                            <tr class="history-row @(_panelReadingId == reading.Id ? "panel-open" : "")"
+                            <tr class="history-row"
                                 tabindex="0"
                                 title="Clicca per modificare o eliminare"
-                                @onclick="() => TogglePanel(reading)"
+                                @onclick="() => OpenEditDialog(reading)"
                                 @onkeydown="e => HandleRowKeyDown(e, reading)">
                                 <td>@Format.Date(reading.ValidAt)</td>
-                                <td>@Format.UtcTimestamp(reading.RecordedAt)</td>
+                                <td>@Format.UtcDate(reading.RecordedAt)</td>
                                 <td class="num"><AmountValue Value="@reading.Amount" /></td>
+                                <td class="history-note">@reading.Note</td>
                             </tr>
-                            @if (_panelReadingId == reading.Id)
-                            {
-                                <tr class="reading-panel-row" id="@($"loan-reading-panel-{reading.Id}")">
-                                    <td colspan="3">
-                                        <div class="reading-panel">
-                                            <label>
-                                                <span>Importo in EUR</span>
-                                                <input class="inline-edit" type="number" step="any" @bind="_panelAmount" />
-                                            </label>
-                                            <label>
-                                                <span>Data</span>
-                                                <input class="inline-edit" type="date" @bind="_panelValidAt" />
-                                            </label>
-                                            <div class="form-actions">
-                                                <button type="button" class="primary-button" disabled="@_savingReading" @onclick="SaveReadingAsync">Salva</button>
-                                                <button type="button" class="delete-button compact" disabled="@_savingReading" @onclick="() => StartDeleteReading(reading)">
-                                                    <MfIcon Name="trash" Size="14" /> Elimina
-                                                </button>
-                                                <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="ClosePanel">Chiudi</button>
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
                         }
                     </tbody>
                 </table>
@@ -225,32 +213,52 @@ else
                        Borrower="@_loan.Loan.Borrower"
                        OnClose="CloseReadingDialog"
                        OnSaved="OnReadingSaved" />
+
+    <LoanRepaymentDialog Open="_repaymentDialogOpen"
+                         LoanId="@_loan.Loan.Id"
+                         Borrower="@_loan.Loan.Borrower"
+                         Currency="@_loan.Loan.Account.Currency"
+                         Readings="@_loan.Readings"
+                         OnClose="CloseRepaymentDialog"
+                         OnSaved="OnRepaymentSaved" />
+
+    <LoanReadingEditDialog Open="_editDialogOpen"
+                           Reading="_editingReading"
+                           OnClose="CloseEditDialog"
+                           OnSaved="OnReadingUpdated"
+                           OnDeleted="OnReadingDeleted" />
 }
 
 @code {
-    [Parameter] public Guid AccountId { get; set; }
+    [Parameter] public string AccountKey { get; set; } = "";
 
-    [Parameter] public Guid LoanId { get; set; }
+    [Parameter] public string LoanKey { get; set; } = "";
 
+    private Guid _accountId;
+    private Guid _loanId;
+    private string _canonicalAccountKey = "";
+    private string _canonicalLoanKey = "";
+    private string? _loadedRoute;
     private LoanOverview? _loan;
     private bool _loading = true;
     private string? _loadError;
     private string _range = "max";
     private bool _readingDialogOpen;
+    private bool _repaymentDialogOpen;
+    private bool _renaming;
+    private string _borrowerName = "";
+    private string? _renameError;
+    private bool _savingName;
     private string? _readingMessage;
-    private Guid? _panelReadingId;
-    private string _panelAmount = "";
-    private DateOnly? _panelValidAt;
-    private Guid? _pendingDeleteReadingId;
-    private string? _historyError;
+    private bool _editDialogOpen;
+    private LoanReading? _editingReading;
     private string? _historyMessage;
-    private bool _savingReading;
     private bool _confirmingDeleteLoan;
     private bool _deletingLoan;
     private string? _deleteError;
 
-    private LoanReading? PendingDeleteReading =>
-        _loan?.Readings.FirstOrDefault(reading => reading.Id == _pendingDeleteReadingId);
+    private string AccountLinkKey =>
+        string.IsNullOrEmpty(_canonicalAccountKey) ? AccountKey : _canonicalAccountKey;
 
     private IReadOnlyList<TimeSeriesSeries> Series => BuildSeries();
 
@@ -259,8 +267,16 @@ else
     private DateOnly? RangeStart =>
         ChartRanges.Start(_range, DateOnly.FromDateTime(DateTime.UtcNow));
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
+        var route = $"{AccountKey}|{LoanKey}";
+        if (string.Equals(_loadedRoute, route, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _loadedRoute = route;
+        _loading = true;
         await LoadAsync();
         _loading = false;
     }
@@ -270,13 +286,16 @@ else
         try
         {
             _loadError = null;
-            await ReloadAsync();
 
-            if (_loan is not null && _loan.Loan.AccountId != AccountId)
+            if (!await ResolveRouteAsync())
             {
                 _loan = null;
-                _loadError = "Il prestito non appartiene al conto indicato.";
+                _canonicalAccountKey = "";
+                _canonicalLoanKey = "";
+                return;
             }
+
+            await ReloadAsync();
         }
         catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
         {
@@ -288,7 +307,115 @@ else
         }
     }
 
-    private async Task ReloadAsync() => _loan = await LoansService.GetAsync(LoanId);
+    private async Task<bool> ResolveRouteAsync()
+    {
+        var accounts = await AccountsService.ListAsync();
+        var accountKeys = RouteKey.BuildKeys(
+            accounts,
+            account => account.Id,
+            account => account.Name,
+            "conto");
+
+        if (Guid.TryParse(AccountKey, out var accountId))
+        {
+            _accountId = accountId;
+        }
+        else
+        {
+            _accountId = accountKeys
+                .FirstOrDefault(pair =>
+                    string.Equals(pair.Value, AccountKey, StringComparison.OrdinalIgnoreCase))
+                .Key;
+        }
+
+        if (_accountId == Guid.Empty)
+        {
+            return false;
+        }
+
+        var loans = await LoansService.ListForAccountAsync(_accountId);
+        var loanKeys = RouteKey.BuildKeys(
+            loans,
+            loan => loan.Loan.Id,
+            loan => loan.Loan.Borrower,
+            "prestito");
+
+        if (Guid.TryParse(LoanKey, out var loanId))
+        {
+            _loanId = loanId;
+        }
+        else
+        {
+            _loanId = loanKeys
+                .FirstOrDefault(pair =>
+                    string.Equals(pair.Value, LoanKey, StringComparison.OrdinalIgnoreCase))
+                .Key;
+        }
+
+        if (_loanId == Guid.Empty)
+        {
+            return false;
+        }
+
+        _canonicalAccountKey = accountKeys.TryGetValue(_accountId, out var accountKey)
+            ? accountKey
+            : RouteKey.From(AccountKey, "conto");
+        _canonicalLoanKey = loanKeys.TryGetValue(_loanId, out var loanKey)
+            ? loanKey
+            : RouteKey.From(LoanKey, "prestito");
+        return true;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loan = await LoansService.GetAsync(_loanId);
+
+        if (_loan is null)
+        {
+            _canonicalAccountKey = "";
+            _canonicalLoanKey = "";
+            return;
+        }
+
+        if (_loan.Loan.AccountId != _accountId)
+        {
+            _loan = null;
+            _loadError = "Il prestito non appartiene al conto indicato.";
+            return;
+        }
+
+        var accounts = await AccountsService.ListAsync();
+        var accountKeys = RouteKey.BuildKeys(
+            accounts,
+            account => account.Id,
+            account => account.Name,
+            "conto");
+        _canonicalAccountKey = accountKeys.TryGetValue(_accountId, out var accountKey)
+            ? accountKey
+            : RouteKey.From(_loan.Loan.Account.Name, "conto");
+
+        var loans = await LoansService.ListForAccountAsync(_accountId);
+        var loanKeys = RouteKey.BuildKeys(
+            loans,
+            loan => loan.Loan.Id,
+            loan => loan.Loan.Borrower,
+            "prestito");
+        _canonicalLoanKey = loanKeys.TryGetValue(_loanId, out var loanKey)
+            ? loanKey
+            : RouteKey.From(_loan.Loan.Borrower, "prestito");
+
+        var canonicalRoute = $"{_canonicalAccountKey}|{_canonicalLoanKey}";
+        if (!string.Equals(
+                canonicalRoute,
+                $"{AccountKey}|{LoanKey}",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            _loadedRoute = canonicalRoute;
+            Navigation.NavigateTo(
+                $"accounts/{_canonicalAccountKey}/loans/{_canonicalLoanKey}",
+                replace: true);
+        }
+    }
 
     private IReadOnlyList<TimeSeriesSeries> BuildSeries()
     {
@@ -326,127 +453,33 @@ else
     {
         if (args.Key is "Enter" or " ")
         {
-            TogglePanel(reading);
+            OpenEditDialog(reading);
         }
     }
 
-    private void TogglePanel(LoanReading reading)
+    private void OpenEditDialog(LoanReading reading)
     {
-        _historyError = null;
         _historyMessage = null;
-        _pendingDeleteReadingId = null;
-
-        if (_panelReadingId == reading.Id)
-        {
-            _panelReadingId = null;
-            return;
-        }
-
-        _panelReadingId = reading.Id;
-        _panelAmount = reading.Amount.Amount.ToString(CultureInfo.InvariantCulture);
-        _panelValidAt = reading.ValidAt;
+        _editingReading = reading;
+        _editDialogOpen = true;
     }
 
-    private void ClosePanel()
+    private void CloseEditDialog()
     {
-        _panelReadingId = null;
-        _historyError = null;
+        _editDialogOpen = false;
+        _editingReading = null;
     }
 
-    private async Task SaveReadingAsync()
+    private async Task OnReadingUpdated(LoanReading reading)
     {
-        if (_panelReadingId is not { } readingId || _loan is null || _savingReading)
-        {
-            return;
-        }
-
-        _historyError = null;
-        _historyMessage = null;
-
-        if (!TryParseAmount(_panelAmount, out var amount))
-        {
-            _historyError = "L'importo deve essere un numero (per esempio: 123,45).";
-            return;
-        }
-
-        if (_panelValidAt is null)
-        {
-            _historyError = "La data della rilevazione è obbligatoria.";
-            return;
-        }
-
-        _savingReading = true;
-        try
-        {
-            await LoansService.UpdateReadingAsync(
-                readingId,
-                new Money(amount, _loan.Loan.Account.Currency),
-                _panelValidAt.Value);
-            _panelReadingId = null;
-            _historyMessage = "Rilevazione aggiornata.";
-            await ReloadAsync();
-        }
-        catch (ArgumentException exception)
-        {
-            _historyError = exception.Message;
-        }
-        catch (InvalidOperationException exception)
-        {
-            _historyError = exception.Message;
-        }
-        catch (Exception)
-        {
-            _historyError = "Aggiornamento non riuscito: verificare la connessione al database e riprovare.";
-        }
-        finally
-        {
-            _savingReading = false;
-        }
+        _historyMessage = "Rilevazione aggiornata.";
+        await ReloadAsync();
     }
 
-    private void StartDeleteReading(LoanReading reading)
+    private async Task OnReadingDeleted(LoanReading reading)
     {
-        _historyError = null;
-        _historyMessage = null;
-        _panelReadingId = null;
-        _pendingDeleteReadingId = reading.Id;
-    }
-
-    private void CancelDeleteReading()
-    {
-        _pendingDeleteReadingId = null;
-        _historyError = null;
-    }
-
-    private async Task ConfirmDeleteReadingAsync()
-    {
-        if (_pendingDeleteReadingId is not { } readingId || _savingReading)
-        {
-            return;
-        }
-
-        _savingReading = true;
-        _historyError = null;
-        _historyMessage = null;
-        try
-        {
-            await LoansService.DeleteReadingAsync(readingId);
-            _pendingDeleteReadingId = null;
-            _historyMessage = "Rilevazione eliminata.";
-            await ReloadAsync();
-        }
-        catch (InvalidOperationException exception)
-        {
-            _historyError = exception.Message;
-        }
-        catch (Exception)
-        {
-            _historyError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
-        }
-        finally
-        {
-            _savingReading = false;
-        }
+        _historyMessage = "Rilevazione eliminata.";
+        await ReloadAsync();
     }
 
     private void OpenReadingDialog()
@@ -460,6 +493,76 @@ else
     private async Task OnReadingSaved(LoanReading reading)
     {
         _readingMessage = $"Rilevazione registrata: {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.";
+        await ReloadAsync();
+    }
+
+    private void StartRename()
+    {
+        _borrowerName = _loan?.Loan.Borrower ?? "";
+        _renameError = null;
+        _renaming = true;
+    }
+
+    private void CancelRename()
+    {
+        _renaming = false;
+        _renameError = null;
+    }
+
+    private async Task SaveNameAsync()
+    {
+        if (_savingName || _loan is null)
+        {
+            return;
+        }
+
+        var name = _borrowerName.Trim();
+        if (name.Length == 0)
+        {
+            _renameError = "Il nome del prestito è obbligatorio.";
+            return;
+        }
+
+        _savingName = true;
+        _renameError = null;
+        try
+        {
+            await LoansService.RenameAsync(_loan.Loan.Id, name);
+            _renaming = false;
+            _readingMessage = "Nome del prestito aggiornato.";
+            await ReloadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _renameError = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _renameError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _renameError = "Rinomina non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _savingName = false;
+        }
+    }
+
+    private void OpenRepaymentDialog()
+    {
+        _readingMessage = null;
+        _repaymentDialogOpen = true;
+    }
+
+    private void CloseRepaymentDialog() => _repaymentDialogOpen = false;
+
+    private async Task OnRepaymentSaved(LoanReading reading)
+    {
+        _readingMessage = reading.Amount.Amount == 0m
+            ? $"Restituzione registrata: il prestito di {reading.Loan.Borrower} è estinto."
+            : $"Restituzione registrata. Nuovo importo dovuto: {Format.Money(reading.Amount)}.";
         await ReloadAsync();
     }
 
@@ -486,8 +589,8 @@ else
         _deleteError = null;
         try
         {
-            await LoansService.DeleteLoanAsync(LoanId);
-            Navigation.NavigateTo($"accounts/{AccountId}");
+            await LoansService.DeleteLoanAsync(_loanId);
+            Navigation.NavigateTo($"accounts/{AccountLinkKey}");
         }
         catch (InvalidOperationException exception)
         {
@@ -504,16 +607,4 @@ else
     }
 
     private static string AriaPressed(bool value) => value ? "true" : "false";
-
-    private static bool TryParseAmount(string? text, out decimal amount)
-    {
-        amount = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
-            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
-    }
 }

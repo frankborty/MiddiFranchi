@@ -30,11 +30,12 @@
             <form class="form-grid" @onsubmit="SaveAsync">
                 <label>
                     <span>Importo in EUR *</span>
-                    <input type="number" step="any" required aria-required="true" autofocus @bind="_amount" />
+                    <input type="text" inputmode="decimal" required aria-required="true" autofocus
+                           @bind="_amount" @bind:event="oninput" />
                 </label>
                 <label>
                     <span>Data *</span>
-                    <input type="date" required aria-required="true" @bind="_validAt" />
+                    <input type="date" required aria-required="true" @bind="_validAt" @bind:event="oninput" />
                 </label>
                 <div class="form-actions">
                     <button type="submit" class="primary-button" disabled="@_saving">
@@ -144,6 +145,5 @@
     }
 
     private static bool TryParseAmount(string text, out decimal amount) =>
-        decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
-        || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
+        DecimalText.TryParse(text, out amount);
 }

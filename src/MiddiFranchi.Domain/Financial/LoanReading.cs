@@ -12,7 +12,8 @@ public sealed class LoanReading
         Loan loan,
         Money amount,
         DateOnly validAt,
-        DateTimeOffset recordedAt)
+        DateTimeOffset recordedAt,
+        string? note = null)
     {
         if (id == Guid.Empty)
         {
@@ -36,6 +37,7 @@ public sealed class LoanReading
         Amount = amount;
         ValidAt = validAt;
         RecordedAt = recordedAt;
+        Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
     }
 
     public Guid Id { get; }
@@ -46,6 +48,9 @@ public sealed class LoanReading
 
     /// <summary>Importo ancora dovuto alla data della rilevazione.</summary>
     public Money Amount { get; }
+
+    /// <summary>Nota facoltativa, per esempio la causale di una restituzione.</summary>
+    public string? Note { get; }
 
     public DateOnly ValidAt { get; }
 

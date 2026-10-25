@@ -13,4 +13,5 @@ public sealed record NewInvestmentAsset(
     string? ReferenceUrl = null,
     string? Notes = null,
     DateOnly? MaturityDate = null,
-    decimal? CouponRate = null);
+    decimal? CouponRate = null,
+    decimal TaxRate = Instrument.DefaultTaxRate);

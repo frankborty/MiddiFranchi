@@ -63,6 +63,7 @@ internal static class PersistenceMapper
         Notes = instrument.Notes,
         MaturityDate = instrument.MaturityDate,
         CouponRate = instrument.CouponRate,
+        TaxRate = instrument.TaxRate,
     };
 
     public static Instrument ToDomain(InstrumentRecord record)
@@ -88,7 +89,8 @@ internal static class PersistenceMapper
             record.Notes,
             record.Status,
             record.MaturityDate,
-            record.CouponRate);
+            record.CouponRate,
+            record.TaxRate);
     }
 
     public static PriceObservationRecord ToRecord(PriceObservation observation) => new()
@@ -146,6 +148,7 @@ internal static class PersistenceMapper
                 ApplyAmount(record, income.Amount);
                 record.AccountId = income.Account?.Id;
                 record.CategoryId = income.Category.Id;
+                record.InstrumentId = income.Instrument?.Id;
                 break;
 
             case Expense expense:
@@ -166,7 +169,7 @@ internal static class PersistenceMapper
             case InvestmentOperation investment:
                 record.InvestmentKind = investment.InvestmentKind;
                 record.InstrumentId = investment.Instrument?.Id;
-                record.SettlementAccountId = investment.SettlementAccount.Id;
+                record.SettlementAccountId = investment.SettlementAccount?.Id;
                 record.QuantityValue = investment.Quantity?.Value;
                 ApplyQuotedPrice(record, investment.QuotedPrice);
 
@@ -185,7 +188,7 @@ internal static class PersistenceMapper
                         Kind = fee.Kind,
                         AmountAmount = fee.Amount.Value.Amount,
                         AmountCurrencyCode = fee.Amount.Value.Currency.Code,
-                        DebitAccountId = fee.DebitAccount.Id,
+                        DebitAccountId = fee.DebitAccount?.Id,
                     });
                 }
 
@@ -280,7 +283,8 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                null),
+                null,
+                OptionalInstrument(instruments, record.InstrumentId, record.Id)),
             OperationKind.Expense => new Expense(
                 record.Id,
                 OptionalAccount(accounts, record.AccountId, record.Id),
@@ -306,6 +310,22 @@ internal static class PersistenceMapper
         };
     }
 
+    private static Instrument? OptionalInstrument(
+        IReadOnlyDictionary<Guid, Instrument> instruments,
+        Guid? instrumentId,
+        Guid operationId)
+    {
+        if (instrumentId is null)
+        {
+            return null;
+        }
+
+        return instruments.TryGetValue(instrumentId.Value, out var instrument)
+            ? instrument
+            : throw new InvalidOperationException(
+                $"Lo strumento dell'operazione {operationId} non è stato caricato.");
+    }
+
     private static InvestmentOperation ToDomainInvestment(
         FinancialOperationRecord record,
         IReadOnlyDictionary<Guid, Account> accounts,
@@ -315,7 +335,7 @@ internal static class PersistenceMapper
         var investmentKind = record.InvestmentKind
             ?? throw new InvalidOperationException(
                 $"L'operazione d'investimento {record.Id} non ha un tipo.");
-        var settlementAccount = RequiredAccount(accounts, record.SettlementAccountId, record.Id);
+        var settlementAccount = OptionalAccount(accounts, record.SettlementAccountId, record.Id);
         var feeList = fees.TryGetValue(record.Id, out var foundFees) ? foundFees : [];
 
         Instrument? instrument = null;
@@ -373,7 +393,7 @@ internal static class PersistenceMapper
         FinancialOperationRecord record,
         InvestmentOperationKind kind,
         Instrument instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         Quantity quantity,
         QuotedPrice quotedPrice,
         IReadOnlyList<FeeComponent> fees)
@@ -407,15 +427,9 @@ internal static class PersistenceMapper
         InvestmentOperationKind kind,
         FinancialOperationRecord record,
         Instrument instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         IReadOnlyList<FeeComponent> fees)
     {
-        if (fees.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"L'operazione {record.Id} di tipo {kind} non ammette commissioni.");
-        }
-
         var amount = RequiredAmount(record, record.Id);
 
         return kind == InvestmentOperationKind.Dividend
@@ -427,7 +441,8 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                null)
+                null,
+                fees)
             : InvestmentOperation.Coupon(
                 record.Id,
                 instrument,
@@ -436,7 +451,8 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                null);
+                null,
+                fees);
     }
 
     private static void ApplyAmount(FinancialOperationRecord record, PositiveMoney amount)
@@ -480,15 +496,21 @@ internal static class PersistenceMapper
 
     private static PositiveMoney StandaloneFeeAmount(
         FinancialOperationRecord record,
-        Account settlementAccount,
+        Account? settlementAccount,
         IReadOnlyList<FeeComponent> fees)
     {
-        if (fees.Count != 1 ||
-            fees[0].Kind != FeeKind.Standalone ||
-            fees[0].DebitAccount.Id != settlementAccount.Id)
+        if (fees.Count != 1 || fees[0].Kind != FeeKind.Standalone)
         {
             throw new InvalidOperationException(
-                $"La commissione autonoma {record.Id} non ha esattamente una componente Standalone sul conto di regolamento.");
+                $"La commissione autonoma {record.Id} non ha esattamente una componente Standalone.");
+        }
+
+        if (settlementAccount is not null &&
+            fees[0].DebitAccount is { } debitAccount &&
+            debitAccount.Id != settlementAccount.Id)
+        {
+            throw new InvalidOperationException(
+                $"La commissione autonoma {record.Id} non è addebitata sul conto di regolamento.");
         }
 
         return fees[0].Amount;
@@ -580,6 +602,7 @@ internal static class PersistenceMapper
         AmountCurrencyCode = reading.Amount.Currency.Code,
         ValidAt = reading.ValidAt,
         RecordedAt = reading.RecordedAt,
+        Note = reading.Note,
     };
 
     public static LoanReading ToDomain(LoanReadingRecord record, Loan loan) =>
@@ -588,7 +611,8 @@ internal static class PersistenceMapper
             loan,
             new Money(record.AmountAmount, Currency.Parse(record.AmountCurrencyCode)),
             record.ValidAt,
-            record.RecordedAt);
+            record.RecordedAt,
+            record.Note);
 
     private static PositiveMoney RequiredAmount(FinancialOperationRecord record, Guid operationId) =>
         RequiredPositiveMoney(record.AmountAmount, record.AmountCurrencyCode, operationId);

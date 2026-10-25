@@ -31,6 +31,9 @@ internal sealed class InstrumentRecordConfiguration : IEntityTypeConfiguration<I
                 "CK_Instruments_CouponRate",
                 "\"CouponRate\" IS NULL OR (\"CouponRate\" > 0 AND \"CouponRate\" <= 100)");
             table.HasCheckConstraint(
+                "CK_Instruments_TaxRate",
+                "\"TaxRate\" >= 0 AND \"TaxRate\" <= 100");
+            table.HasCheckConstraint(
                 "CK_Instruments_BondDetails",
                 "\"AssetClass\" = 'Bond' OR (\"MaturityDate\" IS NULL AND \"CouponRate\" IS NULL)");
             table.HasCheckConstraint(
@@ -64,6 +67,7 @@ internal sealed class InstrumentRecordConfiguration : IEntityTypeConfiguration<I
         builder.Property(instrument => instrument.Notes).IsOptionalText();
         builder.Property(instrument => instrument.MaturityDate).HasColumnType("date");
         builder.Property(instrument => instrument.CouponRate).IsOptionalNumeric();
+        builder.Property(instrument => instrument.TaxRate).IsNumeric();
 
         builder.HasIndex(instrument => instrument.Isin)
             .IsUnique()

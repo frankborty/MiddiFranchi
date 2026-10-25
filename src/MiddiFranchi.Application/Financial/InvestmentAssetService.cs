@@ -14,20 +14,17 @@ public sealed class InvestmentAssetService
     private static readonly Currency Euro = Currency.Euro;
 
     private readonly IInstrumentRepository _instruments;
-    private readonly IAccountRepository _accounts;
     private readonly IFinancialOperationRepository _operations;
     private readonly IPriceObservationRepository _prices;
     private readonly Func<DateOnly> _currentUtcDate;
 
     public InvestmentAssetService(
         IInstrumentRepository instruments,
-        IAccountRepository accounts,
         IFinancialOperationRepository operations,
         IPriceObservationRepository prices,
         Func<DateOnly>? currentUtcDateProvider = null)
     {
         _instruments = instruments;
-        _accounts = accounts;
         _operations = operations;
         _prices = prices;
         _currentUtcDate = currentUtcDateProvider ?? (() => DateOnly.FromDateTime(DateTime.UtcNow));
@@ -52,7 +49,8 @@ public sealed class InvestmentAssetService
             request.Notes,
             InstrumentStatus.Active,
             request.MaturityDate,
-            request.CouponRate);
+            request.CouponRate,
+            request.TaxRate);
 
         await EnsureUniqueIdentityAsync(instrument, excludingId: null, cancellationToken);
         await _instruments.AddAsync(instrument, cancellationToken);
@@ -85,7 +83,8 @@ public sealed class InvestmentAssetService
             request.Notes,
             existing.Status,
             request.MaturityDate,
-            request.CouponRate);
+            request.CouponRate,
+            request.TaxRate);
 
         await EnsureUniqueIdentityAsync(updated, excludingId: existing.Id, cancellationToken);
         await _instruments.UpdateAsync(updated, cancellationToken);
@@ -156,15 +155,11 @@ public sealed class InvestmentAssetService
         EnsureOperationKind(request.Kind);
 
         var instrument = await RequireActiveInstrumentAsync(request.InstrumentId, cancellationToken);
-        var account = await RequireSettlementAccountAsync(
-            request.SettlementAccountId,
-            instrument.QuoteCurrency,
-            cancellationToken);
 
         var operation = BuildOperation(
             Guid.NewGuid(),
             instrument,
-            account,
+            settlementAccount: null,
             request.Kind,
             request.OperationDate,
             DateTimeOffset.UtcNow,
@@ -172,7 +167,8 @@ public sealed class InvestmentAssetService
             request.Price,
             request.FeeAmount,
             request.Amount,
-            request.Description);
+            request.Description,
+            request.TaxAmount);
 
         await EnsureChainValidAsync(
             operation,
@@ -216,22 +212,11 @@ public sealed class InvestmentAssetService
                     item.Operation.InstrumentId,
                     cancellationToken)
                 .ConfigureAwait(false);
-            var account = await _accounts
-                .GetByIdAsync(item.Operation.SettlementAccountId, cancellationToken)
-                .ConfigureAwait(false)
-                ?? throw new InvalidOperationException(
-                    $"Il conto di regolamento {item.Operation.SettlementAccountId} non esiste.");
-
-            if (account.Currency != instrument.QuoteCurrency)
-            {
-                throw new InvalidOperationException(
-                    $"La valuta del conto «{account.Name}» non coincide con quella dello strumento.");
-            }
 
             operations.Add(BuildOperation(
                 item.OperationId,
                 instrument,
-                account,
+                settlementAccount: null,
                 item.Operation.Kind,
                 item.Operation.OperationDate,
                 item.RecordedAt,
@@ -239,7 +224,8 @@ public sealed class InvestmentAssetService
                 item.Operation.Price,
                 item.Operation.FeeAmount,
                 item.Operation.Amount,
-                item.Operation.Description));
+                item.Operation.Description,
+                item.Operation.TaxAmount));
         }
 
         var chain = (await _operations.ListAsync(cancellationToken).ConfigureAwait(false))
@@ -273,15 +259,10 @@ public sealed class InvestmentAssetService
                 "Lo strumento è archiviato: riattivalo prima di modificare le operazioni.");
         }
 
-        var account = await RequireSettlementAccountAsync(
-            request.SettlementAccountId,
-            instrument.QuoteCurrency,
-            cancellationToken);
-
         var updated = BuildOperation(
             existing.Id,
             instrument,
-            account,
+            settlementAccount: null,
             existing.InvestmentKind,
             request.OperationDate,
             existing.RecordedAt,
@@ -289,7 +270,8 @@ public sealed class InvestmentAssetService
             request.Price,
             request.FeeAmount,
             request.Amount,
-            request.Description);
+            request.Description,
+            request.TaxAmount);
 
         await EnsureChainValidAsync(
             updated,
@@ -367,7 +349,7 @@ public sealed class InvestmentAssetService
     private InvestmentOperation BuildOperation(
         Guid id,
         Instrument instrument,
-        Account account,
+        Account? settlementAccount,
         InvestmentOperationKind kind,
         DateOnly operationDate,
         DateTimeOffset recordedAt,
@@ -375,7 +357,8 @@ public sealed class InvestmentAssetService
         decimal? price,
         decimal? feeAmount,
         decimal? amount,
-        string? description)
+        string? description,
+        decimal? taxAmount)
     {
         var cleanDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
 
@@ -384,10 +367,10 @@ public sealed class InvestmentAssetService
             InvestmentOperationKind.Buy => InvestmentOperation.Buy(
                 id,
                 instrument,
-                account,
+                settlementAccount,
                 RequireQuantity(quantity),
                 BuildQuotedPrice(instrument, price),
-                BuildFees(kind, feeAmount, account),
+                BuildFees(kind, feeAmount, taxAmount, settlementAccount),
                 operationDate,
                 recordedAt,
                 cleanDescription,
@@ -395,10 +378,10 @@ public sealed class InvestmentAssetService
             InvestmentOperationKind.Sell => InvestmentOperation.Sell(
                 id,
                 instrument,
-                account,
+                settlementAccount,
                 RequireQuantity(quantity),
                 BuildQuotedPrice(instrument, price),
-                BuildFees(kind, feeAmount, account),
+                BuildFees(kind, feeAmount, taxAmount, settlementAccount),
                 operationDate,
                 recordedAt,
                 cleanDescription,
@@ -406,21 +389,23 @@ public sealed class InvestmentAssetService
             InvestmentOperationKind.Dividend => InvestmentOperation.Dividend(
                 id,
                 instrument,
-                account,
-                BuildAmount(amount, account),
+                settlementAccount,
+                BuildAmount(amount, settlementAccount),
                 operationDate,
                 recordedAt,
                 cleanDescription,
-                null),
+                null,
+                BuildFees(kind, feeAmount, taxAmount, settlementAccount)),
             InvestmentOperationKind.Coupon => InvestmentOperation.Coupon(
                 id,
                 instrument,
-                account,
-                BuildAmount(amount, account),
+                settlementAccount,
+                BuildAmount(amount, settlementAccount),
                 operationDate,
                 recordedAt,
                 cleanDescription,
-                null),
+                null,
+                BuildFees(kind, feeAmount, taxAmount, settlementAccount)),
             _ => throw new ArgumentException(
                 $"Il tipo di operazione {kind} non è supportato dalla pagina Investimenti.",
                 nameof(kind)),
@@ -491,29 +476,6 @@ public sealed class InvestmentAssetService
         }
 
         return instrument;
-    }
-
-    private async Task<Account> RequireSettlementAccountAsync(
-        Guid accountId,
-        Currency currency,
-        CancellationToken cancellationToken)
-    {
-        var account = await _accounts.GetByIdAsync(accountId, cancellationToken)
-            ?? throw new InvalidOperationException($"Il conto di regolamento {accountId} non esiste.");
-
-        if (account.Status != AccountStatus.Active)
-        {
-            throw new InvalidOperationException(
-                $"Il conto «{account.Name}» è chiuso e non può essere usato per regolare l'operazione.");
-        }
-
-        if (account.Currency != currency)
-        {
-            throw new InvalidOperationException(
-                $"La valuta del conto «{account.Name}» non coincide con quella dello strumento.");
-        }
-
-        return account;
     }
 
     private async Task<InvestmentOperation> RequireEditableInvestmentAsync(
@@ -629,42 +591,77 @@ public sealed class InvestmentAssetService
     private static IReadOnlyList<FeeComponent>? BuildFees(
         InvestmentOperationKind kind,
         decimal? feeAmount,
-        Account account)
+        decimal? taxAmount,
+        Account? account)
     {
-        if (feeAmount is null or 0m)
-        {
-            return null;
-        }
-
-        if (feeAmount < 0m)
-        {
-            throw new ArgumentException("La commissione non può essere negativa.", nameof(feeAmount));
-        }
-
-        if (kind is not (InvestmentOperationKind.Buy or InvestmentOperationKind.Sell))
+        if (kind is not (
+            InvestmentOperationKind.Buy or
+            InvestmentOperationKind.Sell or
+            InvestmentOperationKind.Dividend or
+            InvestmentOperationKind.Coupon))
         {
             throw new ArgumentException(
-                "Le commissioni sono ammesse solo per acquisti e vendite.",
+                "Le commissioni sono ammesse solo per acquisti, vendite e cedole.",
                 nameof(feeAmount));
         }
 
-        var feeKind = kind == InvestmentOperationKind.Buy ? FeeKind.BuyFee : FeeKind.SellFee;
-        return
-        [
-            new FeeComponent(
-                feeKind,
-                new PositiveMoney(new Money(feeAmount.Value, account.Currency)),
-                account),
-        ];
+        if (feeAmount is < 0m || taxAmount is < 0m)
+        {
+            throw new ArgumentException(
+                "Commissioni e tasse non possono essere negative.",
+                nameof(feeAmount));
+        }
+
+        var currency = account?.Currency ?? Currency.Euro;
+        var fees = new List<FeeComponent>();
+
+        if (kind == InvestmentOperationKind.Buy && feeAmount is > 0m)
+        {
+            fees.Add(new FeeComponent(
+                FeeKind.BuyFee,
+                new PositiveMoney(new Money(feeAmount.Value, currency)),
+                account));
+        }
+
+        if (kind == InvestmentOperationKind.Sell)
+        {
+            if (feeAmount is > 0m)
+            {
+                fees.Add(new FeeComponent(
+                    FeeKind.SellFee,
+                    new PositiveMoney(new Money(feeAmount.Value, currency)),
+                    account));
+            }
+
+            if (taxAmount is > 0m)
+            {
+                fees.Add(new FeeComponent(
+                    FeeKind.TaxWithheld,
+                    new PositiveMoney(new Money(taxAmount.Value, currency)),
+                    account));
+            }
+        }
+
+        if (kind is InvestmentOperationKind.Dividend or InvestmentOperationKind.Coupon &&
+            feeAmount is > 0m)
+        {
+            fees.Add(new FeeComponent(
+                FeeKind.TaxWithheld,
+                new PositiveMoney(new Money(feeAmount.Value, currency)),
+                account));
+        }
+
+        return fees.Count == 0 ? null : fees;
     }
 
-    private static PositiveMoney BuildAmount(decimal? amount, Account account)
+    private static PositiveMoney BuildAmount(decimal? amount, Account? account)
     {
         if (amount is null || amount <= 0m)
         {
             throw new ArgumentException("L'importo deve essere positivo.", nameof(amount));
         }
 
-        return new PositiveMoney(new Money(amount.Value, account.Currency));
+        var currency = account?.Currency ?? Currency.Euro;
+        return new PositiveMoney(new Money(amount.Value, currency));
     }
 }

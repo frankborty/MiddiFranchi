@@ -117,6 +117,85 @@ public sealed class LoanService
         return loan;
     }
 
+    public async Task<Loan> RenameAsync(
+        Guid loanId,
+        string borrower,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(borrower))
+        {
+            throw new ArgumentException(
+                "Il nome del debitore è obbligatorio.",
+                nameof(borrower));
+        }
+
+        var loan = await RequireLoanAsync(loanId, cancellationToken);
+        var renamed = new Loan(loan.Id, loan.Account, borrower, loan.CreatedAt);
+        await _loans.UpdateAsync(renamed, cancellationToken);
+        return renamed;
+    }
+
+    /// <summary>
+    /// Registra una restituzione parziale o totale: crea una rilevazione con l'importo
+    /// ancora dovuto dopo l'incasso e ricostruisce il saldo aggregato del conto Prestiti.
+    /// </summary>
+    public async Task<LoanReading> RegisterRepaymentAsync(
+        Guid loanId,
+        Money amount,
+        DateOnly validAt,
+        string? note = null,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureNotFuture(validAt, nameof(validAt));
+
+        if (amount.Amount <= 0m)
+        {
+            throw new ArgumentException(
+                "L'importo restituito deve essere positivo.",
+                nameof(amount));
+        }
+
+        var loan = await RequireLoanAsync(loanId, cancellationToken);
+
+        if (amount.Currency != loan.Account.Currency)
+        {
+            throw new ArgumentException(
+                $"La valuta della restituzione ({amount.Currency.Code}) deve coincidere " +
+                $"con la valuta del conto ({loan.Account.Currency.Code}).",
+                nameof(amount));
+        }
+
+        var readings = await _readings.ListForLoanAsync(loanId, cancellationToken);
+        var current = LoanReadings.LatestOnOrBefore(readings, loanId, validAt);
+        if (current is null)
+        {
+            throw new InvalidOperationException(
+                "Non ci sono rilevazioni del prestito alla data indicata: " +
+                "registra prima l'importo dovuto.");
+        }
+
+        if (amount.Amount > current.Amount.Amount)
+        {
+            throw new ArgumentException(
+                $"L'importo restituito ({FormatMoney(amount)}) supera quello ancora dovuto " +
+                $"alla data indicata ({FormatMoney(current.Amount)}).",
+                nameof(amount));
+        }
+
+        var remaining = current.Amount.Amount - amount.Amount;
+        var reading = new LoanReading(
+            Guid.NewGuid(),
+            loan,
+            new Money(remaining, loan.Account.Currency),
+            validAt,
+            DateTimeOffset.UtcNow,
+            note);
+
+        await _readings.AddAsync(reading, cancellationToken);
+        await RebuildAccountBalanceAsync(loan.AccountId, cancellationToken);
+        return reading;
+    }
+
     public async Task<LoanReading> AddReadingAsync(
         Guid loanId,
         Money amount,
@@ -136,6 +215,7 @@ public sealed class LoanService
         Guid readingId,
         Money amount,
         DateOnly validAt,
+        string? note,
         CancellationToken cancellationToken = default)
     {
         EnsureNotFuture(validAt, nameof(validAt));
@@ -147,7 +227,8 @@ public sealed class LoanService
             reading.Loan,
             amount,
             validAt,
-            reading.RecordedAt);
+            reading.RecordedAt,
+            note);
         await _readings.UpdateAsync(updated, cancellationToken);
         await RebuildAccountBalanceAsync(reading.Loan.AccountId, cancellationToken);
         return updated;
@@ -243,4 +324,7 @@ public sealed class LoanService
 
     private static string FormatDate(DateOnly date) =>
         date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static string FormatMoney(Money money) =>
+        money.Amount.ToString("0.00", CultureInfo.InvariantCulture) + " " + money.Currency.Code;
 }

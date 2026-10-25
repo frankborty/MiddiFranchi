@@ -1,10 +1,11 @@
-@page "/accounts/{Id:guid}"
+@page "/accounts/{AccountKey}"
 @rendermode InteractiveServer
 @using System.Globalization
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Financial
 @using MiddiFranchi.Domain.Shared
 @inject AccountOverviewService Overview
+@inject AccountService AccountsService
 @inject ManualBalanceService ManualBalanceSvc
 @inject LoanService LoansService
 @inject NavigationManager Navigation
@@ -70,7 +71,6 @@ else
 
         <div class="account-current">
             <div class="balance-main">
-                <span class="balance-label">Saldo attuale</span>
                 <span class="balance-value">
                     <AmountValue Value="@_row.ManualBalance" UnavailableText="Saldo non registrato" />
                 </span>
@@ -119,9 +119,6 @@ else
                             @(_hideInactiveLoans ? "Mostra estinti" : "Nascondi estinti")
                         </button>
                     }
-                    <button type="button" class="primary-button" @onclick="OpenNewLoanDialog">
-                        <MfIcon Name="plus" Size="18" /> Nuovo prestito
-                    </button>
                 </div>
             </div>
 
@@ -145,7 +142,7 @@ else
                         <li class="loan-row">
                             <span class="loan-icon" aria-hidden="true"><MfIcon Name="loan" Size="18" /></span>
                             <div class="loan-main">
-                                <a class="loan-name" href="@($"accounts/{Id}/loans/{loan.Loan.Id}")">@loan.Loan.Borrower</a>
+                                <a class="loan-name" href="@($"accounts/{AccountLinkKey}/loans/{LoanKey(loan.Loan.Id)}")">@loan.Loan.Borrower</a>
                                 <span class="loan-meta">
                                     @if (loan.LatestDate is { } latest)
                                     {
@@ -171,9 +168,6 @@ else
                                     <span class="table-hint">Nessuna rilevazione</span>
                                 }
                             </div>
-                            <a class="icon-button" href="@($"accounts/{Id}/loans/{loan.Loan.Id}")" aria-label="@($"Apri il prestito di {loan.Loan.Borrower}")">
-                                <MfIcon Name="arrow-right" Size="18" />
-                            </a>
                         </li>
                     }
                 </ul>
@@ -185,8 +179,7 @@ else
         <section class="card">
             <div class="section-head">
                 <div>
-                    <h2>Storico delle rilevazioni</h2>
-                    <p class="section-sub">Clicca una riga per modificarla o eliminarla.</p>
+                    <h2>Storico</h2>
                 </div>
             </div>
 
@@ -207,22 +200,6 @@ else
             }
             else
             {
-                @if (PendingDeleteReading is { } pending)
-                {
-                    <div class="alert alert-warning" role="alert">
-                        <div>
-                            Eliminare la rilevazione del @Format.Date(pending.ValidAt) di
-                            @Format.Money(pending.Amount)? L'operazione non è reversibile.
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="danger-button" disabled="@_savingReading" @onclick="ConfirmDeleteReadingAsync">
-                                <MfIcon Name="trash" Size="16" /> Elimina
-                            </button>
-                            <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="CancelDeleteReading">Annulla</button>
-                        </div>
-                    </div>
-                }
-
                 <div class="table-scroll" tabindex="0">
                     <table class="data-table history-table">
                         <thead>
@@ -241,7 +218,7 @@ else
                                     @onclick="() => TogglePanel(reading)"
                                     @onkeydown="e => HandleRowKeyDown(e, reading)">
                                     <td>@Format.Date(reading.ValidAt)</td>
-                                    <td>@Format.UtcTimestamp(reading.RecordedAt)</td>
+                                    <td>@Format.UtcDate(reading.RecordedAt)</td>
                                     <td class="num"><AmountValue Value="@reading.Amount" /></td>
                                 </tr>
                                 @if (_panelReadingId == reading.Id)
@@ -251,20 +228,38 @@ else
                                             <div class="reading-panel">
                                                 <label>
                                                     <span>Importo in EUR</span>
-                                                    <input class="inline-edit" type="number" step="any" @bind="_panelAmount" />
+                                                    <input class="inline-edit" type="text" inputmode="decimal" @bind="_panelAmount" />
                                                 </label>
                                                 <label>
                                                     <span>Data</span>
                                                     <input class="inline-edit" type="date" @bind="_panelValidAt" />
                                                 </label>
-                                                <div class="form-actions">
-                                                    <button type="button" class="primary-button" disabled="@_savingReading" @onclick="SaveReadingAsync">Salva</button>
-                                                    <button type="button" class="delete-button compact" disabled="@_savingReading" @onclick="() => StartDeleteReading(reading)">
-                                                        <MfIcon Name="trash" Size="14" /> Elimina
-                                                    </button>
-                                                    <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="ClosePanel">Chiudi</button>
-                                                </div>
+                                                @if (_pendingDeleteReadingId != reading.Id)
+                                                {
+                                                    <div class="form-actions">
+                                                        <button type="button" class="primary-button" disabled="@_savingReading" @onclick="SaveReadingAsync">Salva</button>
+                                                        <button type="button" class="delete-button" disabled="@_savingReading" @onclick="() => StartDeleteReading(reading)">
+                                                            <MfIcon Name="trash" Size="14" /> Elimina
+                                                        </button>
+                                                        <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="ClosePanel">Chiudi</button>
+                                                    </div>
+                                                }
                                             </div>
+                                            @if (_pendingDeleteReadingId == reading.Id)
+                                            {
+                                                <div class="alert alert-warning reading-delete-confirm" role="alert">
+                                                    <div>
+                                                        Eliminare la rilevazione del @Format.Date(reading.ValidAt) di
+                                                        @Format.Money(reading.Amount)? L'operazione non è reversibile.
+                                                    </div>
+                                                    <div class="form-actions">
+                                                        <button type="button" class="danger-button" disabled="@_savingReading" @onclick="ConfirmDeleteReadingAsync">
+                                                            <MfIcon Name="trash" Size="16" /> Elimina
+                                                        </button>
+                                                        <button type="button" class="secondary-button" disabled="@_savingReading" @onclick="CancelDeleteReading">Annulla</button>
+                                                    </div>
+                                                </div>
+                                            }
                                         </td>
                                     </tr>
                                 }
@@ -315,18 +310,21 @@ else
 }
 
 @code {
-    [Parameter] public Guid Id { get; set; }
+    [Parameter] public string AccountKey { get; set; } = "";
 
+    private Guid _accountId;
+    private string _canonicalKey = "";
     private AccountOverviewRow? _row;
     private IReadOnlyList<ManualBalance> _history = [];
     private IReadOnlyList<LoanOverview> _loans = [];
+    private IReadOnlyDictionary<Guid, string> _loanRouteKeys = new Dictionary<Guid, string>();
     private bool _loading = true;
     private string? _loadError;
     private string _range = "max";
     private bool _readingDialogOpen;
     private bool _newLoanDialogOpen;
     private bool _settingsOpen;
-    private bool _hideInactiveLoans;
+    private bool _hideInactiveLoans = true;
     private string? _readingMessage;
     private Guid? _panelReadingId;
     private string _panelAmount = "";
@@ -342,9 +340,6 @@ else
         _row is not null &&
         (_row.AccountId == SpecialAccountsSeeder.CashAccountId ||
          _row.AccountId == SpecialAccountsSeeder.LoansAccountId);
-
-    private ManualBalance? PendingDeleteReading =>
-        _history.FirstOrDefault(reading => reading.Id == _pendingDeleteReadingId);
 
     private IReadOnlyList<ManualBalanceDialog.AccountChoice> ReadingAccountChoices =>
         _row is null ? [] : [new ManualBalanceDialog.AccountChoice(_row.AccountId, _row.Name, _row.Type, _row.IconDataUrl)];
@@ -365,8 +360,9 @@ else
     private DateOnly? RangeStart =>
         ChartRanges.Start(_range, DateOnly.FromDateTime(DateTime.UtcNow));
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
+        _loading = true;
         await LoadAsync();
         _loading = false;
     }
@@ -390,12 +386,53 @@ else
 
     private async Task ReloadAsync()
     {
-        _row = await Overview.GetAsync(Id);
-        _history = _row is null ? [] : await ManualBalanceSvc.ListForAccountAsync(Id);
+        var accounts = await AccountsService.ListAsync();
+        var keys = RouteKey.BuildKeys(accounts, account => account.Id, account => account.Name, "conto");
+
+        if (Guid.TryParse(AccountKey, out var parsed))
+        {
+            _accountId = parsed;
+        }
+        else
+        {
+            _accountId = keys
+                .FirstOrDefault(pair =>
+                    string.Equals(pair.Value, AccountKey, StringComparison.OrdinalIgnoreCase))
+                .Key;
+        }
+
+        _row = _accountId == Guid.Empty ? null : await Overview.GetAsync(_accountId);
+        _history = _row is null ? [] : await ManualBalanceSvc.ListForAccountAsync(_accountId);
         _loans = _row is { Type: AccountType.Loans }
-            ? await LoansService.ListForAccountAsync(Id)
+            ? await LoansService.ListForAccountAsync(_accountId)
             : [];
+        _loanRouteKeys = RouteKey.BuildKeys(
+            _loans,
+            loan => loan.Loan.Id,
+            loan => loan.Loan.Borrower,
+            "prestito");
+
+        if (_row is null)
+        {
+            _canonicalKey = "";
+            return;
+        }
+
+        _canonicalKey = keys.TryGetValue(_row.AccountId, out var key)
+            ? key
+            : RouteKey.From(_row.Name, "conto");
+
+        if (!string.Equals(_canonicalKey, AccountKey, StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo($"accounts/{_canonicalKey}", replace: true);
+        }
     }
+
+    private string AccountLinkKey =>
+        string.IsNullOrEmpty(_canonicalKey) ? _row?.AccountId.ToString() ?? "" : _canonicalKey;
+
+    private string LoanKey(Guid loanId) =>
+        _loanRouteKeys.TryGetValue(loanId, out var key) ? key : loanId.ToString();
 
     private IReadOnlyList<TimeSeriesSeries> BuildSeries()
     {
@@ -546,13 +583,14 @@ else
         }
 
         _panelReadingId = reading.Id;
-        _panelAmount = reading.Amount.Amount.ToString(CultureInfo.InvariantCulture);
+        _panelAmount = DecimalText.Format(reading.Amount.Amount);
         _panelValidAt = reading.ValidAt;
     }
 
     private void ClosePanel()
     {
         _panelReadingId = null;
+        _pendingDeleteReadingId = null;
         _historyError = null;
     }
 
@@ -565,6 +603,7 @@ else
 
         _historyError = null;
         _historyMessage = null;
+        _pendingDeleteReadingId = null;
 
         if (!TryParseAmount(_panelAmount, out var amount))
         {
@@ -608,7 +647,7 @@ else
     {
         _historyError = null;
         _historyMessage = null;
-        _panelReadingId = null;
+        _panelReadingId = reading.Id;
         _pendingDeleteReadingId = reading.Id;
     }
 
@@ -632,6 +671,7 @@ else
         {
             await ManualBalanceSvc.DeleteAsync(readingId);
             _pendingDeleteReadingId = null;
+            _panelReadingId = null;
             _historyMessage = "Rilevazione eliminata.";
             await ReloadAsync();
         }
@@ -704,15 +744,6 @@ else
 
     private void ToggleHideInactiveLoans() => _hideInactiveLoans = !_hideInactiveLoans;
 
-    private static bool TryParseAmount(string? text, out decimal amount)
-    {
-        amount = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
-            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
-    }
+    private static bool TryParseAmount(string? text, out decimal amount) =>
+        DecimalText.TryParse(text, out amount);
 }

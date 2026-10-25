@@ -282,7 +282,7 @@ else if (_workspace is { } workspace)
                                         <div class="investment-name">
                                             <div class="investment-name-copy">
                                                 <a class="investment-name-link"
-                                                   href="/investments/instruments/@asset.InstrumentId">
+                                                   href="/investments/instruments/@InstrumentKey(asset.InstrumentId)">
                                                     <strong>@asset.Name</strong>
                                                 </a>
                                                 <div class="investment-name-meta">
@@ -293,6 +293,7 @@ else if (_workspace is { } workspace)
                                                     <StatusBadge Tone="@AssetClassPalette.Tone(asset.AssetClass)">
                                                         @Format.AssetClassLabel(asset.AssetClass)
                                                     </StatusBadge>
+                                                    <span class="status-chip neutral">Tasse @Format.Percent(asset.TaxRate / 100m)</span>
                                                     @if (asset.Isin is { } isin)
                                                     {
                                                         <span class="investment-isin">@isin</span>
@@ -302,14 +303,6 @@ else if (_workspace is { } workspace)
                                                         <a class="investment-link" href="@referenceUrl" target="_blank"
                                                            rel="noopener noreferrer" aria-label="Scheda di @asset.Name">
                                                             <MfIcon Name="external-link" Size="14" /> Scheda
-                                                        </a>
-                                                    }
-                                                    @if (asset.Isin is { } justEtfIsin)
-                                                    {
-                                                        <a class="investment-link" href="@JustEtfUrl(justEtfIsin)"
-                                                           target="_blank" rel="noopener noreferrer"
-                                                           aria-label="Pagina JustETF di @asset.Name">
-                                                            <MfIcon Name="link" Size="14" /> JustETF
                                                         </a>
                                                     }
                                                 </div>
@@ -402,6 +395,7 @@ else if (_workspace is { } workspace)
     ];
 
     private InvestmentWorkspace? _workspace;
+    private IReadOnlyDictionary<Guid, string> _routeKeys = new Dictionary<Guid, string>();
     private bool _loading = true;
     private string? _loadError;
     private bool _updatingAllPrices;
@@ -449,6 +443,7 @@ else if (_workspace is { } workspace)
         try
         {
             _workspace = await Workspace.LoadAsync();
+            RefreshRouteKeys();
         }
         catch (InvalidOperationException exception)
             when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
@@ -512,6 +507,7 @@ else if (_workspace is { } workspace)
         try
         {
             _workspace = await Workspace.LoadAsync();
+            RefreshRouteKeys();
             _loadError = null;
         }
         catch (Exception)
@@ -519,6 +515,18 @@ else if (_workspace is { } workspace)
             _loadError = "Impossibile aggiornare gli investimenti. Verificare la connessione al database e riprovare.";
         }
     }
+
+    private void RefreshRouteKeys() =>
+        _routeKeys = _workspace is null
+            ? new Dictionary<Guid, string>()
+            : RouteKey.BuildKeys(
+                _workspace.Assets,
+                asset => asset.InstrumentId,
+                asset => asset.Name,
+                "strumento");
+
+    private string InstrumentKey(Guid instrumentId) =>
+        _routeKeys.TryGetValue(instrumentId, out var key) ? key : instrumentId.ToString();
 
     private IReadOnlyList<InvestmentAssetRow> FilteredAssets
     {
@@ -713,8 +721,6 @@ else if (_workspace is { } workspace)
     private static string QuantityText(InvestmentAssetRow asset) =>
         asset.Quantity is { } quantity ? Format.Quantity(quantity) : "—";
 
-    private static string JustEtfUrl(string isin) =>
-        $"https://www.justetf.com/it/etf-profile.html?isin={isin}";
 
     private void OpenOutdatedQuotesDialog() => _outdatedQuotesOpen = true;
 

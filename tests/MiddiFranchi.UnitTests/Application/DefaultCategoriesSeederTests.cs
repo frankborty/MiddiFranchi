@@ -68,6 +68,7 @@ public class DefaultCategoriesSeederTests
     public async Task Ensure_ShouldSkip_WhenSeedMarkerIsPresent()
     {
         _metadata.Values[DefaultCategoriesSeeder.SeedKey] = "done";
+        _metadata.Values[DefaultCategoriesSeeder.InvestmentIncomeSeedKey] = "done";
 
         var added = await _seeder.EnsureAsync();
 

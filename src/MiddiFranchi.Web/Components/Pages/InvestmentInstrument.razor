@@ -1,4 +1,4 @@
-@page "/investments/instruments/{InstrumentId:guid}"
+@page "/investments/instruments/{InstrumentKey}"
 @rendermode InteractiveServer
 @using System.Globalization
 @using MiddiFranchi.Application.Financial
@@ -7,6 +7,8 @@
 @using MiddiFranchi.Domain.Shared
 @inject InvestmentWorkspaceService Workspace
 @inject InvestmentAssetService AssetService
+@inject OperationHistoryService History
+@inject CategoryService CategoriesService
 @inject PriceUpdateService PriceUpdates
 @inject NavigationManager Navigation
 
@@ -101,22 +103,15 @@ else if (_asset is { } asset)
         @if (asset.AssetClass == AssetClass.Bond)
         {
             <StatTile Label="Valore attuale" Value="@MoneyText(asset.CurrentValue)" />
-            <StatTile Label="Cedole totali" Value="@Format.Money(asset.Income)" />
-            <StatTile Label="Cedole annuali"
-                      Value="@AnnualCouponText(asset)"
-                      Hint="@AnnualCouponHint(asset)" />
-            <StatTile Label="Scadenza"
-                      Value="@(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")"
-                      Hint="@(asset.MaturityDate is not null ? MaturityText(asset) : null)" />
-            @if (asset.CouponRate is { } couponRate)
-            {
-                <StatTile Label="Tasso di interesse" Value="@NumberPercent(couponRate)" />
-            }
+            <StatTile Label="Capitale investito" Value="@MoneyText(asset.InvestedCapital)" />
+            <StatTile Label="Quotazione" Value="@QuoteValue(asset)" />
+            <StatTile Label="Cedole nette" Value="@Format.Money(NetCouponIncome)" />
         }
         else
         {
             <StatTile Label="Valore attuale" Value="@MoneyText(asset.CurrentValue)" />
             <StatTile Label="Capitale investito" Value="@MoneyText(asset.InvestedCapital)" />
+            <StatTile Label="Quotazione" Value="@QuoteValue(asset)" />
             <StatTile Label="Prezzo medio" Value="@MoneyText(asset.AverageCost)" />
             <StatTile Label="Rendimento"
                       Value="@MoneySigned(asset.TotalResult)"
@@ -125,7 +120,6 @@ else if (_asset is { } asset)
                       Value="@SignedPercent(asset.TotalResultPercent)"
                       ValueClass="@ResultClass(asset.TotalResultPercent)" />
         }
-        <StatTile Label="Quotazione" Value="@QuoteValue(asset)" />
     </div>
 
     <div class="instrument-chart-controls-bar">
@@ -247,6 +241,49 @@ else if (_asset is { } asset)
         </section>
     </div>
 
+    @if (asset.AssetClass == AssetClass.Bond)
+    {
+        <section class="card" aria-labelledby="bond-coupons-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="bond-coupons-title"><MfIcon Name="percent" Size="18" /> Cedole pagate</h2>
+                </div>
+            </div>
+
+            @if (CouponPayments.Count == 0)
+            {
+                <p class="page-status">Nessuna cedola registrata.</p>
+            }
+            else
+            {
+                <div class="table-scroll" tabindex="0">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Data</th>
+                                <th scope="col">Descrizione</th>
+                                <th scope="col" class="num">Lordo</th>
+                                <th scope="col" class="num">Netto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var coupon in CouponPayments)
+                            {
+                                <tr class="history-row" tabindex="0" title="Apri e modifica"
+                                    @onclick="() => OpenCouponAsync(coupon)">
+                                    <td>@Format.Date(coupon.Date)</td>
+                                    <td>@coupon.Description</td>
+                                    <td class="num">@Format.Money(coupon.Gross)</td>
+                                    <td class="num">@Format.Money(coupon.Net)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+
     <section class="card investment-operations-card" aria-labelledby="instrument-operations-title">
         <div class="section-head">
             <div>
@@ -254,7 +291,7 @@ else if (_asset is { } asset)
             </div>
         </div>
 
-        @if (asset.Operations.Count == 0)
+        @if (VisibleOperations.Count == 0)
         {
             <p class="page-status">Nessuna operazione registrata.</p>
         }
@@ -270,37 +307,30 @@ else if (_asset is { } asset)
                             <th scope="col" class="num">Prezzo</th>
                             <th scope="col" class="num">Importo</th>
                             <th scope="col" class="num">Commissioni</th>
-                            <th scope="col"><span class="visually-hidden">Azioni</span></th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var operation in asset.Operations)
+                        @foreach (var operation in VisibleOperations)
                         {
-                            <tr class="@(operation.IsReversed ? "investment-operation-reversed" : "")">
+                            var editable = CanEditOperation(operation);
+                            <tr class="@(operation.IsReversed ? "investment-operation-reversed" : "") @(editable ? "investment-operation-clickable" : "")"
+                                tabindex="@(editable ? 0 : -1)"
+                                title="@(editable ? "Apri e modifica" : null)"
+                                @onclick="() => OpenEditOperation(asset, operation)">
                                 <td>@Format.Date(operation.OperationDate)</td>
                                 <td>
                                     <StatusBadge Tone="@OperationTone(operation.Kind)">
                                         @Format.InvestmentOperationKindLabel(operation.Kind)
                                     </StatusBadge>
+                                    @if (operation.IsReversed)
+                                    {
+                                        <StatusBadge Tone="warning">Stornata</StatusBadge>
+                                    }
                                 </td>
                                 <td class="num">@(operation.Quantity is { } quantity ? Format.Quantity(quantity) : "—")</td>
                                 <td class="num">@OperationPrice(operation, asset)</td>
                                 <td class="num">@OperationAmount(operation)</td>
                                 <td class="num">@(operation.Fees is { } fees ? Format.Money(fees) : "—")</td>
-                                <td class="num investment-operation-actions">
-                                    @if (operation.IsReversed)
-                                    {
-                                        <StatusBadge Tone="warning">Stornata</StatusBadge>
-                                    }
-                                    else if (CanEditOperation(operation))
-                                    {
-                                        <button type="button" class="icon-button"
-                                                aria-label="Modifica operazione"
-                                                @onclick="() => OpenEditOperation(asset, operation)">
-                                            <MfIcon Name="edit" Size="16" />
-                                        </button>
-                                    }
-                                </td>
                             </tr>
                         }
                     </tbody>
@@ -328,6 +358,10 @@ else if (_asset is { } asset)
                     <dt><MfIcon Name="coin" Size="15" /> Unità di prezzo</dt>
                     <dd>@Format.PriceUnitLabel(asset.PriceUnit)</dd>
                 </div>
+                <div class="instrument-info-row">
+                    <dt><MfIcon Name="percent" Size="15" /> Tassazione</dt>
+                    <dd>@NumberPercent(asset.TaxRate)</dd>
+                </div>
                 @if (asset.Symbol is { } symbol)
                 {
                     <div class="instrument-info-row">
@@ -346,13 +380,7 @@ else if (_asset is { } asset)
                 {
                     <div class="instrument-info-row">
                         <dt><MfIcon Name="calendar" Size="15" /> Scadenza</dt>
-                        <dd>
-                            @(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")
-                            @if (asset.MaturityDate is not null)
-                            {
-                                <span class="instrument-info-hint">@MaturityText(asset)</span>
-                            }
-                        </dd>
+                        <dd>@(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")</dd>
                     </div>
                     <div class="instrument-info-row">
                         <dt><MfIcon Name="trend" Size="15" /> Tasso annuo</dt>
@@ -372,12 +400,7 @@ else if (_asset is { } asset)
                                 <a class="instrument-sheet-link" href="@referenceUrl" target="_blank"
                                    rel="noopener noreferrer">Apri scheda</a>
                             }
-                            @if (asset.Isin is { } sheetIsin)
-                            {
-                                <a class="instrument-sheet-link" href="@JustEtfUrl(sheetIsin)"
-                                   target="_blank" rel="noopener noreferrer">JustETF</a>
-                            }
-                            @if (asset.ReferenceUrl is null && asset.Isin is null)
+                            @if (asset.ReferenceUrl is null)
                             {
                                 <span class="investment-muted">Non impostato</span>
                             }
@@ -488,7 +511,7 @@ else if (_asset is { } asset)
                 <form class="form-grid" @onsubmit="SavePriceAsync">
                     <label>
                         <span>@(asset.PriceUnit == PriceUnit.PercentOfNominal ? "Prezzo (% del nominale)" : "Prezzo per unità (€)")</span>
-                        <input type="number" inputmode="decimal" step="any" min="0"
+                        <input type="text" inputmode="decimal"
                                required aria-required="true" @bind="_priceValueText" />
                     </label>
                     <label>
@@ -510,7 +533,6 @@ else if (_asset is { } asset)
 <InvestmentOperationDialog Open="_operationDialogOpen"
                            Asset="_asset"
                            Operation="_operationBeingEdited"
-                           SettlementAccounts="@(_workspace?.SettlementAccounts ?? Array.Empty<InvestmentOption>())"
                            PresetKind="_operationPresetKind"
                            LockKind="_operationLockKind"
                            PresetQuantity="_operationPresetQuantity"
@@ -518,6 +540,12 @@ else if (_asset is { } asset)
                            OnClose="CloseOperationDialog"
                            OnSaved="OnOperationSaved"
                            OnDeleted="OnOperationDeleted" />
+
+<OperationEditDialog Open="_couponEditOpen"
+                     Operation="_editingCouponIncome"
+                     Categories="_categories"
+                     OnClose="CloseCouponEdit"
+                     OnSaved="OnCouponSaved" />
 
 <InvestmentAssetDialog Open="_assetDialogOpen"
                        Asset="_asset"
@@ -530,10 +558,19 @@ else if (_asset is { } asset)
     private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
     [Parameter]
-    public Guid InstrumentId { get; set; }
+    public string InstrumentKey { get; set; } = "";
+
+    private Guid InstrumentId { get; set; }
+    private string _canonicalKey = "";
+    private string? _loadedKey;
 
     private InvestmentWorkspace? _workspace;
     private InvestmentAssetRow? _asset;
+    private IReadOnlyList<OperationHistoryRow> _couponIncomes = [];
+    private IReadOnlyList<OperationHistoryRow> _couponTaxes = [];
+    private IReadOnlyList<Category> _categories = [];
+    private bool _couponEditOpen;
+    private OperationHistoryRow? _editingCouponIncome;
     private bool _loading = true;
     private string? _loadError;
     private string? _message;
@@ -563,7 +600,16 @@ else if (_asset is { } asset)
     private int? _chartYear;
     private ReturnView _returnView = ReturnView.Cumulative;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.Equals(_loadedKey, InstrumentKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _loadedKey = InstrumentKey;
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -577,6 +623,12 @@ else if (_asset is { } asset)
             if (_asset is null)
             {
                 _loadError = "Strumento non trovato.";
+                _couponIncomes = [];
+            }
+            else
+            {
+                await LoadCouponIncomesAsync();
+                CanonicalizeUrl();
             }
         }
         catch (Exception)
@@ -596,6 +648,8 @@ else if (_asset is { } asset)
             _workspace = await Workspace.LoadAsync();
             _asset = FindAsset();
             _loadError = _asset is null ? "Strumento non trovato." : null;
+            await LoadCouponIncomesAsync();
+            CanonicalizeUrl();
         }
         catch (Exception)
         {
@@ -603,8 +657,165 @@ else if (_asset is { } asset)
         }
     }
 
-    private InvestmentAssetRow? FindAsset() =>
-        _workspace?.Assets.FirstOrDefault(asset => asset.InstrumentId == InstrumentId);
+    private async Task LoadCouponIncomesAsync()
+    {
+        if (_asset is not { AssetClass: AssetClass.Bond } bond)
+        {
+            _couponIncomes = [];
+            return;
+        }
+
+        var history = await History.ListAsync();
+        _couponIncomes = history
+            .Where(row => !row.IsInvestment &&
+                row.Kind == OperationKind.Income &&
+                row.InstrumentId == bond.InstrumentId)
+            .ToArray();
+        _couponTaxes = history
+            .Where(row => row.Kind == OperationKind.Expense &&
+                string.Equals(row.CategoryName, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
+                string.Equals(row.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase))
+            .ToArray();
+    }
+
+    private Money TotalCouponIncome =>
+        _asset is { AssetClass: AssetClass.Bond } asset
+            ? asset.Income + new Money(_couponIncomes.Sum(row => row.Amount?.Amount ?? 0m), Currency.Euro)
+            : _asset?.Income ?? new Money(0m, Currency.Euro);
+
+    private Money NetCouponIncome
+    {
+        get
+        {
+            var tax = CouponPayments.Sum(payment => payment.Gross.Amount - payment.Net.Amount);
+            return new Money(TotalCouponIncome.Amount - tax, Currency.Euro);
+        }
+    }
+
+    private IReadOnlyList<InvestmentOperationRow> VisibleOperations =>
+        _asset?.Operations
+            .Where(operation => operation.Kind is not (InvestmentOperationKind.Coupon or InvestmentOperationKind.Dividend))
+            .ToArray() ?? [];
+
+    private IReadOnlyList<CouponPayment> CouponPayments
+    {
+        get
+        {
+            if (_asset is not { AssetClass: AssetClass.Bond } asset)
+            {
+                return [];
+            }
+
+            var investmentCoupons = asset.Operations
+                .Where(operation =>
+                    operation.Kind == InvestmentOperationKind.Coupon &&
+                    !operation.IsReversed &&
+                    operation.Amount is not null)
+                .Select(operation =>
+                {
+                    var amount = operation.Amount!.Value;
+                    var tax = operation.Tax?.Amount ?? 0m;
+                    return new CouponPayment(
+                        operation.OperationDate,
+                        CouponLabel(operation.Description),
+                        amount,
+                        new Money(amount.Amount - tax, amount.Currency),
+                        operation.Id,
+                        true);
+                });
+
+            var incomeCoupons = _couponIncomes
+                .Where(row => row.Amount is { Amount: > 0m })
+                .Select(row =>
+                {
+                    var gross = row.Amount!.Value;
+                    var tax = TaxFor(row);
+                    return new CouponPayment(
+                        row.OperationDate,
+                        CouponLabel(row.Description),
+                        gross,
+                        new Money(gross.Amount - tax.Amount, gross.Currency),
+                        row.Id,
+                        false);
+                });
+
+            return investmentCoupons
+                .Concat(incomeCoupons)
+                .OrderByDescending(payment => payment.Date)
+                .ToArray();
+        }
+    }
+
+    private Money TaxFor(OperationHistoryRow income)
+    {
+        var tax = _couponTaxes
+            .Where(row => row.OperationDate == income.OperationDate && row.RecordedAt == income.RecordedAt)
+            .Sum(row => Math.Abs(row.Amount?.Amount ?? 0m));
+        return new Money(tax, Currency.Euro);
+    }
+
+    private sealed record CouponPayment(
+        DateOnly Date,
+        string Description,
+        Money Gross,
+        Money Net,
+        Guid OperationId,
+        bool IsInvestment);
+
+    private static string CouponLabel(string? description) =>
+        string.IsNullOrWhiteSpace(description)
+            ? "Cedola"
+            : description
+                .Replace("Cedola/Dividendo", "Cedola", StringComparison.CurrentCultureIgnoreCase)
+                .Replace("Cedola / Dividendo", "Cedola", StringComparison.CurrentCultureIgnoreCase)
+                .Trim();
+
+    private InvestmentAssetRow? FindAsset()
+    {
+        if (_workspace is null)
+        {
+            InstrumentId = Guid.Empty;
+            _canonicalKey = "";
+            return null;
+        }
+
+        var keys = RouteKey.BuildKeys(
+            _workspace.Assets,
+            asset => asset.InstrumentId,
+            asset => asset.Name,
+            "strumento");
+
+        InvestmentAssetRow? asset;
+        if (Guid.TryParse(InstrumentKey, out var parsed))
+        {
+            asset = _workspace.Assets.FirstOrDefault(candidate => candidate.InstrumentId == parsed);
+        }
+        else
+        {
+            var match = keys.FirstOrDefault(pair =>
+                string.Equals(pair.Value, InstrumentKey, StringComparison.OrdinalIgnoreCase));
+            asset = match.Value is null
+                ? null
+                : _workspace.Assets.FirstOrDefault(candidate => candidate.InstrumentId == match.Key);
+        }
+
+        InstrumentId = asset?.InstrumentId ?? Guid.Empty;
+        _canonicalKey = asset is not null && keys.TryGetValue(asset.InstrumentId, out var key) ? key : "";
+        return asset;
+    }
+
+    private void CanonicalizeUrl()
+    {
+        if (_asset is null ||
+            string.IsNullOrEmpty(_canonicalKey) ||
+            string.Equals(_canonicalKey, InstrumentKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _loadedKey = _canonicalKey;
+        Navigation.NavigateTo($"/investments/instruments/{_canonicalKey}", replace: true);
+    }
 
     private static readonly (ChartRange Value, string Label)[] ChartRangeOptions =
     [
@@ -883,6 +1094,11 @@ else if (_asset is { } asset)
 
     private void OpenEditOperation(InvestmentAssetRow asset, InvestmentOperationRow operation)
     {
+        if (!CanEditOperation(operation))
+        {
+            return;
+        }
+
         _message = null;
         _actionError = null;
         _operationBeingEdited = operation;
@@ -926,6 +1142,46 @@ else if (_asset is { } asset)
         await ReloadAsync();
     }
 
+    private async Task OpenCouponAsync(CouponPayment coupon)
+    {
+        if (coupon.IsInvestment)
+        {
+            if (_asset is { } asset)
+            {
+                var operation = asset.Operations.FirstOrDefault(candidate => candidate.Id == coupon.OperationId);
+                if (operation is not null)
+                {
+                    OpenEditOperation(asset, operation);
+                }
+            }
+
+            return;
+        }
+
+        var income = _couponIncomes.FirstOrDefault(row => row.Id == coupon.OperationId);
+        if (income is null)
+        {
+            return;
+        }
+
+        if (_categories.Count == 0)
+        {
+            _categories = await CategoriesService.ListAsync();
+        }
+
+        _editingCouponIncome = income;
+        _couponEditOpen = true;
+    }
+
+    private void CloseCouponEdit() => _couponEditOpen = false;
+
+    private async Task OnCouponSaved(string message)
+    {
+        _message = message;
+        _couponEditOpen = false;
+        await ReloadAsync();
+    }
+
     private void OpenEditAsset()
     {
         _message = null;
@@ -955,7 +1211,7 @@ else if (_asset is { } asset)
         }
 
         _showPriceForm = true;
-        _priceValueText = _asset?.LatestPrice?.ToString(CultureInfo.InvariantCulture) ?? "";
+        _priceValueText = DecimalText.Format(_asset?.LatestPrice);
         _priceDate = DateOnly.FromDateTime(DateTime.UtcNow);
         _priceError = null;
     }
@@ -1169,51 +1425,8 @@ else if (_asset is { } asset)
     private static string NumberPercent(decimal value) =>
         $"{value.ToString("N2", ItalianCulture)} %";
 
-    private static string AnnualCouponText(InvestmentAssetRow asset) =>
-        asset.CouponRate is { } rate &&
-        asset.NotionalValue is { } notional &&
-        asset.Quantity is { } quantity
-            ? Format.Money(new Money(
-                notional.Amount * quantity.Value * rate / 100m,
-                asset.QuoteCurrency))
-            : "—";
-
-    private static string? AnnualCouponHint(InvestmentAssetRow asset) =>
-        asset.CouponRate is null ? "Tasso non indicato"
-        : asset.NotionalValue is null ? "Nominale non indicato"
-        : asset.Quantity is null ? "Quantità non disponibile"
-        : null;
-
-    private string MaturityText(InvestmentAssetRow asset)
-    {
-        if (asset.MaturityDate is not { } maturity)
-        {
-            return "";
-        }
-
-        var days = maturity.DayNumber - ValuationDate.DayNumber;
-        return days switch
-        {
-            < 0 => $"Scaduta da {-days} giorni",
-            0 => "Scade oggi",
-            _ => $"Mancano {days} giorni",
-        };
-    }
-
-    private static string JustEtfUrl(string isin) =>
-        $"https://www.justetf.com/it/etf-profile.html?isin={isin}";
-
-    private static bool TryParseDecimal(string? text, out decimal value)
-    {
-        value = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
-            || decimal.TryParse(text, NumberStyles.Float, ItalianCulture, out value);
-    }
+    private static bool TryParseDecimal(string? text, out decimal value) =>
+        DecimalText.TryParse(text, out value);
 
     private enum ChartRange
     {

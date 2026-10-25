@@ -138,6 +138,19 @@ public sealed class FakeLoanRepository : ILoanRepository
         return Task.CompletedTask;
     }
 
+    public Task UpdateAsync(Loan loan, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var index = Loans.FindIndex(candidate => candidate.Id == loan.Id);
+        if (index < 0)
+        {
+            throw new InvalidOperationException($"Il prestito {loan.Id} non esiste.");
+        }
+
+        Loans[index] = loan;
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAsync(Guid loanId, CancellationToken cancellationToken = default)
     {
         ReceivedTokens.Add(cancellationToken);

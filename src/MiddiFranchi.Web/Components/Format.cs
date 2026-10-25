@@ -28,6 +28,9 @@ public static class Format
     public static string Date(DateOnly date) =>
         date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 
+    public static string UtcDate(DateTimeOffset timestamp) =>
+        Date(DateOnly.FromDateTime(timestamp.UtcDateTime));
+
     public static string ChartDate(DateOnly date, bool includeYear = false) =>
         date.ToString(includeYear ? "MMM yyyy" : "d MMM", CultureInfo.GetCultureInfo("it-IT"));
 
@@ -85,7 +88,7 @@ public static class Format
     {
         InvestmentOperationKind.Buy => "Acquisto",
         InvestmentOperationKind.Sell => "Vendita",
-        InvestmentOperationKind.Dividend => "Dividendo",
+        InvestmentOperationKind.Dividend => "Cedola",
         InvestmentOperationKind.Coupon => "Cedola",
         InvestmentOperationKind.StandaloneFee => "Commissione",
         InvestmentOperationKind.TransferIn => "Trasferimento in entrata",

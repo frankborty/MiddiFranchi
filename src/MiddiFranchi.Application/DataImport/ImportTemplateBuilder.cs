@@ -25,13 +25,13 @@ internal static class ImportTemplateBuilder
             [
                 "external_id", "name", "asset_class", "status", "symbol", "isin",
                 "quote_currency", "price_unit", "notional_value", "notional_currency",
-                "reference_url", "notes", "maturity_date", "coupon_rate",
+                "reference_url", "notes", "maturity_date", "coupon_rate", "tax_rate",
             ],
             [
                 new string?[]
                 {
                     "etf-esempio", "ETF esempio", "Equity", "Active", "EXMP", "IT0000000001",
-                    "EUR", "PerUnit", "", "", "", "", "", "",
+                    "EUR", "PerUnit", "", "", "", "", "", "", "26",
                 },
             ]);
 
@@ -129,7 +129,7 @@ internal static class ImportTemplateBuilder
         instruments.csv
         ---------------
         external_id,name,asset_class,status,symbol,isin,quote_currency,price_unit,
-        notional_value,notional_currency,reference_url,notes,maturity_date,coupon_rate
+        notional_value,notional_currency,reference_url,notes,maturity_date,coupon_rate,tax_rate
         asset_class: Equity, Bond, MoneyMarket, RealEstate, Commodity, Crypto, Mixed,
                      Pension, Other
         status: Active, Archived (default Active)
@@ -137,6 +137,7 @@ internal static class ImportTemplateBuilder
         price_unit: PerUnit, PercentOfNominal
         notional_value/notional_currency: obbligatori per PercentOfNominal
         maturity_date/coupon_rate: solo per Bond
+        tax_rate: aliquota di tassazione in percentuale (0-100, default 26)
 
         instrument_prices.csv
         ---------------------

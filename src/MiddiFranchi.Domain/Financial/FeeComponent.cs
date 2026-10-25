@@ -4,14 +4,9 @@ namespace MiddiFranchi.Domain.Financial;
 
 public sealed class FeeComponent
 {
-    public FeeComponent(FeeKind kind, PositiveMoney amount, Account debitAccount)
+    public FeeComponent(FeeKind kind, PositiveMoney amount, Account? debitAccount = null)
     {
-        if (debitAccount is null)
-        {
-            throw new ArgumentNullException(nameof(debitAccount));
-        }
-
-        if (amount.Value.Currency != debitAccount.Currency)
+        if (debitAccount is not null && amount.Value.Currency != debitAccount.Currency)
         {
             throw new ArgumentException(
                 $"Valuta della commissione ({amount.Value.Currency.Code}) diversa dalla valuta del conto di addebito ({debitAccount.Currency.Code}).",
@@ -27,5 +22,5 @@ public sealed class FeeComponent
 
     public PositiveMoney Amount { get; }
 
-    public Account DebitAccount { get; }
+    public Account? DebitAccount { get; }
 }

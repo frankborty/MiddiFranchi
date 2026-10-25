@@ -6,6 +6,7 @@
 @using MiddiFranchi.Domain.Shared
 @inject CategoryService CategoriesService
 @inject OperationHistoryService History
+@inject InvestmentWorkspaceService Investments
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -523,7 +524,13 @@ else
                                             }
                                         </td>
                                         <td>@row.Subcategory</td>
-                                        <td>@row.Description</td>
+                                        <td>
+                                            @row.Description
+                                            @if (row.InstrumentName is { } instrumentName)
+                                            {
+                                                <span class="table-hint"> · @instrumentName</span>
+                                            }
+                                        </td>
                                         <td class="num">
                                             @if (row.Amount is { } amount)
                                             {
@@ -575,6 +582,7 @@ else
 
     <OperationDialog Open="_dialogOpen"
                      Categories="_categories"
+                     Instruments="_instrumentOptions"
                      OnClose="CloseDialog"
                      OnSaved="OnOperationSaved" />
 
@@ -583,6 +591,13 @@ else
                          Categories="_categories"
                          OnClose="CloseEdit"
                          OnSaved="OnOperationSaved" />
+
+    <InvestmentOperationDialog Open="_investmentDialogOpen"
+                               Asset="_investmentAsset"
+                               Operation="_investmentOperation"
+                               OnClose="CloseInvestmentDialog"
+                               OnSaved="OnInvestmentSaved"
+                               OnDeleted="OnInvestmentDeleted" />
 
     <CategoryBreakdownDialog Open="_categoryDialogOpen"
                              CategoryName="@(_selectedCategory ?? "")"
@@ -622,6 +637,11 @@ else
     }
 
     private IReadOnlyList<Category> _categories = [];
+    private IReadOnlyList<InvestmentOption> _instrumentOptions = [];
+    private InvestmentWorkspace? _workspace;
+    private InvestmentAssetRow? _investmentAsset;
+    private InvestmentOperationRow? _investmentOperation;
+    private bool _investmentDialogOpen;
     private IReadOnlyList<OperationHistoryRow> _history = [];
     private IReadOnlyList<OperationHistoryRow> _visibleHistory = [];
     private bool _loading = true;
@@ -1364,6 +1384,12 @@ else
         try
         {
             _categories = await CategoriesService.ListAsync();
+            _workspace = await Investments.LoadAsync();
+            _instrumentOptions = _workspace.Assets
+                .Where(asset => !asset.IsArchived)
+                .OrderBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+                .Select(asset => new InvestmentOption(asset.InstrumentId, asset.Name))
+                .ToArray();
             await LoadHistoryAsync();
         }
         catch (InvalidOperationException exception) when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
@@ -1553,11 +1579,52 @@ else
         await LoadHistoryAsync();
     }
 
-    private void OpenEdit(OperationHistoryRow row)
+    private async Task OpenEdit(OperationHistoryRow row)
     {
+        if (row.IsInvestment)
+        {
+            await OpenInvestmentCouponAsync(row);
+            return;
+        }
+
         _savedMessage = null;
         _editingRow = row;
         _editDialogOpen = true;
+    }
+
+    private async Task OpenInvestmentCouponAsync(OperationHistoryRow row)
+    {
+        _workspace = await Investments.LoadAsync();
+        var asset = row.InstrumentId is { } instrumentId
+            ? _workspace.Assets.FirstOrDefault(candidate => candidate.InstrumentId == instrumentId)
+            : null;
+        var operation = asset?.Operations.FirstOrDefault(candidate => candidate.Id == row.Id);
+        if (asset is null || operation is null)
+        {
+            _savedMessage = "Cedola non trovata.";
+            return;
+        }
+
+        _savedMessage = null;
+        _investmentAsset = asset;
+        _investmentOperation = operation;
+        _investmentDialogOpen = true;
+    }
+
+    private void CloseInvestmentDialog() => _investmentDialogOpen = false;
+
+    private async Task OnInvestmentSaved()
+    {
+        _savedMessage = "Operazione salvata.";
+        _investmentDialogOpen = false;
+        await LoadAsync();
+    }
+
+    private async Task OnInvestmentDeleted()
+    {
+        _savedMessage = "Operazione eliminata.";
+        _investmentDialogOpen = false;
+        await LoadAsync();
     }
 
     private void CloseEdit() => _editDialogOpen = false;
@@ -1575,23 +1642,14 @@ else
 
     private void CloseCategoryBreakdown() => _categoryDialogOpen = false;
 
-    private static bool TryParseAmount(string? text, out decimal amount)
-    {
-        amount = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
+    private static bool TryParseAmount(string? text, out decimal amount) =>
+        DecimalText.TryParse(text, out amount);
 
-        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
-            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
-    }
-
-    private void OnRowKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args, OperationHistoryRow row)
+    private async Task OnRowKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args, OperationHistoryRow row)
     {
         if (args.Key is "Enter" or " ")
         {
-            OpenEdit(row);
+            await OpenEdit(row);
         }
     }
 

@@ -45,14 +45,16 @@ public sealed class OperationUpdateService
 
         FinancialOperation updated = operation switch
         {
-            Income => new Income(
+            Income income => new Income(
                 operation.Id,
                 account: null,
                 category,
                 request.Amount,
                 request.OperationDate,
                 operation.RecordedAt,
-                request.Description),
+                request.Description,
+                notes: null,
+                instrument: income.Instrument),
             Expense => new Expense(
                 operation.Id,
                 account: null,

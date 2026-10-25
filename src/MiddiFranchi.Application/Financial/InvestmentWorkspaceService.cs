@@ -81,21 +81,11 @@ public sealed class InvestmentWorkspaceService
 
         var allocation = BuildAllocation(rows);
         var totalIncome = results.Income;
-        var settlementAccounts = accounts
-            .Where(account => account.Status == AccountStatus.Active)
-            .Where(account => account.Currency == Euro)
-            .Where(account => account.Type is AccountType.Checking or AccountType.Card or AccountType.Cash)
-            .OrderBy(account => account.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(account => account.Id)
-            .Select(account => new InvestmentOption(account.Id, account.Name))
-            .ToArray();
-
         return new InvestmentWorkspace(
             overview,
             rows,
             allocation,
             totalIncome,
-            settlementAccounts,
             rows.Count(row => row.IsArchived),
             rows.Length);
     }
@@ -173,6 +163,7 @@ public sealed class InvestmentWorkspaceService
             instrument.NotionalValue,
             instrument.MaturityDate,
             instrument.CouponRate,
+            instrument.TaxRate,
             quantity,
             averageCost,
             averageCostPercent,
@@ -215,6 +206,7 @@ public sealed class InvestmentWorkspaceService
         var instrumentPrices = prices
             .Where(price => price.Instrument.Id == instrument.Id)
             .ToArray();
+        var historyPrices = InvestmentHistoryPrices.WithExecutionPrices(instrumentPrices, positionOperations);
         var from = positionOperations.Min(operation => operation.OperationDate);
         var operationDates = positionOperations
             .Select(operation => operation.OperationDate)
@@ -247,7 +239,7 @@ public sealed class InvestmentWorkspaceService
         {
             var valuation = InvestmentValuationCalculator.Valuate(
                 operations,
-                instrumentPrices,
+                historyPrices,
                 date,
                 ValuationPolicy.Unbounded);
             Money? current;
@@ -287,16 +279,24 @@ public sealed class InvestmentWorkspaceService
         Money? grossAmount = effectiveUnitPrice is { } price && operation.Quantity is { } quantity
             ? new Money(price.Amount * quantity.Value, price.Currency)
             : null;
-        Money? fees = operation.Fees.Count == 0
-            ? null
-            : new Money(operation.Fees.Sum(fee => fee.Amount.Value.Amount), Euro);
-        var accountName = accounts.TryGetValue(operation.SettlementAccount.Id, out var account)
-            ? account.Name
-            : operation.SettlementAccount.Name;
+        var commission = operation.Fees
+            .Where(fee => fee.Kind != FeeKind.TaxWithheld)
+            .Sum(fee => fee.Amount.Value.Amount);
+        var tax = operation.Fees
+            .Where(fee => fee.Kind == FeeKind.TaxWithheld)
+            .Sum(fee => fee.Amount.Value.Amount);
+        Money? fees = commission > 0m ? new Money(commission, Euro) : null;
+        Money? taxMoney = tax > 0m ? new Money(tax, Euro) : null;
+        var accountId = operation.SettlementAccount?.Id ?? Guid.Empty;
+        var accountName = operation.SettlementAccount is { } settlementAccount
+            ? accounts.TryGetValue(settlementAccount.Id, out var account)
+                ? account.Name
+                : settlementAccount.Name
+            : string.Empty;
 
         return new InvestmentOperationRow(
             operation.Id,
-            operation.SettlementAccount.Id,
+            accountId,
             operation.InvestmentKind,
             operation.OperationDate,
             operation.Quantity,
@@ -306,10 +306,17 @@ public sealed class InvestmentWorkspaceService
             grossAmount,
             fees,
             operation.Amount?.Value,
-            operation.Description,
+            NormalizeDescription(operation.Description),
             accountName,
-            operation.Status == OperationStatus.Reversed);
+            operation.Status == OperationStatus.Reversed,
+            taxMoney);
     }
+
+    private static string? NormalizeDescription(string? description) =>
+        description?
+            .Replace("Cedola/Dividendo", "Cedola", StringComparison.CurrentCultureIgnoreCase)
+            .Replace("Cedola / Dividendo", "Cedola", StringComparison.CurrentCultureIgnoreCase)
+            .Trim();
 
     private static IReadOnlyList<InvestmentClassAllocation> BuildAllocation(
         IReadOnlyList<InvestmentAssetRow> rows)

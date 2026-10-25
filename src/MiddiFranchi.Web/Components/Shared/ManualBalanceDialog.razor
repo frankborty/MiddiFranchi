@@ -76,7 +76,7 @@
                 }
                 <label>
                     <span>Importo in EUR *</span>
-                    <input type="number" step="any" required aria-required="true" autofocus @bind="_amount" />
+                    <input type="text" inputmode="decimal" required aria-required="true" autofocus @bind="_amount" />
                 </label>
                 <label>
                     <span>Data *</span>
@@ -219,15 +219,6 @@
         }
     }
 
-    private static bool TryParseAmount(string? text, out decimal amount)
-    {
-        amount = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out amount)
-            || decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("it-IT"), out amount);
-    }
+    private static bool TryParseAmount(string? text, out decimal amount) =>
+        DecimalText.TryParse(text, out amount);
 }

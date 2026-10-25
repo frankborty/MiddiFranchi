@@ -74,6 +74,11 @@
                             <span>Codice ISIN</span>
                             <input type="text" maxlength="12" placeholder="12 caratteri" @bind="_isin" />
                         </label>
+
+                        <label>
+                            <span>Tassazione (%)</span>
+                            <input type="text" inputmode="decimal" placeholder="26" @bind="_taxRateText" />
+                        </label>
                     </div>
                 </fieldset>
 
@@ -86,7 +91,7 @@
                             {
                                 <label>
                                     <span>Valore nominale per unità (€) *</span>
-                                    <input type="number" inputmode="decimal" step="any" min="0" placeholder="1000,00"
+                                    <input type="text" inputmode="decimal" placeholder="1000,00"
                                            required aria-required="true" @bind="_notionalText" />
                                 </label>
                             }
@@ -99,8 +104,8 @@
                                 </label>
                                 <label>
                                     <span>Rendimento annuo (%)</span>
-                                    <input type="number" inputmode="decimal" step="any" min="0" max="100"
-                                           placeholder="Es. 3,5" @bind="_couponRateText" />
+                                    <input type="text" inputmode="decimal" placeholder="Es. 3,5"
+                                           @bind="_couponRateText" />
                                 </label>
                             }
                         </div>
@@ -203,6 +208,7 @@
     private PriceUnit _priceUnit = PriceUnit.PerUnit;
     private string _symbol = "";
     private string _isin = "";
+    private string _taxRateText = "";
     private string _notionalText = "";
     private string _referenceUrl = "";
     private string _notes = "";
@@ -240,14 +246,11 @@
         _priceUnit = Asset?.PriceUnit ?? PriceUnit.PerUnit;
         _symbol = Asset?.Symbol ?? "";
         _isin = Asset?.Isin ?? "";
-        _notionalText = Asset?.NotionalValue is { } notional
-            ? notional.Amount.ToString(CultureInfo.InvariantCulture)
-            : "";
+        _taxRateText = DecimalText.Format(Asset?.TaxRate ?? Instrument.DefaultTaxRate);
+        _notionalText = DecimalText.Format(Asset?.NotionalValue?.Amount);
         _referenceUrl = Asset?.ReferenceUrl ?? "";
         _notes = Asset?.Notes ?? "";
-        _couponRateText = Asset?.CouponRate is { } rate
-            ? rate.ToString(CultureInfo.InvariantCulture)
-            : "";
+        _couponRateText = DecimalText.Format(Asset?.CouponRate);
         _maturityDate = Asset?.MaturityDate;
     }
 
@@ -292,6 +295,18 @@
 
         var maturityDate = IsBond ? _maturityDate : null;
 
+        var taxRate = Instrument.DefaultTaxRate;
+        if (!string.IsNullOrWhiteSpace(_taxRateText))
+        {
+            if (!TryParseDecimal(_taxRateText, out var rate) || rate < 0m || rate > 100m)
+            {
+                _error = "La tassazione deve essere un numero compreso tra 0 e 100.";
+                return;
+            }
+
+            taxRate = rate;
+        }
+
         _saving = true;
         try
         {
@@ -307,7 +322,8 @@
                     _referenceUrl,
                     _notes,
                     maturityDate,
-                    couponRate));
+                    couponRate,
+                    taxRate));
             }
             else
             {
@@ -322,7 +338,8 @@
                     _referenceUrl,
                     _notes,
                     maturityDate,
-                    couponRate));
+                    couponRate,
+                    taxRate));
             }
 
             await OnSaved.InvokeAsync();
@@ -397,15 +414,6 @@
         await OnClose.InvokeAsync();
     }
 
-    private static bool TryParseDecimal(string? text, out decimal value)
-    {
-        value = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
-            || decimal.TryParse(text, NumberStyles.Float, CultureInfo.GetCultureInfo("it-IT"), out value);
-    }
+    private static bool TryParseDecimal(string? text, out decimal value) =>
+        DecimalText.TryParse(text, out value);
 }

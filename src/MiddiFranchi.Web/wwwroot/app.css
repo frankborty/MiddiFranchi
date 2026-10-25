@@ -795,9 +795,9 @@ input[type="date"] { font-family: inherit; }
     align-items: center;
     justify-content: center;
     gap: 8px;
-    background: var(--mf-expense);
+    background: #b4232c;
     color: #ffffff;
-    border: 1px solid var(--mf-expense);
+    border: 1px solid #b4232c;
     border-radius: var(--mf-radius-s);
     padding: 9px var(--mf-space-3);
     font: inherit;
@@ -807,7 +807,7 @@ input[type="date"] { font-family: inherit; }
     min-height: 44px;
     transition: filter var(--mf-speed) ease, transform var(--mf-speed) ease;
 }
-.danger-button:hover { filter: brightness(1.08); }
+.danger-button:hover { background: #991b2a; border-color: #991b2a; filter: none; }
 .danger-button:active { transform: translateY(1px); }
 .danger-button:disabled { opacity: 0.55; cursor: wait; }
 
@@ -1543,7 +1543,7 @@ input[type="date"] { font-family: inherit; }
 .loan-list { list-style: none; margin: 0; padding: 0; }
 .loan-row {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) auto 44px;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--mf-space-3);
     padding: 10px 0;
@@ -1581,6 +1581,24 @@ input[type="date"] { font-family: inherit; }
     white-space: nowrap;
 }
 .loan-amount .amount { font-size: var(--mf-text-lg); font-weight: 800; }
+.loan-detail-actions { margin-bottom: var(--mf-space-4); }
+.loan-repayment-summary {
+    display: flex;
+    gap: var(--mf-space-4);
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    padding: var(--mf-space-3);
+    border-radius: var(--mf-radius-s);
+    background: var(--mf-surface-inset);
+}
+.loan-repayment-summary > div { display: flex; flex-direction: column; gap: 2px; }
+.loan-repayment-summary span { color: var(--mf-text-muted); font-size: var(--mf-text-xs); }
+.loan-repayment-summary strong { font-size: var(--mf-text-lg); }
+.form-grid .loan-repayment-note { grid-column: 1 / -1; }
+.loan-reading-edit .form-actions > button {
+    min-height: 44px;
+    font-size: var(--mf-text-sm);
+}
 
 .investment-summary {
     display: flex;
@@ -1728,12 +1746,12 @@ input[type="date"] { font-family: inherit; }
         text-align: left;
     }
     .account-summary-balance .amount { font-size: var(--mf-text-md); }
-    .loan-row { grid-template-columns: 36px minmax(0, 1fr) auto; }
+    .loan-row { grid-template-columns: 36px minmax(0, 1fr); }
     .loan-amount {
         grid-column: 2;
         text-align: left;
     }
-    .loan-row > .icon-button { grid-column: 3; grid-row: 1 / span 2; }
+    .loan-row > .icon-button { display: none; }
     .activity-row {
         grid-template-columns: 32px minmax(0, 1fr);
         align-items: start;
@@ -1988,7 +2006,14 @@ input[type="date"] { font-family: inherit; }
 .history-table td:nth-child(2) { width: 44%; }
 .history-table th:nth-child(3),
 .history-table td:nth-child(3) { width: 28%; }
+.history-table th:nth-child(4), .history-table td:nth-child(4) { width: 30%; }
+.history-table th.num { text-align: center; }
+.history-table-loan th:nth-child(1), .history-table-loan td:nth-child(1) { width: 16%; }
+.history-table-loan th:nth-child(2), .history-table-loan td:nth-child(2) { width: 18%; }
+.history-table-loan th:nth-child(3), .history-table-loan td:nth-child(3) { width: 16%; }
+.history-table-loan th:nth-child(4), .history-table-loan td:nth-child(4) { width: 50%; }
 .history-table td.num { text-align: center; }
+.history-note { overflow-wrap: anywhere; }
 .history-row { cursor: pointer; }
 .history-row:hover td { background: var(--mf-surface-muted); }
 .history-row.panel-open td { background: var(--mf-surface-inset); }
@@ -2013,6 +2038,33 @@ input[type="date"] { font-family: inherit; }
     font-size: var(--mf-text-sm);
 }
 .reading-panel .form-actions { flex-wrap: nowrap; }
+.reading-panel .form-actions > button {
+    min-height: 44px;
+    font-size: var(--mf-text-sm);
+}
+.reading-delete-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mf-space-3);
+    flex-wrap: wrap;
+    margin-top: var(--mf-space-3);
+}
+.reading-delete-confirm > .form-actions { margin-left: auto; }
+.reading-delete-confirm .form-actions > button {
+    min-height: 44px;
+    font-size: var(--mf-text-sm);
+}
+.reading-delete-confirm .danger-button {
+    border-color: #b4232c;
+    background: #b4232c;
+    color: #ffffff;
+}
+.reading-delete-confirm .danger-button:hover {
+    border-color: #991b2a;
+    background: #991b2a;
+    filter: none;
+}
 .modal-backdrop {
     position: fixed;
     inset: 0;
@@ -2859,6 +2911,9 @@ input[type="date"] { font-family: inherit; }
 }
 .investment-operations-table { min-width: 760px; font-size: var(--mf-text-sm); }
 .investment-operation-reversed { opacity: 0.6; }
+.investment-operations-table tbody tr.investment-operation-clickable { cursor: pointer; }
+.investment-operations-table tbody tr.investment-operation-clickable:hover { background: var(--mf-surface-muted); }
+.investment-operations-table tbody tr.investment-operation-clickable:focus-visible { outline: 2px solid var(--mf-blue-600); outline-offset: -2px; }
 .investment-operation-actions { white-space: nowrap; }
 .investment-operation-actions .icon-button {
     display: inline-grid;

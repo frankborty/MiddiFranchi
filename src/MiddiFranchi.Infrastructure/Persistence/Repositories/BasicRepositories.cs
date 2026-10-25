@@ -251,6 +251,7 @@ public sealed class InstrumentRepository : IInstrumentRepository
         record.Notes = instrument.Notes;
         record.MaturityDate = instrument.MaturityDate;
         record.CouponRate = instrument.CouponRate;
+        record.TaxRate = instrument.TaxRate;
 
         await _context.SaveChangesAsync(cancellationToken);
     }

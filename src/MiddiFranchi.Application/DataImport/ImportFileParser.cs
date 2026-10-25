@@ -36,6 +36,7 @@ internal sealed record ParsedInstrument(
     string? Notes,
     DateOnly? MaturityDate,
     decimal? CouponRate,
+    decimal TaxRate,
     int Line);
 
 internal sealed record ParsedPrice(
@@ -336,6 +337,8 @@ internal static class ImportFileParser
                 var notes = row.GetTrimmed("notes");
                 var maturityDate = ParseOptionalDate(row, "maturity_date");
                 var couponRate = ParseOptionalDecimal(row, "coupon_rate");
+                var taxRate = ParseOptionalDecimal(row, "tax_rate")
+                    ?? Instrument.DefaultTaxRate;
 
                 var notional = notionalValue is { } value
                     ? new Money(value, Currency.Euro)
@@ -354,7 +357,8 @@ internal static class ImportFileParser
                     notes,
                     status,
                     maturityDate,
-                    couponRate);
+                    couponRate,
+                    taxRate);
 
                 result.Instruments.Add(new ParsedInstrument(
                     externalId,
@@ -369,6 +373,7 @@ internal static class ImportFileParser
                     notes,
                     maturityDate,
                     couponRate,
+                    taxRate,
                     row.Line));
             }
             catch (ImportValidationException exception)

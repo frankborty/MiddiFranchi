@@ -66,6 +66,8 @@ public sealed class InstrumentRecord
     public DateOnly? MaturityDate { get; set; }
 
     public decimal? CouponRate { get; set; }
+
+    public decimal TaxRate { get; set; }
 }
 
 public sealed class FinancialOperationRecord
@@ -170,9 +172,9 @@ public sealed class FeeComponentRecord
 
     public string AmountCurrencyCode { get; set; } = null!;
 
-    public Guid DebitAccountId { get; set; }
+    public Guid? DebitAccountId { get; set; }
 
-    public AccountRecord DebitAccount { get; set; } = null!;
+    public AccountRecord? DebitAccount { get; set; }
 }
 
 public sealed class PriceObservationRecord
@@ -243,6 +245,8 @@ public sealed class LoanReadingRecord
     public DateOnly ValidAt { get; set; }
 
     public DateTimeOffset RecordedAt { get; set; }
+
+    public string? Note { get; set; }
 }
 
 public sealed class AppMetadataRecord

@@ -1,3 +1,4 @@
+using MiddiFranchi.Domain.Portfolio;
 using MiddiFranchi.Domain.Shared;
 
 namespace MiddiFranchi.Domain.Financial;
@@ -12,7 +13,8 @@ public sealed class Income : FinancialOperation
         DateOnly operationDate,
         DateTimeOffset recordedAt,
         string? description = null,
-        string? notes = null)
+        string? notes = null,
+        Instrument? instrument = null)
         : base(id, operationDate, recordedAt, description, notes)
     {
         if (account is not null)
@@ -29,6 +31,7 @@ public sealed class Income : FinancialOperation
         Account = account;
         Category = category;
         Amount = amount;
+        Instrument = instrument;
     }
 
     public Account? Account { get; }
@@ -36,6 +39,9 @@ public sealed class Income : FinancialOperation
     public Category Category { get; }
 
     public PositiveMoney Amount { get; }
+
+    /// <summary>Strumento finanziario associato, per esempio per cedole e dividendi.</summary>
+    public Instrument? Instrument { get; }
 
     public override OperationKind Kind => OperationKind.Income;
 

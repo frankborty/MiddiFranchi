@@ -183,7 +183,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
-                    b.Property<Guid>("DebitAccountId")
+                    b.Property<Guid?>("DebitAccountId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("InvestmentOperationId")
@@ -337,13 +337,13 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_FinancialOperations_InvestmentDetail", "\"Kind\" <> 'Investment' OR (\"InvestmentKind\" IN ('Buy', 'Sell') AND \"InstrumentId\" IS NOT NULL AND \"QuantityValue\" IS NOT NULL AND \"QuotedPriceUnit\" IS NOT NULL AND \"AmountAmount\" IS NULL AND \"AmountCurrencyCode\" IS NULL) OR (\"InvestmentKind\" IN ('Dividend', 'Coupon') AND \"InstrumentId\" IS NOT NULL AND \"QuantityValue\" IS NULL AND \"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL AND \"AmountAmount\" IS NOT NULL AND \"AmountCurrencyCode\" IS NOT NULL) OR (\"InvestmentKind\" = 'StandaloneFee' AND \"QuantityValue\" IS NULL AND \"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL AND \"AmountAmount\" IS NULL AND \"AmountCurrencyCode\" IS NULL)");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_InvestmentFields", "\"Kind\" <> 'Investment' OR (\"InvestmentKind\" IS NOT NULL AND \"SettlementAccountId\" IS NOT NULL)");
+                            t.HasCheckConstraint("CK_FinancialOperations_InvestmentFields", "\"Kind\" <> 'Investment' OR \"InvestmentKind\" IS NOT NULL");
 
                             t.HasCheckConstraint("CK_FinancialOperations_InvestmentKind", "\"InvestmentKind\" IS NULL OR \"InvestmentKind\" IN ('Buy', 'Sell', 'Dividend', 'Coupon', 'StandaloneFee')");
 
                             t.HasCheckConstraint("CK_FinancialOperations_Kind", "\"Kind\" IN ('Income', 'Expense', 'Transfer', 'Investment', 'Reversal')");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_NonInvestmentFields", "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND \"InstrumentId\" IS NULL AND \"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND \"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");
+                            t.HasCheckConstraint("CK_FinancialOperations_NonInvestmentFields", "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND (\"InstrumentId\" IS NULL OR \"Kind\" = 'Income') AND \"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND \"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");
 
                             t.HasCheckConstraint("CK_FinancialOperations_NonOrdinaryFields", "\"Kind\" IN ('Income', 'Expense') OR (\"AccountId\" IS NULL AND \"CategoryId\" IS NULL)");
 
@@ -428,6 +428,9 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<decimal>("TaxRate")
+                        .HasColumnType("numeric");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Isin")
@@ -455,6 +458,8 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_Instruments_QuoteCurrencyCode", "\"QuoteCurrencyCode\" IN ('EUR')");
 
                             t.HasCheckConstraint("CK_Instruments_Status", "\"Status\" IN ('Active', 'Archived')");
+
+                            t.HasCheckConstraint("CK_Instruments_TaxRate", "\"TaxRate\" >= 0 AND \"TaxRate\" <= 100");
                         });
                 });
 
@@ -473,6 +478,9 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("LoanId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamptz");
@@ -619,8 +627,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.HasOne("MiddiFranchi.Infrastructure.Persistence.Entities.AccountRecord", "DebitAccount")
                         .WithMany()
                         .HasForeignKey("DebitAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("MiddiFranchi.Infrastructure.Persistence.Entities.FinancialOperationRecord", "InvestmentOperation")
                         .WithMany("Fees")

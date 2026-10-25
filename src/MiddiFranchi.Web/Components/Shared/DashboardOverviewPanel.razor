@@ -305,8 +305,9 @@
 
     private IReadOnlyList<TimeSeriesSeries> BuildSeries()
     {
-        // Tutte le serie condividono la stessa lista di date (quelle degli investimenti,
-        // con carry del saldo conti) così il tooltip mostra valori coerenti alla data.
+        // Le serie condividono la stessa lista di date. La base sono gli investimenti quando
+        // hanno osservazioni; senza investimenti si usa lo storico dei conti, altrimenti la
+        // panoramica resterebbe un grafico vuoto pur avendo saldi registrati.
         // Le serie deselezionate ricevono punti vuoti: ApexCharts le spegne con animazione.
         var investments = WindowFor(Data.Investments).Points;
         // Il primo punto reale della finestra può cadere dopo l'inizio dell'asse (es. 1M):
@@ -318,6 +319,13 @@
             investments = new[] { previous }.Concat(investments).ToArray();
         }
 
+        var accountPoints = WindowFor(Data.Accounts).Points;
+        var dates = investments.Select(point => point.Date)
+            .Concat(accountPoints.Select(point => point.Date))
+            .Distinct()
+            .OrderBy(date => date)
+            .ToArray();
+
         // Il saldo conti valido a una data può provenire da una rilevazione precedente alla
         // finestra scelta: usiamo lo storico completo per il carry-forward.
         var accountReadings = Data.Accounts.Points
@@ -325,44 +333,66 @@
             .GroupBy(point => point.Date)
             .ToDictionary(group => group.Key, group => group.First().Value);
 
-        var investmentsByDate = new Dictionary<DateOnly, Money?>();
-        var referenceByDate = new Dictionary<DateOnly, Money?>();
+        var investmentsByDate = investments
+            .Where(point => point.Value is not null)
+            .GroupBy(point => point.Date)
+            .ToDictionary(group => group.Key, group => group.First().Value);
+        var referenceByDate = investments
+            .Where(point => point.Reference is not null)
+            .GroupBy(point => point.Date)
+            .ToDictionary(group => group.Key, group => group.First().Reference);
+
         var accountsCarried = new Dictionary<DateOnly, Money?>();
+        var investmentsCarried = new Dictionary<DateOnly, Money?>();
+        var referenceCarried = new Dictionary<DateOnly, Money?>();
         var totalByDate = new Dictionary<DateOnly, Money?>();
         var readings = accountReadings.OrderBy(pair => pair.Key).ToArray();
+        var investmentReadings = investmentsByDate.OrderBy(pair => pair.Key).ToArray();
+        var referenceReadings = referenceByDate.OrderBy(pair => pair.Key).ToArray();
         var readingIndex = 0;
+        var investmentIndex = 0;
+        var referenceIndex = 0;
         Money? carry = null;
-        foreach (var point in investments)
+        Money? investmentCarry = null;
+        Money? referenceCarry = null;
+        foreach (var date in dates)
         {
             // Il saldo conti valido a una data è l'ultima rilevazione registrata prima: come il patrimonio netto.
-            while (readingIndex < readings.Length && readings[readingIndex].Key <= point.Date)
+            while (readingIndex < readings.Length && readings[readingIndex].Key <= date)
             {
                 carry = readings[readingIndex].Value;
                 readingIndex++;
             }
 
-            if (point.Value is not null)
+            while (investmentIndex < investmentReadings.Length && investmentReadings[investmentIndex].Key <= date)
             {
-                investmentsByDate[point.Date] = point.Value;
+                investmentCarry = investmentReadings[investmentIndex].Value;
+                investmentIndex++;
             }
 
-            if (point.Reference is not null)
+            while (referenceIndex < referenceReadings.Length && referenceReadings[referenceIndex].Key <= date)
             {
-                referenceByDate[point.Date] = point.Reference;
+                referenceCarry = referenceReadings[referenceIndex].Value;
+                referenceIndex++;
             }
 
-            accountsCarried[point.Date] = carry;
+            accountsCarried[date] = carry;
+            investmentsCarried[date] = investmentCarry;
+            referenceCarried[date] = referenceCarry;
 
-            if (point.Value is not null)
+            if (investmentCarry is not null || carry is not null)
             {
-                totalByDate[point.Date] = new Money(point.Value.Value.Amount + (carry?.Amount ?? 0m), point.Value.Value.Currency);
+                var currency = investmentCarry?.Currency ?? carry?.Currency ?? Currency.Euro;
+                totalByDate[date] = new Money(
+                    (investmentCarry?.Amount ?? 0m) + (carry?.Amount ?? 0m),
+                    currency);
             }
         }
 
         TimeSeriesPoint[] SeriesValues(Dictionary<DateOnly, Money?> map) =>
-            investments.Select(point => new TimeSeriesPoint(
-                point.Date,
-                map.TryGetValue(point.Date, out var value) ? value?.Amount : null)).ToArray();
+            dates.Select(date => new TimeSeriesPoint(
+                date,
+                map.TryGetValue(date, out var value) ? value?.Amount : null)).ToArray();
 
         var bothSelected = _showInvestments && _showAccounts;
         var noneSelected = !_showInvestments && !_showAccounts;
@@ -371,7 +401,7 @@
         [
             new TimeSeriesSeries(
                 Data.Investments.ValueLabel,
-                _showInvestments ? SeriesValues(investmentsByDate) : [],
+                _showInvestments ? SeriesValues(investmentsCarried) : [],
                 Color: "#8b5cf6"),
 
             new TimeSeriesSeries(
@@ -387,7 +417,7 @@
             new TimeSeriesSeries(
                 Data.Investments.ReferenceLabel,
                 _showInvestments && !bothSelected && !noneSelected
-                    ? SeriesValues(referenceByDate)
+                    ? SeriesValues(referenceCarried)
                     : [],
                 Color: "#94a3b8"),
         ];

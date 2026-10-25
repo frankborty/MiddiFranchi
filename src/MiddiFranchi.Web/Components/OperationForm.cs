@@ -226,17 +226,6 @@ public sealed class OperationFormDispatcher
         return amount;
     }
 
-    private static bool TryParseAmount(string? text, out decimal amount)
-    {
-        amount = 0m;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        // Senza separatore di migliaia: "10.5" e "10,5" restano decimali, mai migliaia.
-        const NumberStyles Styles = NumberStyles.Float;
-        return decimal.TryParse(text, Styles, CultureInfo.InvariantCulture, out amount)
-            || decimal.TryParse(text, Styles, AcceptedCultures[1], out amount);
-    }
+    private static bool TryParseAmount(string? text, out decimal amount) =>
+        DecimalText.TryParse(text, out amount);
 }

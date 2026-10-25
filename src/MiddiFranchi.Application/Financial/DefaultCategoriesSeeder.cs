@@ -17,6 +17,13 @@ public sealed record DefaultCategory(
 public sealed class DefaultCategoriesSeeder
 {
     public const string SeedKey = "seed.categories.v1";
+    public const string InvestmentIncomeSeedKey = "seed.categories.investmentIncome.v1";
+
+    public static readonly IReadOnlyList<DefaultCategory> InvestmentIncomeDefaults =
+    [
+        new("Cedole", null, CategoryType.Income, "percent", "#0ea5e9"),
+        new("Fees", "Tasse Plusvalenze", CategoryType.Expense, "percent", "#b4232c"),
+    ];
 
     public static readonly IReadOnlyList<DefaultCategory> Defaults =
     [
@@ -28,6 +35,7 @@ public sealed class DefaultCategoriesSeeder
         new("Concorrenza", null, CategoryType.Income, "briefcase", "#8b5cf6"),
         new("Premio Produzione", null, CategoryType.Income, "trophy", "#f59e0b"),
         new("Rimborsi", null, CategoryType.Income, "receipt", "#64748b"),
+        new("Cedole", null, CategoryType.Income, "percent", "#0ea5e9"),
         new("AltroIncome", null, CategoryType.Income, "tag", "#94a3b8"),
 
         // Uscite con icona e colore univoco per categoria.
@@ -58,6 +66,7 @@ public sealed class DefaultCategoriesSeeder
         new("Fees", "Postepay", CategoryType.Expense, "receipt", "#64748b"),
         new("Fees", "Conto Titoli", CategoryType.Expense, "receipt", "#64748b"),
         new("Fees", "Conto Corrente", CategoryType.Expense, "receipt", "#64748b"),
+        new("Fees", "Tasse Plusvalenze", CategoryType.Expense, "percent", "#b4232c"),
         new("Fees", "AltroFees", CategoryType.Expense, "receipt", "#64748b"),
 
         new("Fun & Shopping", "Vestiti", CategoryType.Expense, "shopping-bag", "#ec4899"),
@@ -103,18 +112,34 @@ public sealed class DefaultCategoriesSeeder
 
     public async Task<int> EnsureAsync(CancellationToken cancellationToken = default)
     {
-        if (await _metadata.IsSeedCompletedAsync(SeedKey, cancellationToken))
+        var added = 0;
+
+        if (!await _metadata.IsSeedCompletedAsync(SeedKey, cancellationToken))
         {
-            return 0;
+            added += await SeedAsync(Defaults, cancellationToken);
+            await _metadata.SetAsync(SeedKey, "done", cancellationToken);
         }
 
+        if (!await _metadata.IsSeedCompletedAsync(InvestmentIncomeSeedKey, cancellationToken))
+        {
+            added += await SeedAsync(InvestmentIncomeDefaults, cancellationToken);
+            await _metadata.SetAsync(InvestmentIncomeSeedKey, "done", cancellationToken);
+        }
+
+        return added;
+    }
+
+    private async Task<int> SeedAsync(
+        IReadOnlyList<DefaultCategory> definitions,
+        CancellationToken cancellationToken)
+    {
         var existing = await _categories.ListAsync(cancellationToken);
         var keys = existing
             .Select(category => Key(category.Name, category.Subcategory, category.Type))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var added = 0;
-        foreach (var definition in Defaults)
+        foreach (var definition in definitions)
         {
             if (!keys.Add(Key(definition.Name, definition.Subcategory, definition.Type)))
             {
@@ -132,8 +157,6 @@ public sealed class DefaultCategoriesSeeder
                 cancellationToken);
             added++;
         }
-
-        await _metadata.SetAsync(SeedKey, "done", cancellationToken);
 
         return added;
     }

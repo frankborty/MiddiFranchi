@@ -130,7 +130,7 @@ public class MigrationAndConstraintTests : PostgresTestBase
     }
 
     [PostgresFact]
-    public async Task Database_ShouldRejectFeesAttachedToDividendOperations()
+    public async Task Database_ShouldAllowTaxWithheldFeesOnDividendOperations()
     {
         var account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Currency.Euro, AccountStatus.Active);
@@ -153,13 +153,17 @@ public class MigrationAndConstraintTests : PostgresTestBase
         {
             InvestmentOperationId = dividend.Id,
             Ordinal = 0,
-            Kind = FeeKind.Standalone,
+            Kind = FeeKind.TaxWithheld,
             AmountAmount = 0.5m,
             AmountCurrencyCode = "EUR",
-            DebitAccountId = account.Id,
+            DebitAccountId = null,
         });
 
-        await Should.ThrowAsync<DbUpdateException>(() => Context.SaveChangesAsync());
+        await Context.SaveChangesAsync();
+
+        (await Context.Set<FeeComponentRecord>()
+            .CountAsync(fee => fee.InvestmentOperationId == dividend.Id))
+            .ShouldBe(1);
     }
 
     [PostgresFact]

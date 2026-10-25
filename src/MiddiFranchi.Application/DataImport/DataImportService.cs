@@ -335,7 +335,8 @@ public sealed class DataImportService
                 parsedInstrument.Notes,
                 parsedInstrument.Status,
                 parsedInstrument.MaturityDate,
-                parsedInstrument.CouponRate);
+                parsedInstrument.CouponRate,
+                parsedInstrument.TaxRate);
 
             var existing = await _instruments.GetByIdAsync(id, cancellationToken)
                 .ConfigureAwait(false);
@@ -447,9 +448,6 @@ public sealed class DataImportService
             var instrumentId = ExternalIdMapper.ToGuid(
                 ExternalIdMapper.InstrumentEntity,
                 parsedOperation.InstrumentExternalId);
-            var accountId = ExternalIdMapper.ToGuid(
-                ExternalIdMapper.AccountEntity,
-                parsedOperation.AccountExternalId);
             var recordedAt = new DateTimeOffset(
                 parsedOperation.Date.ToDateTime(TimeOnly.MinValue),
                 TimeSpan.Zero);
@@ -459,7 +457,6 @@ public sealed class DataImportService
                 recordedAt,
                 new RegisterInvestmentOperationRequest(
                     instrumentId,
-                    accountId,
                     parsedOperation.Kind,
                     parsedOperation.Date,
                     Quantity: parsedOperation.Quantity,

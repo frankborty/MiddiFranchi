@@ -1,7 +1,9 @@
 @namespace MiddiFranchi.Web.Components.Shared
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
 @inject OperationRegistrationService Registrations
+@inject InvestmentIncomeService InvestmentIncome
 
 @if (Open)
 {
@@ -36,15 +38,39 @@
                 @if (_kind == OperationFormKind.Income)
                 {
                     <label class="operation-form-wide">
-                        <span>Categoria *</span>
-                        <select @bind="_categoryId" required aria-required="true">
-                            <option value="">Seleziona…</option>
-                            @foreach (var category in IncomeCategories)
-                            {
-                                <option value="@category.Id">@category.Name</option>
-                            }
+                        <span>Tipo di entrata *</span>
+                        <select @bind="_incomeType" @bind:after="OnIncomeTypeChanged">
+                            <option value="general">Entrata</option>
+                            <option value="coupon">Cedola</option>
                         </select>
                     </label>
+
+                    @if (IsCouponDividend)
+                    {
+                        <label class="operation-form-wide">
+                            <span>Strumento finanziario *</span>
+                            <select @bind="_instrumentId" required aria-required="true">
+                                <option value="">Seleziona…</option>
+                                @foreach (var instrument in Instruments)
+                                {
+                                    <option value="@instrument.Id">@instrument.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    else
+                    {
+                        <label class="operation-form-wide">
+                            <span>Categoria *</span>
+                            <select @bind="_categoryId" required aria-required="true">
+                                <option value="">Seleziona…</option>
+                                @foreach (var category in IncomeCategories)
+                                {
+                                    <option value="@category.Id">@category.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
                 }
                 else
                 {
@@ -75,21 +101,46 @@
                     </label>
                 }
                 <label>
-                    <span>Importo *</span>
-                    <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00" required aria-required="true" @bind="_amountText" />
+                    <span>@(IsCouponDividend ? "Lordo *" : "Importo *")</span>
+                    <input type="text" inputmode="decimal" placeholder="0,00" required aria-required="true" @bind="_amountText" />
                 </label>
+                @if (IsCouponDividend)
+                {
+                    <label>
+                        <span>Tasse pagate (€)</span>
+                        <input type="text" inputmode="decimal" placeholder="0,00" @bind="_taxText" />
+                    </label>
+                }
                 <label>
                     <span>Data *</span>
                     <input type="date" required aria-required="true" @bind="_validAt" />
                 </label>
                 <label class="operation-form-wide">
                     <span>Descrizione / Nota</span>
-                    <input type="text" maxlength="200" placeholder="Es. Spesa settimanale" @bind="_description" />
+                    <input type="text" maxlength="200"
+                           placeholder="@(IsCouponDividend ? "Es. Cedola BTP giugno" : "Es. Spesa settimanale")"
+                           @bind="_description" />
                 </label>
+
+                @if (IsCouponDividend && !HasCouponCategories)
+                {
+                    <p class="alert alert-warning operation-form-wide" role="status">
+                        Mancano le categorie «Cedole &amp; Dividendi» (entrata) e «Fees · Tasse Plusvalenze» (uscita).
+                        <a class="primary-link" href="settings/categories">Configura le categorie</a>.
+                    </p>
+                }
+                @if (IsCouponDividend && Instruments.Count == 0)
+                {
+                    <p class="alert alert-warning operation-form-wide" role="status">
+                        Non ci sono strumenti finanziari attivi.
+                        <a class="primary-link" href="investments">Aggiungi uno strumento</a>.
+                    </p>
+                }
 
                 <div class="form-actions">
                     <button type="submit" class="primary-button" disabled="@(_saving || !CanRegister)">
-                        <MfIcon Name="plus" Size="18" /> Registra @(_kind == OperationFormKind.Income ? "entrata" : "uscita")
+                        <MfIcon Name="plus" Size="18" />
+                        Registra @(IsCouponDividend ? "cedola" : (_kind == OperationFormKind.Income ? "entrata" : "uscita"))
                     </button>
                     <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
                 </div>
@@ -113,6 +164,8 @@
 
     [Parameter] public IReadOnlyList<Category> Categories { get; set; } = [];
 
+    [Parameter] public IReadOnlyList<InvestmentOption> Instruments { get; set; } = [];
+
     [Parameter] public EventCallback OnClose { get; set; }
 
     [Parameter] public EventCallback<string> OnSaved { get; set; }
@@ -125,8 +178,27 @@
     private string _categoryName = "";
     private bool _filterByCategory;
     private string _amountText = "";
+    private string _taxText = "";
+    private string _incomeType = "general";
+    private string _instrumentId = "";
     private DateOnly? _validAt;
     private string? _description;
+
+    private bool IsCouponDividend =>
+        _kind == OperationFormKind.Income &&
+        string.Equals(_incomeType, "coupon", StringComparison.Ordinal);
+
+    private Category? CouponIncomeCategory => Categories.FirstOrDefault(category =>
+        category.Type == CategoryType.Income &&
+        string.Equals(category.Name, "Cedole", StringComparison.CurrentCultureIgnoreCase));
+
+    private Category? TaxExpenseCategory => Categories.FirstOrDefault(category =>
+        category.Type == CategoryType.Expense &&
+        string.Equals(category.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
+        string.Equals(category.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase));
+
+    private bool HasCouponCategories =>
+        CouponIncomeCategory is not null && TaxExpenseCategory is not null;
 
     private IReadOnlyList<Category> CategoryChoices => OperationForm.CategoriesFor(_kind, Categories);
 
@@ -143,7 +215,11 @@
                 .Where(group => string.Equals(group.Name, _categoryName, StringComparison.CurrentCultureIgnoreCase))
                 .ToArray();
 
-    private bool CanRegister => CategoryChoices.Count > 0 && !string.IsNullOrWhiteSpace(_categoryId);
+    private bool CanRegister => IsCouponDividend
+        ? Instruments.Count > 0 &&
+          !string.IsNullOrWhiteSpace(_instrumentId) &&
+          HasCouponCategories
+        : CategoryChoices.Count > 0 && !string.IsNullOrWhiteSpace(_categoryId);
 
     protected override void OnParametersSet()
     {
@@ -166,6 +242,9 @@
         _categoryName = "";
         _filterByCategory = false;
         _amountText = "";
+        _taxText = "";
+        _incomeType = "general";
+        _instrumentId = "";
         _validAt = DateOnly.FromDateTime(DateTime.UtcNow);
         _description = null;
     }
@@ -181,6 +260,17 @@
         _categoryId = "";
         _categoryName = "";
         _filterByCategory = false;
+        _incomeType = "general";
+        _instrumentId = "";
+        _taxText = "";
+        _error = null;
+    }
+
+    private void OnIncomeTypeChanged()
+    {
+        _categoryId = "";
+        _instrumentId = "";
+        _taxText = "";
         _error = null;
     }
 
@@ -225,6 +315,13 @@
         _saving = true;
         _error = null;
         StateHasChanged();
+
+        if (IsCouponDividend)
+        {
+            await SaveCouponDividendAsync();
+            return;
+        }
+
         try
         {
             var dispatcher = new OperationFormDispatcher(Registrations);
@@ -247,6 +344,87 @@
             {
                 _error = result.Error;
             }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task SaveCouponDividendAsync()
+    {
+        try
+        {
+            if (CouponIncomeCategory is not { } incomeCategory ||
+                TaxExpenseCategory is not { } taxCategory)
+            {
+                _error = "Mancano le categorie «Cedole» e «Fees · Tasse Plusvalenze».";
+                return;
+            }
+
+            if (!Guid.TryParse(_instrumentId, out var instrumentId))
+            {
+                _error = "Seleziona lo strumento finanziario.";
+                return;
+            }
+
+            if (!DecimalText.TryParse(_amountText, out var gross) || gross <= 0m)
+            {
+                _error = "Il lordo deve essere un importo positivo.";
+                return;
+            }
+
+            if (_validAt is null)
+            {
+                _error = "La data è obbligatoria.";
+                return;
+            }
+
+            PositiveMoney? tax = null;
+            if (!string.IsNullOrWhiteSpace(_taxText))
+            {
+                if (!DecimalText.TryParse(_taxText, out var taxAmount) || taxAmount < 0m)
+                {
+                    _error = "Le tasse devono essere un importo non negativo.";
+                    return;
+                }
+
+                if (taxAmount > 0m)
+                {
+                    tax = new PositiveMoney(new Money(taxAmount, Currency.Euro));
+                }
+            }
+
+            var result = await InvestmentIncome.RegisterAsync(
+                new RegisterInvestmentIncomeRequest(
+                    instrumentId,
+                    incomeCategory.Id,
+                    taxCategory.Id,
+                    new PositiveMoney(new Money(gross, Currency.Euro)),
+                    tax,
+                    _validAt.Value,
+                    string.IsNullOrWhiteSpace(_description) ? null : _description));
+
+            var message = $"Cedola di {Format.Money(result.Income.Amount.Value)} registrata.";
+            if (result.TaxExpense is { } taxExpense)
+            {
+                message += $" Tasse: {Format.Money(taxExpense.Amount.Value)}.";
+            }
+
+            await OnSaved.InvokeAsync(message);
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Registrazione non riuscita: verificare la connessione al database e riprovare.";
         }
         finally
         {

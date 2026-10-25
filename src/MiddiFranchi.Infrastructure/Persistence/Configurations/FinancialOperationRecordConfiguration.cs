@@ -68,8 +68,7 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
                 "(\"Kind\" <> 'Reversal' AND \"OriginalOperationId\" IS NULL)");
             table.HasCheckConstraint(
                 "CK_FinancialOperations_InvestmentFields",
-                "\"Kind\" <> 'Investment' OR (\"InvestmentKind\" IS NOT NULL AND " +
-                "\"SettlementAccountId\" IS NOT NULL)");
+                "\"Kind\" <> 'Investment' OR \"InvestmentKind\" IS NOT NULL");
             table.HasCheckConstraint(
                 "CK_FinancialOperations_OrdinaryFields",
                 "\"Kind\" NOT IN ('Income', 'Expense') OR (" +
@@ -83,7 +82,7 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
             table.HasCheckConstraint(
                 "CK_FinancialOperations_NonInvestmentFields",
                 "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND " +
-                "\"InstrumentId\" IS NULL AND " +
+                "(\"InstrumentId\" IS NULL OR \"Kind\" = 'Income') AND " +
                 "\"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND " +
                 "\"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND " +
                 "\"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");

@@ -9,7 +9,7 @@ public sealed class InvestmentOperation : FinancialOperation
         Guid id,
         InvestmentOperationKind investmentKind,
         Instrument? instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         Quantity? quantity,
         QuotedPrice? quotedPrice,
         PositiveMoney? amount,
@@ -38,7 +38,7 @@ public sealed class InvestmentOperation : FinancialOperation
 
     public Instrument? Instrument { get; }
 
-    public Account SettlementAccount { get; }
+    public Account? SettlementAccount { get; }
 
     public Quantity? Quantity { get; }
 
@@ -56,7 +56,7 @@ public sealed class InvestmentOperation : FinancialOperation
     public static InvestmentOperation Buy(
         Guid id,
         Instrument instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         Quantity quantity,
         QuotedPrice quotedPrice,
         IReadOnlyList<FeeComponent>? fees,
@@ -81,7 +81,7 @@ public sealed class InvestmentOperation : FinancialOperation
     public static InvestmentOperation Sell(
         Guid id,
         Instrument instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         Quantity quantity,
         QuotedPrice quotedPrice,
         IReadOnlyList<FeeComponent>? fees,
@@ -106,12 +106,13 @@ public sealed class InvestmentOperation : FinancialOperation
     public static InvestmentOperation Dividend(
         Guid id,
         Instrument instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         PositiveMoney amount,
         DateOnly operationDate,
         DateTimeOffset recordedAt,
         string? description = null,
-        string? notes = null) =>
+        string? notes = null,
+        IReadOnlyList<FeeComponent>? fees = null) =>
         ForKind(
             InvestmentOperationKind.Dividend,
             id,
@@ -120,7 +121,7 @@ public sealed class InvestmentOperation : FinancialOperation
             null,
             null,
             amount,
-            [],
+            fees ?? [],
             operationDate,
             recordedAt,
             description,
@@ -129,12 +130,13 @@ public sealed class InvestmentOperation : FinancialOperation
     public static InvestmentOperation Coupon(
         Guid id,
         Instrument instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         PositiveMoney amount,
         DateOnly operationDate,
         DateTimeOffset recordedAt,
         string? description = null,
-        string? notes = null) =>
+        string? notes = null,
+        IReadOnlyList<FeeComponent>? fees = null) =>
         ForKind(
             InvestmentOperationKind.Coupon,
             id,
@@ -143,7 +145,7 @@ public sealed class InvestmentOperation : FinancialOperation
             null,
             null,
             amount,
-            [],
+            fees ?? [],
             operationDate,
             recordedAt,
             description,
@@ -151,7 +153,7 @@ public sealed class InvestmentOperation : FinancialOperation
 
     public static InvestmentOperation StandaloneFee(
         Guid id,
-        Account settlementAccount,
+        Account? settlementAccount,
         PositiveMoney amount,
         DateOnly operationDate,
         DateTimeOffset recordedAt,
@@ -180,34 +182,49 @@ public sealed class InvestmentOperation : FinancialOperation
         {
             case InvestmentOperationKind.Buy:
             case InvestmentOperationKind.Sell:
-                var capital = UnitPrice!.Value * Quantity!.Value;
-                postings.Add(new AccountPosting(
-                    this,
-                    SettlementAccount.Id,
-                    PostingKind.Capital,
-                    SettlementAccount.Currency,
-                    SignedAmount(capital, SettlementAccount, credit: InvestmentKind == InvestmentOperationKind.Sell)));
+            {
+                if (SettlementAccount is { } settlement)
+                {
+                    var capital = UnitPrice!.Value * Quantity!.Value;
+                    postings.Add(new AccountPosting(
+                        this,
+                        settlement.Id,
+                        PostingKind.Capital,
+                        settlement.Currency,
+                        SignedAmount(capital, settlement, credit: InvestmentKind == InvestmentOperationKind.Sell)));
+                }
+
                 break;
+            }
 
             case InvestmentOperationKind.Dividend:
             case InvestmentOperationKind.Coupon:
-                postings.Add(new AccountPosting(
-                    this,
-                    SettlementAccount.Id,
-                    PostingKind.Income,
-                    SettlementAccount.Currency,
-                    SignedAmount(Amount!.Value.Value, SettlementAccount, credit: true)));
+            {
+                if (SettlementAccount is { } settlement)
+                {
+                    postings.Add(new AccountPosting(
+                        this,
+                        settlement.Id,
+                        PostingKind.Income,
+                        settlement.Currency,
+                        SignedAmount(Amount!.Value.Value, settlement, credit: true)));
+                }
+
                 break;
+            }
         }
 
         foreach (var fee in Fees)
         {
-            postings.Add(new AccountPosting(
-                this,
-                fee.DebitAccount.Id,
-                PostingKind.Fee,
-                fee.DebitAccount.Currency,
-                SignedAmount(fee.Amount.Value, fee.DebitAccount, credit: false)));
+            if (fee.DebitAccount is { } debitAccount)
+            {
+                postings.Add(new AccountPosting(
+                    this,
+                    debitAccount.Id,
+                    PostingKind.Fee,
+                    debitAccount.Currency,
+                    SignedAmount(fee.Amount.Value, debitAccount, credit: false)));
+            }
         }
 
         return postings;
@@ -217,7 +234,7 @@ public sealed class InvestmentOperation : FinancialOperation
         InvestmentOperationKind kind,
         Guid id,
         Instrument? instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         Quantity? quantity,
         QuotedPrice? quotedPrice,
         PositiveMoney? amount,
@@ -243,17 +260,12 @@ public sealed class InvestmentOperation : FinancialOperation
     private static UnitPrice? Validate(
         InvestmentOperationKind kind,
         Instrument? instrument,
-        Account settlementAccount,
+        Account? settlementAccount,
         Quantity? quantity,
         QuotedPrice? quotedPrice,
         PositiveMoney? amount,
         IReadOnlyList<FeeComponent> fees)
     {
-        if (settlementAccount is null)
-        {
-            throw new ArgumentNullException(nameof(settlementAccount));
-        }
-
         switch (kind)
         {
             case InvestmentOperationKind.Buy:
@@ -297,7 +309,8 @@ public sealed class InvestmentOperation : FinancialOperation
                         nameof(quotedPrice));
                 }
 
-                if (instrument.QuoteCurrency != settlementAccount.Currency)
+                if (settlementAccount is not null &&
+                    instrument.QuoteCurrency != settlementAccount.Currency)
                 {
                     throw new ArgumentException(
                         $"In questa versione la valuta di quotazione dello strumento ({instrument.QuoteCurrency.Code}) deve coincidere con la valuta del conto di regolamento ({settlementAccount.Currency.Code}): i trasferimenti con valuta differente richiedono cambio applicato e importo contabilizzato e sono rinviati a un incremento successivo.",
@@ -305,16 +318,45 @@ public sealed class InvestmentOperation : FinancialOperation
                 }
 
                 var expectedFeeKind = kind == InvestmentOperationKind.Buy ? FeeKind.BuyFee : FeeKind.SellFee;
+                var allowedFeeKinds = kind == InvestmentOperationKind.Buy
+                    ? new[] { FeeKind.BuyFee }
+                    : new[] { FeeKind.SellFee, FeeKind.TaxWithheld };
+
+                if (fees.Any(fee => !allowedFeeKinds.Contains(fee.Kind)))
+                {
+                    throw new ArgumentException(
+                        kind == InvestmentOperationKind.Buy
+                            ? "Le commissioni dell'operazione Buy devono essere di tipo BuyFee."
+                            : "Le commissioni dell'operazione Sell devono essere di tipo SellFee o TaxWithheld.",
+                        nameof(fees));
+                }
+
+                if (fees.Count(fee => fee.Kind == expectedFeeKind) > 1 ||
+                    (kind == InvestmentOperationKind.Sell &&
+                     fees.Count(fee => fee.Kind == FeeKind.TaxWithheld) > 1))
+                {
+                    throw new ArgumentException(
+                        "Ogni tipo di commissione può comparire una sola volta.",
+                        nameof(fees));
+                }
+
+                var sellTax = kind == InvestmentOperationKind.Sell
+                    ? fees.Where(fee => fee.Kind == FeeKind.TaxWithheld)
+                        .Sum(fee => fee.Amount.Value.Amount)
+                    : 0m;
+                var proceeds = effectiveUnitPrice.Price.Amount * quantity!.Value.Value;
+                if (sellTax > proceeds)
+                {
+                    throw new ArgumentException(
+                        "Le tasse non possono superare il ricavo della vendita.",
+                        nameof(fees));
+                }
+
                 foreach (var fee in fees)
                 {
-                    if (fee.Kind != expectedFeeKind)
-                    {
-                        throw new ArgumentException(
-                            $"Le commissioni dell'operazione {kind} devono essere di tipo {expectedFeeKind}.",
-                            nameof(fees));
-                    }
-
-                    if (fee.DebitAccount.Id != settlementAccount.Id)
+                    if (settlementAccount is not null &&
+                        fee.DebitAccount is not null &&
+                        fee.DebitAccount.Id != settlementAccount.Id)
                     {
                         throw new ArgumentException(
                             "La commissione deve essere addebitata sul conto di regolamento dell'operazione d'investimento.",
@@ -336,7 +378,8 @@ public sealed class InvestmentOperation : FinancialOperation
                     throw new ArgumentException($"L'operazione {kind} richiede un provento positivo.", nameof(amount));
                 }
 
-                if (amount!.Value.Value.Currency != settlementAccount.Currency)
+                if (settlementAccount is not null &&
+                    amount!.Value.Value.Currency != settlementAccount.Currency)
                 {
                     throw new ArgumentException(
                         $"Valuta del provento ({amount!.Value.Value.Currency.Code}) diversa dalla valuta del conto di regolamento ({settlementAccount.Currency.Code}).",
@@ -353,9 +396,28 @@ public sealed class InvestmentOperation : FinancialOperation
                     throw new ArgumentException($"L'operazione {kind} non ammette prezzo quotato.", nameof(quotedPrice));
                 }
 
-                if (fees.Count > 0)
+                if (fees.Count > 1 || fees.Any(fee => fee.Kind != FeeKind.TaxWithheld))
                 {
-                    throw new ArgumentException($"L'operazione {kind} non ammette commissioni in questa versione.", nameof(fees));
+                    throw new ArgumentException(
+                        $"L'operazione {kind} ammette solo una ritenuta fiscale.",
+                        nameof(fees));
+                }
+
+                if (fees.Count == 1)
+                {
+                    if (fees[0].Amount.Value.Currency != amount!.Value.Value.Currency)
+                    {
+                        throw new ArgumentException(
+                            $"Valuta della ritenuta ({fees[0].Amount.Value.Currency.Code}) diversa dalla valuta del provento ({amount!.Value.Value.Currency.Code}).",
+                            nameof(fees));
+                    }
+
+                    if (fees[0].Amount.Value.Amount > amount!.Value.Value.Amount)
+                    {
+                        throw new ArgumentException(
+                            "La ritenuta non può superare l'importo della cedola.",
+                            nameof(fees));
+                    }
                 }
 
                 return null;
@@ -383,7 +445,9 @@ public sealed class InvestmentOperation : FinancialOperation
                         nameof(fees));
                 }
 
-                if (fees[0].DebitAccount.Id != settlementAccount.Id)
+                if (settlementAccount is not null &&
+                    fees[0].DebitAccount is { } debitAccount &&
+                    debitAccount.Id != settlementAccount.Id)
                 {
                     throw new ArgumentException(
                         "La commissione autonoma deve essere addebitata sul conto di regolamento indicato.",

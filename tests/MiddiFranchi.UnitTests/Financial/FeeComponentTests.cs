@@ -30,10 +30,14 @@ public class FeeComponentTests
 
 
     [Fact]
-    public void Construction_ShouldRejectANullDebitAccount()
+    public void Construction_ShouldAllowANullDebitAccount()
     {
-        Should.Throw<ArgumentNullException>(
-            () => new FeeComponent(FeeKind.SellFee, new PositiveMoney(new Money(1.50m, Euro)), null!));
+        var fee = new FeeComponent(
+            FeeKind.SellFee,
+            new PositiveMoney(new Money(1.50m, Euro)),
+            debitAccount: null);
+
+        fee.DebitAccount.ShouldBeNull();
     }
 
     [Theory]

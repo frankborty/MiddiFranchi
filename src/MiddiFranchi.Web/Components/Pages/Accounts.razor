@@ -62,24 +62,22 @@ else
 
                     <div class="accounts-current">
                         <div class="balance-main">
-                            <span class="balance-label">Totale attuale</span>
                             <span class="balance-value">
                                 <AmountValue Value="@CurrentAccountsTotal" UnavailableText="Non calcolabile" />
                             </span>
-                            <span class="table-hint">
-                                @if (AccountsWithoutBalanceCount == 0)
-                                {
-                                    <text>Tutti i conti hanno un saldo registrato.</text>
-                                }
-                                else if (AccountsWithoutBalanceCount == 1)
-                                {
-                                    <text>1 conto senza saldo escluso dal totale.</text>
-                                }
-                                else
-                                {
-                                    <text>@AccountsWithoutBalanceCount conti senza saldo esclusi dal totale.</text>
-                                }
-                            </span>
+                            @if (AccountsWithoutBalanceCount > 0)
+                            {
+                                <span class="table-hint">
+                                    @if (AccountsWithoutBalanceCount == 1)
+                                    {
+                                        <text>1 conto senza saldo escluso dal totale.</text>
+                                    }
+                                    else
+                                    {
+                                        <text>@AccountsWithoutBalanceCount conti senza saldo esclusi dal totale.</text>
+                                    }
+                                </span>
+                            }
                         </div>
                         @if (CurrentAccountsTotal is not null && AccountsWithoutBalanceCount > 0)
                         {
@@ -175,7 +173,7 @@ else
                             <li class="account-summary-row">
                                 <AccountAvatar Name="@row.Name" Type="@row.Type" IconDataUrl="@row.IconDataUrl" />
                                 <div class="account-summary-main">
-                                    <a class="account-summary-name" href="accounts/@row.AccountId" title="@row.Name">
+                                    <a class="account-summary-name" href="accounts/@AccountKey(row.AccountId)" title="@row.Name">
                                         @row.Name
                                     </a>
                                     <span class="account-summary-meta">
@@ -299,9 +297,10 @@ else
 
 @code {
     private IReadOnlyList<AccountOverviewRow>? _rows;
+    private IReadOnlyDictionary<Guid, string> _routeKeys = new Dictionary<Guid, string>();
     private IReadOnlyList<ManualBalance> _allReadings = [];
     private bool _loading = true;
-    private bool _hideClosedAccounts;
+    private bool _hideClosedAccounts = true;
     private string _range = "max";
     private bool _readingDialogOpen;
     private string? _readingMessage;
@@ -326,6 +325,9 @@ else
             return rows.OrderBy(row => AccountGroupOrder(row.Type)).ToArray();
         }
     }
+
+    private string AccountKey(Guid accountId) =>
+        _routeKeys.TryGetValue(accountId, out var key) ? key : accountId.ToString();
 
     private static int AccountGroupOrder(AccountType type) => type switch
     {
@@ -535,6 +537,7 @@ else
             _accountHoverSlice = null;
             _allReadings = [];
             _rows = await Overview.ListAsync();
+            _routeKeys = RouteKey.BuildKeys(_rows, row => row.AccountId, row => row.Name, "conto");
             _allReadings = await ManualBalanceSvc.ListAllAsync();
         }
         catch (InvalidOperationException exception) when (exception.Message.Contains("CONNECTION", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))

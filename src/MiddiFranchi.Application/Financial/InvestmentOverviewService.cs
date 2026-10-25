@@ -163,6 +163,7 @@ public sealed class InvestmentOverviewService
             .Where(operation => operation.Instrument is not null)
             .Select(operation => operation.Instrument!.Id)
             .ToHashSet();
+        var historyPrices = InvestmentHistoryPrices.WithExecutionPrices(prices, positionOperations);
 
         var operationDates = positionOperations
             .Select(operation => operation.OperationDate)
@@ -201,7 +202,7 @@ public sealed class InvestmentOverviewService
         {
             var valuation = InvestmentValuationCalculator.Valuate(
                 operations,
-                prices,
+                historyPrices,
                 date,
                 ValuationPolicy.Unbounded);
             var costBases = InvestmentCostBasisCalculator.Calculate(operations, date);

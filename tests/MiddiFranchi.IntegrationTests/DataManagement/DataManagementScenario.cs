@@ -95,12 +95,10 @@ internal static class DataManagementScenario
 
         var assets = new InvestmentAssetService(
             new InstrumentRepository(context),
-            new AccountRepository(context),
             new FinancialOperationRepository(context),
             new PriceObservationRepository(context));
         await assets.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
             instrument.Id,
-            checking.Id,
             InvestmentOperationKind.Buy,
             date.AddDays(3),
             Quantity: 10m,

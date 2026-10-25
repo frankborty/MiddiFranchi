@@ -9,6 +9,8 @@ public sealed class Instrument
     private const int MaximumReferenceUrlLength = 500;
     private const int MaximumNotesLength = 1000;
 
+    public const decimal DefaultTaxRate = 26m;
+
     public Instrument(
         Guid id,
         string name,
@@ -22,7 +24,8 @@ public sealed class Instrument
         string? notes = null,
         InstrumentStatus status = InstrumentStatus.Active,
         DateOnly? maturityDate = null,
-        decimal? couponRate = null)
+        decimal? couponRate = null,
+        decimal taxRate = DefaultTaxRate)
     {
         if (id == Guid.Empty)
         {
@@ -57,6 +60,13 @@ public sealed class Instrument
 
         ValidateBondDetails(assetClass, maturityDate, couponRate);
 
+        if (taxRate < 0m || taxRate > 100m)
+        {
+            throw new ArgumentException(
+                $"La tassazione deve essere compresa tra 0 e 100, ricevuto {taxRate}.",
+                nameof(taxRate));
+        }
+
         if (!Enum.IsDefined(status))
         {
             throw new ArgumentException("Lo stato dello strumento non è valido.", nameof(status));
@@ -75,6 +85,7 @@ public sealed class Instrument
         Status = status;
         MaturityDate = maturityDate;
         CouponRate = couponRate;
+        TaxRate = taxRate;
     }
 
     public Guid Id { get; }
@@ -109,6 +120,9 @@ public sealed class Instrument
     /// <summary>Rendimento annuo fisso in percentuale, valorizzato solo per le obbligazioni.</summary>
     public decimal? CouponRate { get; }
 
+    /// <summary>Aliquota di tassazione in percentuale applicata alle plusvalenze (0-100).</summary>
+    public decimal TaxRate { get; }
+
     public bool IsActive => Status == InstrumentStatus.Active;
 
     public bool IsArchived => Status == InstrumentStatus.Archived;
@@ -126,7 +140,8 @@ public sealed class Instrument
         Notes,
         status,
         MaturityDate,
-        CouponRate);
+        CouponRate,
+        TaxRate);
 
     private static void ValidateNotionalValue(Money? notionalValue, Currency quoteCurrency)
     {

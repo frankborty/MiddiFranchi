@@ -82,11 +82,13 @@ public class InvestmentOverviewServiceTests
         asset.IsComplete.ShouldBeFalse();
         asset.IncompletenessReason.ShouldNotBeNull().ShouldContain("quotazione");
 
-        overview.History.IsComplete.ShouldBeFalse();
+        // La posizione corrente resta non valorizzata, ma lo storico parte dal prezzo di acquisto:
+        // senza questo punto il grafico mostrerebbe la posizione solo dalla prima quotazione.
+        overview.History.IsComplete.ShouldBeTrue();
         overview.History.Points.Count.ShouldBe(2);
         overview.History.Points.All(point =>
                 point.InvestedCapital == new Money(160m, Euro) &&
-                point.CurrentValue is null)
+                point.CurrentValue == new Money(160m, Euro))
             .ShouldBeTrue();
     }
 

@@ -243,6 +243,52 @@ public class InstrumentTests
         instrument.CouponRate.ShouldBe(3.5m);
     }
 
+    [Fact]
+    public void Construction_ShouldDefaultTheTaxRateToTwentySixPercent()
+    {
+        var instrument = new Instrument(
+            Guid.NewGuid(),
+            "ETF globale",
+            AssetClass.Equity,
+            Euro,
+            PriceUnit.PerUnit);
+
+        instrument.TaxRate.ShouldBe(26m);
+    }
+
+    [Fact]
+    public void Construction_ShouldAcceptACustomTaxRate()
+    {
+        var instrument = new Instrument(
+            Guid.NewGuid(),
+            "BTP 2030",
+            AssetClass.Bond,
+            Euro,
+            PriceUnit.PerUnit,
+            taxRate: 12.5m);
+
+        instrument.TaxRate.ShouldBe(12.5m);
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(100.1)]
+    public void Construction_ShouldRejectATaxRateOutsideTheAllowedRange(double rate)
+    {
+        var decimalRate = Convert.ToDecimal(rate, System.Globalization.CultureInfo.InvariantCulture);
+
+        var exception = Should.Throw<ArgumentException>(
+            () => new Instrument(
+                Guid.NewGuid(),
+                "ETF globale",
+                AssetClass.Equity,
+                Euro,
+                PriceUnit.PerUnit,
+                taxRate: decimalRate));
+
+        exception.Message.ShouldContain("tassazione");
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
@@ -279,7 +325,8 @@ public class InstrumentTests
             referenceUrl: "https://example.com/btp",
             notes: "Cedola fissa",
             maturityDate: new DateOnly(2030, 1, 1),
-            couponRate: 3.5m);
+            couponRate: 3.5m,
+            taxRate: 12.5m);
 
         var archived = instrument.WithStatus(InstrumentStatus.Archived);
 
@@ -293,5 +340,6 @@ public class InstrumentTests
         archived.Notes.ShouldBe("Cedola fissa");
         archived.MaturityDate.ShouldBe(new DateOnly(2030, 1, 1));
         archived.CouponRate.ShouldBe(3.5m);
+        archived.TaxRate.ShouldBe(12.5m);
     }
 }

@@ -98,15 +98,22 @@ internal static class FinancialOperationMaterializer
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<FeeComponent>)group
-                    .Select(fee => new FeeComponent(
-                        fee.Kind,
-                        new PositiveMoney(new Money(
-                            fee.AmountAmount,
-                            Currency.Parse(fee.AmountCurrencyCode))),
-                        accounts.TryGetValue(fee.DebitAccountId, out var debitAccount)
-                            ? debitAccount
-                            : throw new InvalidOperationException(
-                                $"Il conto di addebito della commissione {fee.Id} non è stato caricato.")))
+                    .Select(fee =>
+                    {
+                        var debitAccount = fee.DebitAccountId is { } accountId
+                            ? accounts.TryGetValue(accountId, out var loadedAccount)
+                                ? loadedAccount
+                                : throw new InvalidOperationException(
+                                    $"Il conto di addebito della commissione {fee.Id} non è stato caricato.")
+                            : null;
+
+                        return new FeeComponent(
+                            fee.Kind,
+                            new PositiveMoney(new Money(
+                                fee.AmountAmount,
+                                Currency.Parse(fee.AmountCurrencyCode))),
+                            debitAccount);
+                    })
                     .ToArray());
 
         return PersistenceMapper.ToDomainOperations(

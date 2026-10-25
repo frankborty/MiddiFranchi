@@ -278,17 +278,19 @@ public class InvestmentOperationTests
     }
 
     [Fact]
-    public void Construction_ShouldRejectANullSettlementAccount()
+    public void Construction_ShouldAllowANullSettlementAccount()
     {
-        Should.Throw<ArgumentNullException>(() => InvestmentOperation.Buy(
+        var buy = InvestmentOperation.Buy(
             OperationId,
-                        Etf,
-            null!,
+            Etf,
+            null,
             new Quantity(2.5m),
             Quote(80m, Euro),
             null,
             OperationDate,
-            RecordedAt));
+            RecordedAt);
+
+        buy.SettlementAccount.ShouldBeNull();
     }
 
     [Fact]
