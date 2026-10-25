@@ -53,9 +53,6 @@ else
                         <h2 id="settings-instruments-title"><MfIcon Name="pie" Size="18" /> Catalogo strumenti</h2>
                         <StatusBadge Tone="accounts">@FilteredAssets.Count</StatusBadge>
                     </div>
-                    <button type="button" class="secondary-button" @onclick="ToggleShowArchived">
-                        @(_showArchived ? "Nascondi archiviati" : "Mostra archiviati")
-                    </button>
                 </div>
 
                 <div class="category-search settings-instrument-search">
@@ -73,25 +70,33 @@ else
                     }
                 </div>
 
-                <div class="investment-class-pills settings-instrument-filters" role="group"
-                     aria-label="Filtra per classe di attività">
-                    <button type="button"
-                            class="investment-class-pill @(_classFilters.Count == 0 ? "active" : "")"
-                            aria-pressed="@(_classFilters.Count == 0 ? "true" : "false")"
-                            @onclick="() => SetClassFilter(null)">
-                        Tutte
-                    </button>
-                    @foreach (var assetClass in ClassesPresent)
-                    {
+                <div class="settings-instrument-filter-bar">
+                    <div class="investment-class-pills" role="group"
+                         aria-label="Filtra per classe di attività">
                         <button type="button"
-                                class="investment-class-pill @(_classFilters.Contains(assetClass) ? "active" : "")"
-                                style="@PillStyle(assetClass)"
-                                aria-pressed="@(_classFilters.Contains(assetClass) ? "true" : "false")"
-                                @onclick="() => SetClassFilter(assetClass)">
-                            <span class="investment-class-dot" style="background:@AssetClassPalette.Color(assetClass)"></span>
-                            @Format.AssetClassLabel(assetClass)
+                                class="investment-class-pill @(_classFilters.Count == 0 ? "active" : "")"
+                                aria-pressed="@(_classFilters.Count == 0 ? "true" : "false")"
+                                @onclick="() => SetClassFilter(null)">
+                            Tutte
                         </button>
-                    }
+                        @foreach (var assetClass in ClassesPresent)
+                        {
+                            <button type="button"
+                                    class="investment-class-pill @(_classFilters.Contains(assetClass) ? "active" : "")"
+                                    style="@PillStyle(assetClass)"
+                                    aria-pressed="@(_classFilters.Contains(assetClass) ? "true" : "false")"
+                                    @onclick="() => SetClassFilter(assetClass)">
+                                <span class="investment-class-dot" style="background:@AssetClassPalette.Color(assetClass)"></span>
+                                @Format.AssetClassLabel(assetClass)
+                            </button>
+                        }
+                    </div>
+                    <button type="button"
+                            class="investment-archived-toggle @(_showArchived ? "active" : "")"
+                            aria-pressed="@(_showArchived ? "true" : "false")"
+                            @onclick="ToggleShowArchived">
+                        @(_showArchived ? "Nascondi archiviati" : "Mostra archiviati")
+                    </button>
                 </div>
 
                 @if (AllAssets.Count == 0)
@@ -126,9 +131,6 @@ else
                                                     aria-label="@($"Impostazioni di {asset.Name}")"
                                                     title="Apri impostazioni strumento"
                                                     @onclick="() => OpenEdit(asset)">
-                                                <span class="account-avatar investments" aria-hidden="true">
-                                                    <MfIcon Name="pie" Size="16" />
-                                                </span>
                                                 <span class="settings-account-name-text">@asset.Name</span>
                                                 <StatusBadge Tone="@AssetClassPalette.Tone(asset.AssetClass)">
                                                     @Format.AssetClassLabel(asset.AssetClass)

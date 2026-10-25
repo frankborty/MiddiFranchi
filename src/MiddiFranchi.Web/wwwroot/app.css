@@ -4116,8 +4116,14 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
 /* ---- Configurazione strumenti finanziari ---- */
 .settings-instruments-card { border-top: 3px solid var(--mf-investments); }
 .settings-instrument-search { max-width: 460px; margin-bottom: var(--mf-space-3); }
-.settings-instrument-filters { margin-bottom: var(--mf-space-3); }
-.settings-instruments-table { min-width: 680px; }
+.settings-instrument-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mf-space-2);
+    margin-bottom: var(--mf-space-3);
+}
+.settings-instrument-filter-bar .investment-archived-toggle { margin-left: auto; }
 .settings-instrument-actions { white-space: nowrap; }
 .settings-instrument-actions .category-icon-action { display: inline-grid; margin-left: 4px; vertical-align: middle; }
 .settings-instruments-hints {
