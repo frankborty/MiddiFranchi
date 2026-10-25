@@ -333,7 +333,6 @@ h1:focus-visible, h2:focus-visible, h3:focus-visible { outline: none; }
 .nav-categories { --mf-nav-color: var(--mf-nav-categories); }
 .nav-settings { --mf-nav-color: var(--mf-nav-settings); }
 .nav-investments { --mf-nav-color: var(--mf-nav-investments); }
-.nav-advanced-stats { --mf-nav-color: var(--mf-nav-investments); }
 .app-main {
     flex: 1;
     display: flex;
@@ -2338,6 +2337,12 @@ input[type="date"] { font-family: inherit; }
     .investments-kpi-grid.five-up .stat-tile strong { font-size: var(--mf-text-xl); }
 }
 .investments-kpi-grid .stat-tile { height: 100%; }
+.investment-table-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
 .investment-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -2707,6 +2712,12 @@ input[type="date"] { font-family: inherit; }
 }
 .instrument-info-card .investment-note,
 .instrument-info-card .investment-reasons { margin-top: var(--mf-space-3); }
+.instrument-sheet-links {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+}
 .instrument-sheet-link {
     color: var(--mf-link);
     font-weight: 700;
@@ -2714,6 +2725,7 @@ input[type="date"] { font-family: inherit; }
 }
 .instrument-sheet-link:hover { text-decoration: underline; }
 .instrument-management-actions { margin-top: var(--mf-space-4); }
+.instrument-set-value { margin-left: auto; }
 .investment-operations-card { border-top: 3px solid var(--mf-investments); }
 @media (max-width: 980px) {
     .instrument-charts { grid-template-columns: 1fr; }
@@ -4052,7 +4064,7 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
 }
 .settings-hub-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--mf-space-4);
 }
 .settings-hub-card {
@@ -4072,6 +4084,7 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
 .settings-hub-card.accounts { --hub-accent: var(--mf-accounts); }
 .settings-hub-card.categories { --hub-accent: var(--mf-amber-500); }
 .settings-hub-card.instruments { --hub-accent: var(--mf-investments); }
+.settings-hub-card.prices { --hub-accent: var(--mf-investments); }
 .settings-hub-card:hover {
     border-color: var(--hub-accent, var(--mf-blue-300));
     background: var(--mf-surface-inset);
@@ -4092,6 +4105,7 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
 .settings-hub-icon.accounts { color: var(--mf-accounts); background: var(--mf-accounts-100); }
 .settings-hub-icon.amber { color: var(--mf-amber-500); background: var(--mf-amber-100); }
 .settings-hub-icon.instruments { color: var(--mf-investments); background: var(--mf-investments-100); }
+.settings-hub-icon.prices { color: var(--mf-investments); background: var(--mf-investments-100); }
 .settings-hub-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
 .settings-hub-copy strong { font-size: var(--mf-text-lg); }
 .settings-hub-copy span { color: var(--mf-text-secondary); font-size: var(--mf-text-sm); line-height: 1.45; }
@@ -4112,6 +4126,78 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
     transform: translateX(2px);
 }
 .settings-hub-card.categories:hover .settings-hub-arrow { color: #332000; }
+.settings-status-card {
+    grid-column: 1 / -1;
+    display: flex;
+    margin-bottom: var(--mf-space-4);
+    align-items: center;
+    gap: var(--mf-space-4);
+    padding: var(--mf-space-4) var(--mf-space-6);
+    border: 1px solid var(--mf-border);
+    border-left: 4px solid var(--status-accent);
+    border-radius: var(--mf-radius-m);
+    background: linear-gradient(135deg, var(--mf-surface) 0%, var(--mf-surface-inset) 100%);
+    color: var(--mf-text);
+    text-decoration: none;
+    box-shadow: var(--mf-shadow-sm);
+}
+.settings-status-card.income { --status-accent: var(--mf-income); }
+.settings-status-card.expense { --status-accent: var(--mf-expense); }
+.settings-status-card.warning { --status-accent: var(--mf-warning); }
+.settings-status-card.neutral { --status-accent: var(--mf-text-muted); }
+.settings-status-orb {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 1px solid var(--status-accent);
+    background: var(--mf-surface-muted);
+    color: var(--status-accent);
+    box-shadow: 0 0 0 6px var(--mf-surface-inset);
+}
+.settings-status-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.settings-status-eyebrow {
+    color: var(--mf-text-muted);
+    font-size: var(--mf-text-xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.settings-status-copy strong {
+    font-family: var(--mf-font-display);
+    font-size: var(--mf-text-lg);
+    font-weight: 800;
+}
+.settings-status-detail { color: var(--mf-text-secondary); font-size: var(--mf-text-sm); }
+.settings-status-metrics { display: flex; gap: var(--mf-space-2); }
+.settings-status-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 62px;
+    padding: 6px 12px;
+    border: 1px solid var(--mf-border);
+    border-radius: var(--mf-radius-s);
+    background: var(--mf-surface);
+}
+.settings-status-metric strong {
+    font-family: var(--mf-font-display);
+    font-size: var(--mf-text-xl);
+    font-weight: 800;
+    line-height: 1.1;
+}
+.settings-status-metric small {
+    color: var(--mf-text-muted);
+    font-size: var(--mf-text-xs);
+    font-weight: 600;
+}
+.settings-status-metric.negative strong { color: var(--mf-expense); }
+@media (max-width: 760px) {
+    .settings-status-card { flex-wrap: wrap; }
+    .settings-status-metrics { width: 100%; }
+}
 
 /* ---- Configurazione strumenti finanziari ---- */
 .settings-instruments-card { border-top: 3px solid var(--mf-investments); }
@@ -4136,6 +4222,41 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
     font-size: var(--mf-text-sm);
 }
 .settings-instruments-hints li { display: flex; align-items: center; gap: 8px; }
+.settings-price-plan { border-top: 3px solid var(--mf-investments); }
+.settings-price-form { max-width: none; }
+.form-grid label.settings-price-enabled {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    color: var(--mf-text);
+}
+.form-grid label.settings-price-enabled input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    accent-color: var(--mf-blue-600);
+    flex: 0 0 auto;
+}
+.settings-price-failures {
+    display: grid;
+    gap: 6px;
+    margin: 0 0 var(--mf-space-3);
+    padding: var(--mf-space-3);
+    list-style: none;
+    border: 1px solid var(--mf-expense-border);
+    border-radius: var(--mf-radius-m);
+    background: var(--mf-expense-bg);
+    color: var(--mf-expense);
+    font-size: var(--mf-text-sm);
+}
+.settings-price-failures li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+}
 
 /* ---- Categorie: workspace a due pannelli ---- */
 .category-workbench {

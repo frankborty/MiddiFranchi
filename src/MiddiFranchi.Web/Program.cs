@@ -1,6 +1,7 @@
 using MiddiFranchi.Application.Financial;
 using MiddiFranchi.Infrastructure.Persistence;
 using MiddiFranchi.Web.Components;
+using MiddiFranchi.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +31,8 @@ builder.Services.AddScoped<InvestmentWorkspaceService>();
 builder.Services.AddScoped<DashboardOverviewService>();
 builder.Services.AddScoped<SpecialAccountsSeeder>();
 builder.Services.AddScoped<DefaultCategoriesSeeder>();
+builder.Services.AddScoped<PriceUpdateService>();
+builder.Services.AddHostedService<PriceUpdateBackgroundService>();
 
 var app = builder.Build();
 

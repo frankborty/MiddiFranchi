@@ -1,0 +1,305 @@
+@page "/settings/price-updates"
+@rendermode InteractiveServer
+@using MiddiFranchi.Application.Financial
+@inject IPriceUpdateStore PriceUpdateStore
+@inject PriceUpdateService PriceUpdates
+@inject InvestmentWorkspaceService Workspace
+
+<PageTitle>Aggiornamento prezzi</PageTitle>
+
+<a class="section-link settings-back" href="/settings">
+    <MfIcon Name="arrow-left" Size="16" /> Configurazione
+</a>
+
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="refresh" Size="18" /></span>
+            Aggiornamento prezzi
+        </h1>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="page-status" role="status">Caricamento dello stato del servizio…</p>
+}
+else if (_loadError is not null)
+{
+    <p class="alert alert-error" role="alert">@_loadError</p>
+}
+else
+{
+    @if (_message is not null)
+    {
+        <p class="alert alert-success" role="status">@_message</p>
+    }
+    @if (_actionError is not null)
+    {
+        <p class="alert alert-error" role="alert">@_actionError</p>
+    }
+
+    <section class="settings-status-card @PriceStatusTone" aria-labelledby="price-status-title">
+        @{
+            var updateSettings = PriceUpdateStore.GetSettings();
+            var updateStatus = PriceUpdateStore.GetStatus();
+            var nextRun = PriceUpdateScheduler.GetNextScheduledTime(updateSettings, DateTimeOffset.Now);
+            var failures = updateStatus.Results.Where(result => !result.Success).ToArray();
+            var successCount = updateStatus.Results.Count - failures.Length;
+            var statusIcon = updateStatus.IsRunning
+                ? "clock"
+                : !updateSettings.Enabled
+                    ? "refresh"
+                    : updateStatus.LastError is null
+                        ? "check"
+                        : "alert";
+            var statusTitle = updateStatus.IsRunning
+                ? "Aggiornamento in corso"
+                : !updateSettings.Enabled
+                    ? "Aggiornamento automatico disattivato"
+                    : updateStatus.LastError is null
+                        ? "Servizio operativo"
+                        : "Ultimo aggiornamento con errori";
+            var statusDetail = updateStatus.LastRunAt is null
+                ? "Nessuna esecuzione registrata."
+                : $"Ultima esecuzione {FormatPriceTimestamp(updateStatus.LastRunAt)} · Ultimo successo {FormatPriceTimestamp(updateStatus.LastSuccessAt)} · Prossima {FormatPriceTimestamp(nextRun)}";
+            var activeAssets = AllAssets.Count(asset => !asset.IsArchived);
+            var activeWithIsin = AllAssets.Count(asset =>
+                !asset.IsArchived && !string.IsNullOrWhiteSpace(asset.Isin));
+            var skippedWithoutIsin = activeAssets - activeWithIsin;
+        }
+
+        <span class="settings-status-orb" aria-hidden="true">
+            <MfIcon Name="@statusIcon" Size="26" />
+        </span>
+        <span class="settings-status-copy">
+            <span class="settings-status-eyebrow">Aggiornamento prezzi</span>
+            <strong id="price-status-title">@statusTitle</strong>
+            <span class="settings-status-detail">@statusDetail</span>
+        </span>
+        <span class="settings-status-metrics">
+            <span class="settings-status-metric">
+                <strong>@(updateStatus.Results.Count > 0 ? successCount.ToString() : "—")</strong>
+                <small>ok</small>
+            </span>
+            <span class="settings-status-metric @(failures.Length > 0 ? "negative" : "")">
+                <strong>@(updateStatus.Results.Count > 0 ? failures.Length.ToString() : "—")</strong>
+                <small>errori</small>
+            </span>
+        </span>
+        <button type="button" class="secondary-button"
+                disabled="@_updatingAll"
+                @onclick="UpdateAllNowAsync">
+            <MfIcon Name="refresh" Size="16" />
+            @(_updatingAll ? "Aggiornamento…" : "Aggiorna tutti ora")
+        </button>
+    </section>
+
+    @if (skippedWithoutIsin > 0)
+    {
+        <p class="alert alert-info" role="status">
+            @(skippedWithoutIsin == 1
+                ? "1 strumento attivo non ha un ISIN e non viene aggiornato."
+                : $"{skippedWithoutIsin} strumenti attivi non hanno un ISIN e non vengono aggiornati.")
+        </p>
+    }
+
+    @if (updateStatus.LastError is not null)
+    {
+        <p class="alert alert-error" role="alert">@updateStatus.LastError</p>
+    }
+
+    @if (failures.Length > 0)
+    {
+        <ul class="settings-price-failures" aria-label="Errori dell'ultimo aggiornamento">
+            @foreach (var failure in failures)
+            {
+                <li>
+                    <strong>@(string.IsNullOrWhiteSpace(failure.Name) ? "Aggiornamento" : failure.Name)</strong>
+                    <span>@failure.Error</span>
+                </li>
+            }
+        </ul>
+    }
+    else if (updateStatus.Results.Count > 0)
+    {
+        <p class="table-hint">
+            Tutti gli strumenti dell'ultima esecuzione sono stati aggiornati correttamente.
+        </p>
+    }
+
+    <section class="card settings-price-plan" aria-labelledby="price-plan-title">
+        <div class="section-head">
+            <div>
+                <h2 id="price-plan-title"><MfIcon Name="settings" Size="18" /> Pianificazione</h2>
+                <p class="section-sub">Orario, frequenza e mercato usati dal servizio automatico.</p>
+            </div>
+        </div>
+
+        <form class="form-grid settings-price-form" @onsubmit="SavePriceSettings">
+            <label class="settings-price-enabled">
+                <input type="checkbox" @bind="_updateEnabled" />
+                <span>Aggiornamento automatico</span>
+            </label>
+            <label>
+                <span>Ora (locale)</span>
+                <input type="time" @bind="_updateTime" />
+            </label>
+            <label>
+                <span>Frequenza</span>
+                <select @bind="_updateFrequency">
+                    @foreach (var frequency in Enum.GetValues<PriceUpdateFrequency>())
+                    {
+                        <option value="@frequency">@FrequencyLabel(frequency)</option>
+                    }
+                </select>
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="primary-button">
+                    <MfIcon Name="check" Size="16" /> Salva impostazioni
+                </button>
+            </div>
+        </form>
+    </section>
+}
+
+@code {
+    private InvestmentWorkspace? _workspace;
+    private bool _loading = true;
+    private string? _loadError;
+    private string? _message;
+    private string? _actionError;
+
+    private bool _updateEnabled = true;
+    private TimeOnly _updateTime = new(12, 0);
+    private PriceUpdateFrequency _updateFrequency = PriceUpdateFrequency.Daily;
+    private bool _updatingAll;
+
+    private IReadOnlyList<InvestmentAssetRow> AllAssets =>
+        _workspace?.Assets ?? [];
+
+    private string PriceStatusTone
+    {
+        get
+        {
+            var settings = PriceUpdateStore.GetSettings();
+            var status = PriceUpdateStore.GetStatus();
+            return status.IsRunning
+                ? "warning"
+                : !settings.Enabled
+                    ? "neutral"
+                    : status.LastError is null
+                        ? "income"
+                        : "expense";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        LoadPriceSettings();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        _workspace = null;
+
+        try
+        {
+            _workspace = await Workspace.LoadAsync();
+        }
+        catch (InvalidOperationException exception)
+            when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile caricare gli strumenti. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _workspace = await Workspace.LoadAsync();
+            _loadError = null;
+        }
+        catch (Exception)
+        {
+            _actionError = "Impossibile aggiornare gli strumenti. Verificare la connessione al database e riprovare.";
+        }
+    }
+
+    private void LoadPriceSettings()
+    {
+        var settings = PriceUpdateStore.GetSettings();
+        _updateEnabled = settings.Enabled;
+        _updateTime = settings.TimeOfDay;
+        _updateFrequency = settings.Frequency;
+    }
+
+    private void SavePriceSettings()
+    {
+        PriceUpdateStore.SaveSettings(new PriceUpdateSettings(
+            _updateEnabled,
+            _updateTime,
+            _updateFrequency,
+            "XMIL"));
+        _message = "Impostazioni di aggiornamento salvate.";
+        _actionError = null;
+    }
+
+    private async Task UpdateAllNowAsync()
+    {
+        if (_updatingAll)
+        {
+            return;
+        }
+
+        _updatingAll = true;
+        _message = null;
+        _actionError = null;
+        try
+        {
+            var results = await PriceUpdates.UpdateAllAsync();
+            var failures = results.Where(result => !result.Success).ToArray();
+            _message = failures.Length == 0
+                ? $"{results.Count} strumenti aggiornati."
+                : $"{results.Count - failures.Length} aggiornati, {failures.Length} errori.";
+            _actionError = failures.Length == 0
+                ? null
+                : string.Join(
+                    " ",
+                    failures.Select(result =>
+                        $"{(string.IsNullOrWhiteSpace(result.Name) ? "Aggiornamento" : result.Name)}: {result.Error}"));
+
+            await ReloadAsync();
+        }
+        finally
+        {
+            _updatingAll = false;
+        }
+    }
+
+    private static string FormatPriceTimestamp(DateTimeOffset? value) =>
+        value is { } timestamp
+            ? timestamp.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            : "Mai";
+
+    private static string FrequencyLabel(PriceUpdateFrequency frequency) => frequency switch
+    {
+        PriceUpdateFrequency.Daily => "Ogni giorno",
+        PriceUpdateFrequency.Weekdays => "Solo giorni feriali",
+        PriceUpdateFrequency.Every12Hours => "Ogni 12 ore",
+        PriceUpdateFrequency.Every6Hours => "Ogni 6 ore",
+        _ => frequency.ToString(),
+    };
+}

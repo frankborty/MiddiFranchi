@@ -6,6 +6,7 @@
 @using MiddiFranchi.Domain.Portfolio
 @using MiddiFranchi.Domain.Shared
 @inject InvestmentWorkspaceService Workspace
+@inject PriceUpdateService PriceUpdates
 
 <PageTitle>Investimenti</PageTitle>
 
@@ -154,19 +155,36 @@ else if (_workspace is { } workspace)
                 <div>
                     <h2 id="investments-table-title"><MfIcon Name="list" Size="18" /> Strumenti</h2>
                 </div>
-                @if (QuotesUpToDate)
-                {
-                    <StatusBadge Tone="income" Title="@QuoteStatusTooltip">@QuoteStatusLabel</StatusBadge>
-                }
-                else
-                {
-                    <button type="button" class="investment-quote-status-button"
-                            title="@QuoteStatusTooltip" aria-haspopup="dialog"
-                            @onclick="OpenOutdatedQuotesDialog">
-                        <StatusBadge Tone="warning">@QuoteStatusLabel</StatusBadge>
+                <div class="investment-table-actions">
+                    <button type="button" class="secondary-button"
+                            disabled="@_updatingAllPrices"
+                            @onclick="UpdateAllPricesAsync">
+                        <MfIcon Name="refresh" Size="16" />
+                        @(_updatingAllPrices ? "Aggiornamento…" : "Aggiorna tutti")
                     </button>
-                }
+                    @if (QuotesUpToDate)
+                    {
+                        <StatusBadge Tone="income" Title="@QuoteStatusTooltip">@QuoteStatusLabel</StatusBadge>
+                    }
+                    else
+                    {
+                        <button type="button" class="investment-quote-status-button"
+                                title="@QuoteStatusTooltip" aria-haspopup="dialog"
+                                @onclick="OpenOutdatedQuotesDialog">
+                            <StatusBadge Tone="warning">@QuoteStatusLabel</StatusBadge>
+                        </button>
+                    }
+                </div>
             </div>
+
+            @if (_priceUpdateMessage is not null)
+            {
+                <p class="alert alert-success" role="status">@_priceUpdateMessage</p>
+            }
+            @if (_priceUpdateError is not null)
+            {
+                <p class="alert alert-error" role="alert">@_priceUpdateError</p>
+            }
 
             <div class="investment-toolbar">
                 <div class="category-search investment-search-compact">
@@ -382,6 +400,9 @@ else if (_workspace is { } workspace)
     private InvestmentWorkspace? _workspace;
     private bool _loading = true;
     private string? _loadError;
+    private bool _updatingAllPrices;
+    private string? _priceUpdateMessage;
+    private string? _priceUpdateError;
 
     private string _search = "";
     private readonly HashSet<AssetClass> _classFilters = [];
@@ -437,6 +458,42 @@ else if (_workspace is { } workspace)
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task UpdateAllPricesAsync()
+    {
+        if (_updatingAllPrices)
+        {
+            return;
+        }
+
+        _updatingAllPrices = true;
+        _priceUpdateMessage = null;
+        _priceUpdateError = null;
+        try
+        {
+            var results = await PriceUpdates.UpdateAllAsync();
+            var failures = results.Where(result => !result.Success).ToArray();
+            _priceUpdateMessage = failures.Length == 0
+                ? $"{results.Count} strumenti aggiornati."
+                : $"{results.Count - failures.Length} aggiornati, {failures.Length} errori.";
+            _priceUpdateError = failures.Length == 0
+                ? null
+                : string.Join(
+                    " ",
+                    failures.Select(result =>
+                        $"{(string.IsNullOrWhiteSpace(result.Name) ? "Aggiornamento" : result.Name)}: {result.Error}"));
+
+            await ReloadAsync();
+        }
+        catch (Exception)
+        {
+            _priceUpdateError = "Aggiornamento non riuscito. Verificare la connessione e riprovare.";
+        }
+        finally
+        {
+            _updatingAllPrices = false;
         }
     }
 

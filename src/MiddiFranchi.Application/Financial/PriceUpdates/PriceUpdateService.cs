@@ -1,0 +1,182 @@
+namespace MiddiFranchi.Application.Financial;
+
+public sealed class PriceUpdateService
+{
+    private static readonly SemaphoreSlim RunLock = new(1, 1);
+
+    private readonly InvestmentWorkspaceService _workspace;
+    private readonly InvestmentAssetService _assets;
+    private readonly IInvestmentQuoteProvider _quotes;
+    private readonly IPriceUpdateStore _store;
+
+    public PriceUpdateService(
+        InvestmentWorkspaceService workspace,
+        InvestmentAssetService assets,
+        IInvestmentQuoteProvider quotes,
+        IPriceUpdateStore store)
+    {
+        _workspace = workspace;
+        _assets = assets;
+        _quotes = quotes;
+        _store = store;
+    }
+
+    public async Task<PriceUpdateResult> UpdateInstrumentAsync(
+        Guid instrumentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await RunLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            return PriceUpdateResult.Failure(
+                instrumentId,
+                "",
+                "Un aggiornamento è già in corso. Riprova tra poco.");
+        }
+
+        try
+        {
+            var workspace = await _workspace.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var asset = workspace.Assets.FirstOrDefault(item => item.InstrumentId == instrumentId);
+            if (asset is null)
+            {
+                return PriceUpdateResult.Failure(instrumentId, "", "Strumento non trovato.");
+            }
+
+            return await UpdateAssetAsync(asset, _store.GetSettings(), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return PriceUpdateResult.Failure(instrumentId, "", exception.Message);
+        }
+        finally
+        {
+            RunLock.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<PriceUpdateResult>> UpdateAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!await RunLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            return
+            [
+                PriceUpdateResult.Failure(
+                    Guid.Empty,
+                    "",
+                    "Un aggiornamento è già in corso. Riprova tra poco."),
+            ];
+        }
+
+        var previous = _store.GetStatus();
+        try
+        {
+            _store.SaveStatus(previous with
+            {
+                IsRunning = true,
+                LastError = null,
+                Results = [],
+            });
+
+            var workspace = await _workspace.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var settings = _store.GetSettings();
+            var assets = workspace.Assets
+                .Where(asset => !asset.IsArchived && !string.IsNullOrWhiteSpace(asset.Isin))
+                .OrderBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+
+            var results = new List<PriceUpdateResult>(assets.Length);
+            foreach (var asset in assets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                results.Add(await UpdateAssetAsync(asset, settings, cancellationToken)
+                    .ConfigureAwait(false));
+            }
+
+            var finishedAt = DateTimeOffset.Now;
+            var lastError = results.FirstOrDefault(result => !result.Success)?.Error;
+            _store.SaveStatus(new PriceUpdateStatus(
+                LastRunAt: finishedAt,
+                LastSuccessAt: results.Any(result => result.Success)
+                    ? finishedAt
+                    : previous.LastSuccessAt,
+                IsRunning: false,
+                LastError: lastError,
+                Results: results));
+
+            return results;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _store.SaveStatus(previous with { IsRunning = false });
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _store.SaveStatus(previous with
+            {
+                LastRunAt = DateTimeOffset.Now,
+                IsRunning = false,
+                LastError = exception.Message,
+                Results = [],
+            });
+
+            return
+            [
+                PriceUpdateResult.Failure(Guid.Empty, "", exception.Message),
+            ];
+        }
+        finally
+        {
+            RunLock.Release();
+        }
+    }
+
+    private async Task<PriceUpdateResult> UpdateAssetAsync(
+        InvestmentAssetRow asset,
+        PriceUpdateSettings settings,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(asset.Isin))
+        {
+            return PriceUpdateResult.Failure(asset.InstrumentId, asset.Name, "ISIN non impostato.");
+        }
+
+        try
+        {
+            var quote = await _quotes.GetQuoteAsync(asset.Isin, settings.Exchange, cancellationToken)
+                .ConfigureAwait(false);
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var validAt = quote.AsOf is { } asOf && asOf <= today ? asOf : today;
+
+            await _assets.RecordPriceAsync(
+                new RecordPriceRequest(
+                    asset.InstrumentId,
+                    quote.Price,
+                    validAt,
+                    "Borsa Italiana"),
+                cancellationToken).ConfigureAwait(false);
+
+            return new PriceUpdateResult(
+                asset.InstrumentId,
+                asset.Name,
+                Success: true,
+                quote.Price,
+                validAt,
+                Error: null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return PriceUpdateResult.Failure(asset.InstrumentId, asset.Name, exception.Message);
+        }
+    }
+}

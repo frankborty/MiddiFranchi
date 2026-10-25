@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # Command Code local state
 .commandcode/
+
+# Local reference projects used for analysis only
+_reference/

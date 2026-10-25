@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MiddiFranchi.Application.Financial;
 using MiddiFranchi.Application.Persistence;
 using MiddiFranchi.Infrastructure.Persistence.Repositories;
+using MiddiFranchi.Infrastructure.PriceUpdates;
 
 namespace MiddiFranchi.Infrastructure.Persistence;
 
@@ -35,6 +37,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IManualBalanceRepository, ManualBalanceRepository>();
         services.AddScoped<ILoanRepository, LoanRepository>();
         services.AddScoped<ILoanReadingRepository, LoanReadingRepository>();
+
+        services.AddSingleton<IInvestmentQuoteProvider, BorsaItalianaQuoteProvider>();
+        services.AddSingleton<IPriceUpdateStore, JsonPriceUpdateStore>();
 
         return services;
     }

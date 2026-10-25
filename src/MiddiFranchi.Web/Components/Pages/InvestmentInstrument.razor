@@ -7,6 +7,7 @@
 @using MiddiFranchi.Domain.Shared
 @inject InvestmentWorkspaceService Workspace
 @inject InvestmentAssetService AssetService
+@inject PriceUpdateService PriceUpdates
 @inject NavigationManager Navigation
 
 <PageTitle>@(_asset?.Name ?? "Strumento") — MiddiFranchi</PageTitle>
@@ -40,12 +41,6 @@
                         <MfIcon Name="external-link" Size="14" /> Scheda
                     </a>
                 }
-                @if (headerAsset.Isin is { } justEtfIsin)
-                {
-                    <a class="investment-link" href="@JustEtfUrl(justEtfIsin)" target="_blank" rel="noopener noreferrer">
-                        <MfIcon Name="link" Size="14" /> JustETF
-                    </a>
-                }
             </div>
         }
     </div>
@@ -58,13 +53,20 @@
                         @onclick="() => OpenNewOperation(actionAsset, InvestmentOperationKind.Buy)">
                     <MfIcon Name="plus" Size="16" /> Registra operazione
                 </button>
-                <button type="button" class="secondary-button" @onclick="TogglePriceForm">
-                    <MfIcon Name="refresh" Size="16" /> Aggiorna quotazione
-                </button>
             }
             <button type="button" class="secondary-button" @onclick="OpenEditAsset">
                 <MfIcon Name="edit" Size="16" /> Modifica
             </button>
+            @if (!string.IsNullOrWhiteSpace(actionAsset.Isin))
+            {
+                <button type="button" class="icon-button"
+                        title="@(_priceUpdatingFromSource ? "Aggiornamento in corso" : "Aggiorna da Borsa")"
+                        aria-label="Aggiorna da Borsa"
+                        disabled="@_priceUpdatingFromSource"
+                        @onclick="UpdateFromSourceAsync">
+                    <MfIcon Name="refresh" Size="18" />
+                </button>
+            }
         </div>
     }
 </header>
@@ -156,7 +158,7 @@ else if (_asset is { } asset)
                 </div>
                 <div class="investment-chart-legend" aria-hidden="true">
                     <span><span class="investment-class-dot" style="background:#f97316"></span> Valore attuale</span>
-                    <span><span class="investment-class-dot" style="background:#0c8fa5"></span> Capitale investito</span>
+                    <span><span class="investment-class-dot" style="background:#9ca3af"></span> Capitale investito</span>
                 </div>
             </div>
             @if (ValueSeries.Count > 0)
@@ -364,15 +366,22 @@ else if (_asset is { } asset)
                 <div class="instrument-info-row">
                     <dt><MfIcon Name="external-link" Size="15" /> Scheda</dt>
                     <dd>
-                        @if (asset.ReferenceUrl is { } referenceUrl)
-                        {
-                            <a class="instrument-sheet-link" href="@referenceUrl" target="_blank"
-                               rel="noopener noreferrer">Apri scheda</a>
-                        }
-                        else
-                        {
-                            <span class="investment-muted">Non impostato</span>
-                        }
+                        <span class="instrument-sheet-links">
+                            @if (asset.ReferenceUrl is { } referenceUrl)
+                            {
+                                <a class="instrument-sheet-link" href="@referenceUrl" target="_blank"
+                                   rel="noopener noreferrer">Apri scheda</a>
+                            }
+                            @if (asset.Isin is { } sheetIsin)
+                            {
+                                <a class="instrument-sheet-link" href="@JustEtfUrl(sheetIsin)"
+                                   target="_blank" rel="noopener noreferrer">JustETF</a>
+                            }
+                            @if (asset.ReferenceUrl is null && asset.Isin is null)
+                            {
+                                <span class="investment-muted">Non impostato</span>
+                            }
+                        </span>
                     </dd>
                 </div>
             </dl>
@@ -421,6 +430,13 @@ else if (_asset is { } asset)
                         <MfIcon Name="trash" Size="16" /> Elimina
                     </button>
                 }
+
+                @if (!asset.IsArchived)
+                {
+                    <button type="button" class="secondary-button instrument-set-value" @onclick="TogglePriceForm">
+                        <MfIcon Name="edit" Size="16" /> Setta valore
+                    </button>
+                }
             </div>
 
             @if (_confirmArchive)
@@ -455,7 +471,7 @@ else if (_asset is { } asset)
                  aria-labelledby="instrument-price-dialog-title" @onclick:stopPropagation="true">
                 <div class="section-head">
                     <div>
-                        <h2 id="instrument-price-dialog-title">Aggiorna quotazione</h2>
+                        <h2 id="instrument-price-dialog-title">Setta valore</h2>
                         <p class="section-sub">@asset.Name</p>
                     </div>
                     <button type="button" class="icon-button" aria-label="Chiudi"
@@ -538,6 +554,7 @@ else if (_asset is { } asset)
     private DateOnly _priceDate = DateOnly.FromDateTime(DateTime.UtcNow);
     private string? _priceError;
     private bool _priceSaving;
+    private bool _priceUpdatingFromSource;
 
     private bool _confirmArchive;
     private bool _confirmAssetDelete;
@@ -650,7 +667,7 @@ else if (_asset is { } asset)
                     FilteredHistory
                         .Select(point => new TimeSeriesPoint(point.Date, point.InvestedCapital?.Amount))
                         .ToArray(),
-                    Color: "#0c8fa5"),
+                    Color: "#9ca3af"),
             ];
 
     private IReadOnlyList<TimeSeriesSeries> ReturnSeries =>
@@ -952,6 +969,39 @@ else if (_asset is { } asset)
 
         _showPriceForm = false;
         _priceError = null;
+    }
+
+    private async Task UpdateFromSourceAsync()
+    {
+        if (_priceUpdatingFromSource || _asset is not { } asset)
+        {
+            return;
+        }
+
+        _priceUpdatingFromSource = true;
+        _message = null;
+        _actionError = null;
+        try
+        {
+            var result = await PriceUpdates.UpdateInstrumentAsync(asset.InstrumentId);
+            if (result.Success)
+            {
+                _message = "Quotazione aggiornata da Borsa Italiana.";
+                await ReloadAsync();
+            }
+            else
+            {
+                _actionError = result.Error ?? "Aggiornamento non riuscito.";
+            }
+        }
+        catch (Exception)
+        {
+            _actionError = "Impossibile aggiornare la quotazione da Borsa Italiana.";
+        }
+        finally
+        {
+            _priceUpdatingFromSource = false;
+        }
     }
 
     private async Task SavePriceAsync()

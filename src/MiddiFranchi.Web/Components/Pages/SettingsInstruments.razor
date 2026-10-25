@@ -4,6 +4,7 @@
 @using MiddiFranchi.Domain.Portfolio
 @inject InvestmentWorkspaceService Workspace
 @inject InvestmentAssetService AssetService
+@inject PriceUpdateService PriceUpdates
 
 <PageTitle>Strumenti finanziari</PageTitle>
 
@@ -53,6 +54,9 @@ else
                         <h2 id="settings-instruments-title"><MfIcon Name="pie" Size="18" /> Catalogo strumenti</h2>
                         <StatusBadge Tone="accounts">@FilteredAssets.Count</StatusBadge>
                     </div>
+                    <a class="secondary-button" href="/settings/price-updates">
+                        <MfIcon Name="refresh" Size="16" /> Aggiornamento prezzi
+                    </a>
                 </div>
 
                 <div class="category-search settings-instrument-search">
@@ -143,6 +147,10 @@ else
                                                 {
                                                     <span class="investment-isin">@isin</span>
                                                 }
+                                                else
+                                                {
+                                                    <span class="status-chip warning">ISIN mancante</span>
+                                                }
                                             </button>
                                         </td>
                                         <td class="num">
@@ -165,6 +173,13 @@ else
                                             </StatusBadge>
                                         </td>
                                         <td class="num settings-instrument-actions">
+                                            <button type="button" class="category-icon-action"
+                                                    title="@(string.IsNullOrWhiteSpace(asset.Isin) ? "ISIN non impostato" : "Aggiorna da Borsa")"
+                                                    aria-label="@(string.IsNullOrWhiteSpace(asset.Isin) ? "ISIN non impostato" : "Aggiorna da Borsa")"
+                                                    disabled="@(_updatingInstrumentId == asset.InstrumentId || string.IsNullOrWhiteSpace(asset.Isin))"
+                                                    @onclick="() => UpdateInstrumentAsync(asset)">
+                                                <MfIcon Name="refresh" Size="15" />
+                                            </button>
                                             <button type="button" class="category-icon-action"
                                                     title="Modifica strumento"
                                                     aria-label="Modifica strumento"
@@ -228,6 +243,7 @@ else
             </section>
         </div>
     </div>
+
 }
 
 <InvestmentAssetDialog Open="_dialogOpen"
@@ -250,6 +266,7 @@ else
     private bool _working;
     private bool _dialogOpen;
     private InvestmentAssetRow? _assetBeingEdited;
+    private Guid? _updatingInstrumentId;
 
     private IReadOnlyList<InvestmentAssetRow> AllAssets =>
         _workspace?.Assets ?? [];
@@ -443,4 +460,34 @@ else
             _working = false;
         }
     }
+
+    private async Task UpdateInstrumentAsync(InvestmentAssetRow asset)
+    {
+        if (_updatingInstrumentId is not null)
+        {
+            return;
+        }
+
+        _updatingInstrumentId = asset.InstrumentId;
+        _message = null;
+        _actionError = null;
+        try
+        {
+            var result = await PriceUpdates.UpdateInstrumentAsync(asset.InstrumentId);
+            if (result.Success)
+            {
+                _message = $"«{asset.Name}» aggiornato da Borsa Italiana.";
+                await ReloadAsync();
+            }
+            else
+            {
+                _actionError = $"{asset.Name}: {result.Error}";
+            }
+        }
+        finally
+        {
+            _updatingInstrumentId = null;
+        }
+    }
+
 }
