@@ -1,11 +1,11 @@
-@page "/settings/equities"
+@page "/settings/instruments"
 @rendermode InteractiveServer
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Portfolio
 @inject InvestmentWorkspaceService Workspace
 @inject InvestmentAssetService AssetService
 
-<PageTitle>Titoli azionari</PageTitle>
+<PageTitle>Strumenti finanziari</PageTitle>
 
 <a class="section-link settings-back" href="/settings">
     <MfIcon Name="arrow-left" Size="16" /> Configurazione
@@ -14,21 +14,21 @@
 <div class="dashboard-header">
     <div>
         <h1 class="account-detail-title">
-            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="chart" Size="18" /></span>
-            Titoli azionari
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="pie" Size="18" /></span>
+            Strumenti finanziari
         </h1>
     </div>
     @if (!_loading && _loadError is null)
     {
         <div class="dashboard-header-meta">
-            <StatusBadge Tone="brand">@EquityCountLabel</StatusBadge>
+            <StatusBadge Tone="brand">@InstrumentCountLabel</StatusBadge>
         </div>
     }
 </div>
 
 @if (_loading)
 {
-    <p class="page-status" role="status">Caricamento dei titoli azionari…</p>
+    <p class="page-status" role="status">Caricamento degli strumenti finanziari…</p>
 }
 else if (_loadError is not null)
 {
@@ -47,10 +47,10 @@ else
 
     <div class="bento">
         <div class="sp-7">
-            <section class="card settings-equities-card" aria-labelledby="settings-equities-title">
+            <section class="card settings-instruments-card" aria-labelledby="settings-instruments-title">
                 <div class="section-head">
                     <div class="section-title-row">
-                        <h2 id="settings-equities-title"><MfIcon Name="chart" Size="18" /> Catalogo azionario</h2>
+                        <h2 id="settings-instruments-title"><MfIcon Name="pie" Size="18" /> Catalogo strumenti</h2>
                         <StatusBadge Tone="accounts">@FilteredAssets.Count</StatusBadge>
                     </div>
                     <button type="button" class="secondary-button" @onclick="ToggleShowArchived">
@@ -58,10 +58,10 @@ else
                     </button>
                 </div>
 
-                <div class="category-search settings-equity-search">
+                <div class="category-search settings-instrument-search">
                     <MfIcon Name="search" Size="16" />
                     <input type="search"
-                           aria-label="Cerca titoli azionari"
+                           aria-label="Cerca strumenti finanziari"
                            placeholder="Cerca per nome, simbolo o ISIN…"
                            @bind="_search"
                            @bind:event="oninput" />
@@ -73,23 +73,44 @@ else
                     }
                 </div>
 
-                @if (EquityAssets.Count == 0)
+                <div class="investment-class-pills settings-instrument-filters" role="group"
+                     aria-label="Filtra per classe di attività">
+                    <button type="button"
+                            class="investment-class-pill @(_classFilters.Count == 0 ? "active" : "")"
+                            aria-pressed="@(_classFilters.Count == 0 ? "true" : "false")"
+                            @onclick="() => SetClassFilter(null)">
+                        Tutte
+                    </button>
+                    @foreach (var assetClass in ClassesPresent)
+                    {
+                        <button type="button"
+                                class="investment-class-pill @(_classFilters.Contains(assetClass) ? "active" : "")"
+                                style="@PillStyle(assetClass)"
+                                aria-pressed="@(_classFilters.Contains(assetClass) ? "true" : "false")"
+                                @onclick="() => SetClassFilter(assetClass)">
+                            <span class="investment-class-dot" style="background:@AssetClassPalette.Color(assetClass)"></span>
+                            @Format.AssetClassLabel(assetClass)
+                        </button>
+                    }
+                </div>
+
+                @if (AllAssets.Count == 0)
                 {
-                    <EmptyState Title="Nessun titolo azionario"
-                                Hint="Aggiungi il primo titolo dal pannello accanto."
-                                Icon="chart" />
+                    <EmptyState Title="Nessuno strumento in catalogo"
+                                Hint="Aggiungi il primo strumento dal pannello accanto."
+                                Icon="pie" />
                 }
                 else if (FilteredAssets.Count == 0)
                 {
-                    <EmptyState Title="Nessun titolo corrisponde ai filtri" Icon="filter" />
+                    <EmptyState Title="Nessuno strumento corrisponde ai filtri" Icon="filter" />
                 }
                 else
                 {
                     <div class="table-scroll" tabindex="0">
-                        <table class="data-table settings-equities-table">
+                        <table class="data-table settings-instruments-table">
                             <thead>
                                 <tr>
-                                    <th scope="col">Titolo</th>
+                                    <th scope="col">Strumento</th>
                                     <th scope="col" class="num">Quotazione</th>
                                     <th scope="col">Stato</th>
                                     <th scope="col"><span class="visually-hidden">Azioni</span></th>
@@ -103,12 +124,15 @@ else
                                             <button type="button"
                                                     class="settings-account-link"
                                                     aria-label="@($"Impostazioni di {asset.Name}")"
-                                                    title="Apri impostazioni titolo"
+                                                    title="Apri impostazioni strumento"
                                                     @onclick="() => OpenEdit(asset)">
                                                 <span class="account-avatar investments" aria-hidden="true">
-                                                    <MfIcon Name="chart" Size="16" />
+                                                    <MfIcon Name="pie" Size="16" />
                                                 </span>
                                                 <span class="settings-account-name-text">@asset.Name</span>
+                                                <StatusBadge Tone="@AssetClassPalette.Tone(asset.AssetClass)">
+                                                    @Format.AssetClassLabel(asset.AssetClass)
+                                                </StatusBadge>
                                                 @if (asset.Symbol is { } symbol)
                                                 {
                                                     <span class="status-chip neutral">@symbol</span>
@@ -138,10 +162,10 @@ else
                                                 @(asset.IsArchived ? "Archiviato" : "Attivo")
                                             </StatusBadge>
                                         </td>
-                                        <td class="num settings-equity-actions">
+                                        <td class="num settings-instrument-actions">
                                             <button type="button" class="category-icon-action"
-                                                    title="Modifica titolo"
-                                                    aria-label="Modifica titolo"
+                                                    title="Modifica strumento"
+                                                    aria-label="Modifica strumento"
                                                     @onclick="() => OpenEdit(asset)">
                                                 <MfIcon Name="settings" Size="15" />
                                             </button>
@@ -151,10 +175,10 @@ else
                                             }
                                             <button type="button" class="category-icon-action"
                                                     title="@(canArchive
-                                                        ? (asset.IsArchived ? "Riattiva titolo" : "Archivia titolo")
+                                                        ? (asset.IsArchived ? "Riattiva strumento" : "Archivia strumento")
                                                         : "Vendi tutte le quote prima di archiviare")"
                                                     aria-label="@(canArchive
-                                                        ? (asset.IsArchived ? "Riattiva titolo" : "Archivia titolo")
+                                                        ? (asset.IsArchived ? "Riattiva strumento" : "Archivia strumento")
                                                         : "Archiviazione non disponibile: quote ancora detenute")"
                                                     disabled="@(_working || !canArchive)"
                                                     @onclick="() => ToggleArchiveAsync(asset)">
@@ -167,7 +191,7 @@ else
                         </table>
                     </div>
                     <p class="table-hint">
-                        Le quotazioni si aggiornano dalla pagina di dettaglio dello strumento. I titoli
+                        Le quotazioni si aggiornano dalla pagina di dettaglio dello strumento. Gli strumenti
                         con operazioni o quotazioni registrate non possono essere eliminati.
                     </p>
                 }
@@ -175,26 +199,27 @@ else
         </div>
 
         <div class="sp-5">
-            <section class="card settings-equities-create" aria-labelledby="settings-equities-create-title">
+            <section class="card settings-instruments-create" aria-labelledby="settings-instruments-create-title">
                 <div class="section-head">
                     <div>
-                        <h2 id="settings-equities-create-title"><MfIcon Name="plus" Size="18" /> Nuovo titolo</h2>
+                        <h2 id="settings-instruments-create-title"><MfIcon Name="plus" Size="18" /> Nuovo strumento</h2>
                     </div>
                 </div>
                 <p class="table-hint">
-                    Aggiungi un titolo al catalogo azionario. Potrai configurarne nome, simbolo, ISIN,
-                    unità di prezzo, link alla scheda e note. La classe resta bloccata su Azionario.
+                    Aggiungi uno strumento al catalogo scegliendo la classe di attività. Potrai
+                    configurarne nome, simbolo, ISIN, unità di prezzo, link alla scheda e note.
                 </p>
                 <div class="form-actions">
                     <button type="button" class="primary-button" @onclick="OpenCreate">
-                        <MfIcon Name="plus" Size="18" /> Aggiungi titolo azionario
+                        <MfIcon Name="plus" Size="18" /> Aggiungi strumento
                     </button>
                 </div>
 
-                <ul class="settings-equities-hints" aria-label="Campi configurabili">
-                    <li><MfIcon Name="tag" Size="14" /> Nome e classe</li>
+                <ul class="settings-instruments-hints" aria-label="Campi configurabili">
+                    <li><MfIcon Name="tag" Size="14" /> Nome e classe di attività</li>
                     <li><MfIcon Name="chart" Size="14" /> Simbolo e codice ISIN</li>
-                    <li><MfIcon Name="coin" Size="14" /> Unità di prezzo</li>
+                    <li><MfIcon Name="coin" Size="14" /> Unità di prezzo e valore nominale</li>
+                    <li><MfIcon Name="calendar" Size="14" /> Scadenza e tasso per le obbligazioni</li>
                     <li><MfIcon Name="link" Size="14" /> Link alla scheda</li>
                     <li><MfIcon Name="doc" Size="14" /> Note dello strumento</li>
                 </ul>
@@ -207,7 +232,6 @@ else
                        Asset="_assetBeingEdited"
                        CanDelete="@(_assetBeingEdited is { } selected && CanDelete(selected))"
                        DefaultAssetClass="@AssetClass.Equity"
-                       LockAssetClass="true"
                        OnClose="CloseDialog"
                        OnSaved="OnAssetSaved"
                        OnDeleted="OnAssetDeleted" />
@@ -219,25 +243,28 @@ else
     private string? _message;
     private string? _actionError;
     private string _search = "";
+    private readonly HashSet<AssetClass> _classFilters = [];
     private bool _showArchived;
     private bool _working;
     private bool _dialogOpen;
     private InvestmentAssetRow? _assetBeingEdited;
 
-    private IReadOnlyList<InvestmentAssetRow> EquityAssets => _workspace is null
-        ? []
-        : _workspace.Assets
-            .Where(asset => asset.AssetClass == AssetClass.Equity)
-            .ToArray();
+    private IReadOnlyList<InvestmentAssetRow> AllAssets =>
+        _workspace?.Assets ?? [];
 
     private IReadOnlyList<InvestmentAssetRow> FilteredAssets
     {
         get
         {
-            IEnumerable<InvestmentAssetRow> rows = EquityAssets;
+            IEnumerable<InvestmentAssetRow> rows = AllAssets;
             if (!_showArchived)
             {
                 rows = rows.Where(asset => !asset.IsArchived);
+            }
+
+            if (_classFilters.Count > 0)
+            {
+                rows = rows.Where(asset => _classFilters.Contains(asset.AssetClass));
             }
 
             var term = _search.Trim();
@@ -251,18 +278,25 @@ else
 
             return rows
                 .OrderBy(asset => asset.IsArchived)
+                .ThenBy(asset => Format.AssetClassLabel(asset.AssetClass), StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
                 .ToArray();
         }
     }
 
-    private string EquityCountLabel
+    private IReadOnlyList<AssetClass> ClassesPresent => AllAssets
+        .Select(asset => asset.AssetClass)
+        .Distinct()
+        .OrderBy(assetClass => Format.AssetClassLabel(assetClass), StringComparer.CurrentCultureIgnoreCase)
+        .ToArray();
+
+    private string InstrumentCountLabel
     {
         get
         {
-            var active = EquityAssets.Count(asset => !asset.IsArchived);
-            var archived = EquityAssets.Count(asset => asset.IsArchived);
-            var label = active == 1 ? "1 titolo attivo" : $"{active} titoli attivi";
+            var active = AllAssets.Count(asset => !asset.IsArchived);
+            var archived = AllAssets.Count(asset => asset.IsArchived);
+            var label = active == 1 ? "1 strumento attivo" : $"{active} strumenti attivi";
             return archived > 0 ? $"{label} · {archived} archiviati" : label;
         }
     }
@@ -286,7 +320,7 @@ else
         }
         catch (Exception)
         {
-            _loadError = "Impossibile caricare i titoli azionari. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+            _loadError = "Impossibile caricare gli strumenti finanziari. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
         }
         finally
         {
@@ -303,7 +337,7 @@ else
         }
         catch (Exception)
         {
-            _actionError = "Impossibile aggiornare i titoli azionari. Verificare la connessione al database e riprovare.";
+            _actionError = "Impossibile aggiornare gli strumenti finanziari. Verificare la connessione al database e riprovare.";
         }
     }
 
@@ -313,9 +347,29 @@ else
     private static bool CanDelete(InvestmentAssetRow asset) =>
         !asset.HasOperations && asset.PriceDate is null;
 
+    private static string PillStyle(AssetClass assetClass)
+    {
+        var color = AssetClassPalette.Color(assetClass);
+        return $"--pill-color: {color}; --pill-tint: {color}22";
+    }
+
     private void ClearSearch() => _search = "";
 
     private void ToggleShowArchived() => _showArchived = !_showArchived;
+
+    private void SetClassFilter(AssetClass? assetClass)
+    {
+        if (assetClass is null)
+        {
+            _classFilters.Clear();
+            return;
+        }
+
+        if (!_classFilters.Add(assetClass.Value))
+        {
+            _classFilters.Remove(assetClass.Value);
+        }
+    }
 
     private void OpenCreate()
     {
@@ -337,14 +391,14 @@ else
 
     private async Task OnAssetSaved()
     {
-        _message = "Titolo azionario salvato.";
+        _message = "Strumento salvato.";
         _actionError = null;
         await ReloadAsync();
     }
 
     private async Task OnAssetDeleted()
     {
-        _message = "Titolo azionario eliminato.";
+        _message = "Strumento eliminato.";
         _actionError = null;
         await ReloadAsync();
     }

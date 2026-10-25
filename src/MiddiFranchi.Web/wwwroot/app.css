@@ -69,7 +69,6 @@ h1:focus, h2:focus, h3:focus { outline: none; }
     --mf-nav-categories: #7fd3e6;  /* --mf-teal-text (dark) */
     --mf-nav-settings: #9aa8c2;    /* grigio-bluetto neutro su fondo rail scuro */
     --mf-nav-investments: #fdba74; /* --mf-investments-text (dark) */
-    --mf-nav-networth: #6fd697;    /* --mf-income (dark) */
 
     /* Testo */
     --mf-text: #17243e;
@@ -335,7 +334,6 @@ h1:focus-visible, h2:focus-visible, h3:focus-visible { outline: none; }
 .nav-settings { --mf-nav-color: var(--mf-nav-settings); }
 .nav-investments { --mf-nav-color: var(--mf-nav-investments); }
 .nav-advanced-stats { --mf-nav-color: var(--mf-nav-investments); }
-.nav-networth { --mf-nav-color: var(--mf-nav-networth); }
 .app-main {
     flex: 1;
     display: flex;
@@ -4073,7 +4071,7 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
 }
 .settings-hub-card.accounts { --hub-accent: var(--mf-accounts); }
 .settings-hub-card.categories { --hub-accent: var(--mf-amber-500); }
-.settings-hub-card.equities { --hub-accent: var(--mf-investments); }
+.settings-hub-card.instruments { --hub-accent: var(--mf-investments); }
 .settings-hub-card:hover {
     border-color: var(--hub-accent, var(--mf-blue-300));
     background: var(--mf-surface-inset);
@@ -4093,7 +4091,7 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
 }
 .settings-hub-icon.accounts { color: var(--mf-accounts); background: var(--mf-accounts-100); }
 .settings-hub-icon.amber { color: var(--mf-amber-500); background: var(--mf-amber-100); }
-.settings-hub-icon.equities { color: var(--mf-investments); background: var(--mf-investments-100); }
+.settings-hub-icon.instruments { color: var(--mf-investments); background: var(--mf-investments-100); }
 .settings-hub-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
 .settings-hub-copy strong { font-size: var(--mf-text-lg); }
 .settings-hub-copy span { color: var(--mf-text-secondary); font-size: var(--mf-text-sm); line-height: 1.45; }
@@ -4115,13 +4113,14 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
 }
 .settings-hub-card.categories:hover .settings-hub-arrow { color: #332000; }
 
-/* ---- Configurazione titoli azionari ---- */
-.settings-equities-card { border-top: 3px solid var(--mf-investments); }
-.settings-equity-search { max-width: 460px; margin-bottom: var(--mf-space-3); }
-.settings-equities-table { min-width: 620px; }
-.settings-equity-actions { white-space: nowrap; }
-.settings-equity-actions .category-icon-action { display: inline-grid; margin-left: 4px; vertical-align: middle; }
-.settings-equities-hints {
+/* ---- Configurazione strumenti finanziari ---- */
+.settings-instruments-card { border-top: 3px solid var(--mf-investments); }
+.settings-instrument-search { max-width: 460px; margin-bottom: var(--mf-space-3); }
+.settings-instrument-filters { margin-bottom: var(--mf-space-3); }
+.settings-instruments-table { min-width: 680px; }
+.settings-instrument-actions { white-space: nowrap; }
+.settings-instrument-actions .category-icon-action { display: inline-grid; margin-left: 4px; vertical-align: middle; }
+.settings-instruments-hints {
     display: grid;
     gap: 8px;
     margin: var(--mf-space-4) 0 0;
@@ -4130,7 +4129,7 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
     color: var(--mf-text-muted);
     font-size: var(--mf-text-sm);
 }
-.settings-equities-hints li { display: flex; align-items: center; gap: 8px; }
+.settings-instruments-hints li { display: flex; align-items: center; gap: 8px; }
 
 /* ---- Categorie: workspace a due pannelli ---- */
 .category-workbench {
