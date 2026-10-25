@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using MiddiFranchi.Application.DataImport;
 using MiddiFranchi.Application.DataManagement;
 using MiddiFranchi.Application.Financial;
@@ -21,7 +22,6 @@ builder.Services.AddScoped<ReversalService>();
 builder.Services.AddScoped<OperationDeletionService>();
 builder.Services.AddScoped<OperationUpdateService>();
 builder.Services.AddScoped<OperationHistoryService>();
-builder.Services.AddScoped<MovementService>();
 builder.Services.AddScoped<ManualBalanceService>();
 builder.Services.AddScoped<LoanService>();
 builder.Services.AddScoped<AccountOverviewService>();
@@ -58,6 +58,14 @@ app.MapRazorComponents<App>()
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
+    if (app.Configuration.GetValue("Database:MigrateOnStartup", true))
+    {
+        var database = scope.ServiceProvider.GetRequiredService<MiddiFranchiDbContext>();
+        app.Logger.LogInformation("Applicazione delle migrazioni del database...");
+        await database.Database.MigrateAsync();
+        app.Logger.LogInformation("Database aggiornato.");
+    }
+
     try
     {
         await scope.ServiceProvider.GetRequiredService<SpecialAccountsSeeder>().EnsureAsync();

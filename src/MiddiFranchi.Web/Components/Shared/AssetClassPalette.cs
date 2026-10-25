@@ -8,7 +8,7 @@ public static class AssetClassPalette
     private static readonly IReadOnlyDictionary<AssetClass, string> Colors =
         new Dictionary<AssetClass, string>
         {
-            [AssetClass.Equity] = "#f97316",
+            [AssetClass.Equity] = "#8b5cf6",
             [AssetClass.Bond] = "#0c8fa5",
             [AssetClass.MoneyMarket] = "#22c55e",
             [AssetClass.RealEstate] = "#2456c9",

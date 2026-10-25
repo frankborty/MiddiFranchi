@@ -1,0 +1,42 @@
+name: middifranchi-local
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: middifranchi
+      POSTGRES_USER: middifranchi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-middifranchi-local}
+    volumes:
+      - middifranchi-local-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U middifranchi -d middifranchi"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=middifranchi;Username=middifranchi;Password=${POSTGRES_PASSWORD:-middifranchi-local}
+      Database__MigrateOnStartup: "true"
+    volumes:
+      - middifranchi-local-dataprotection:/home/app/.aspnet/DataProtection-Keys
+      - middifranchi-local-appdata:/home/app/.local/share/MiddiFranchi
+
+volumes:
+  middifranchi-local-pgdata:
+  middifranchi-local-dataprotection:
+  middifranchi-local-appdata:

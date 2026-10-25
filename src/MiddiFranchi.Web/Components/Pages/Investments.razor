@@ -17,7 +17,12 @@
             Investimenti
         </h1>
     </div>
-    <a class="secondary-button" href="/investments/advanced">Statistiche avanzate</a>
+    <div class="dashboard-header-meta">
+        <a class="secondary-button" href="/settings/instruments">
+            <MfIcon Name="plus" Size="16" /> Nuovo strumento
+        </a>
+        <a class="secondary-button" href="/investments/advanced">Statistiche avanzate</a>
+    </div>
 </header>
 
 @if (_loading)
@@ -387,10 +392,9 @@ else if (_workspace is { } workspace)
 @code {
     private static readonly string[] InstrumentColors =
     [
-        "#f97316",
+        "#8b5cf6",
         "#0c8fa5",
         "#22c55e",
-        "#8b5cf6",
         "#eab308",
         "#ef4444",
         "#64748b",

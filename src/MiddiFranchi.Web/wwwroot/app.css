@@ -11,7 +11,7 @@ h1:focus, h2:focus, h3:focus { outline: none; }
 
 /* ---- Token ---- */
 :root {
-    /* Colori: blu + teal + ambra come accento distintivo */
+    /* Colori: blu + teal + ambra come accento; viola per gli investimenti */
     --mf-blue-900: #122a5c;
     --mf-blue-950: #122a5c;
     --mf-blue-800: #173675;
@@ -27,15 +27,15 @@ h1:focus, h2:focus, h3:focus { outline: none; }
     --mf-amber-700: #a86a05;
     --mf-amber-100: #fdf2df;
 
-    /* Categorie: conti in azzurro, investimenti in arancio */
+    /* Categorie: conti in azzurro, investimenti in viola */
     --mf-accounts: #0ea5e9;
     --mf-accounts-strong: #0369a1;
     --mf-accounts-100: #e0f2fe;
     --mf-accounts-text: #075985;
-    --mf-investments: #f97316;
-    --mf-investments-strong: #c2410c;
-    --mf-investments-100: #ffedd5;
-    --mf-investments-text: #9a3412;
+    --mf-investments: #8b5cf6;
+    --mf-investments-strong: #6d28d9;
+    --mf-investments-100: #ede9fe;
+    --mf-investments-text: #5b21b6;
 
     /* Semantici finanziari */
     --mf-income: #14713c;
@@ -60,15 +60,13 @@ h1:focus, h2:focus, h3:focus { outline: none; }
     --mf-sidebar-text: #c9d6f2;
     --mf-sidebar-text-strong: #ffffff;
     --mf-sidebar-hover: rgba(255, 255, 255, 0.08);
-    --mf-sidebar-active: rgba(255, 255, 255, 0.14);
 
     /* Accenti della rail: varianti scure dei token, perché la rail è sempre su fondo scuro */
     --mf-nav-home: #8fb0f5;        /* --mf-link (dark) */
     --mf-nav-accounts: #7dd3fc;    /* --mf-accounts-text (dark) */
     --mf-nav-operations: #f2c879;  /* --mf-accent-text (dark), come la CTA operazioni */
-    --mf-nav-categories: #7fd3e6;  /* --mf-teal-text (dark) */
     --mf-nav-settings: #9aa8c2;    /* grigio-bluetto neutro su fondo rail scuro */
-    --mf-nav-investments: #fdba74; /* --mf-investments-text (dark) */
+    --mf-nav-investments: #c4b5fd; /* viola chiaro, distinto da movimenti */
 
     /* Testo */
     --mf-text: #17243e;
@@ -136,8 +134,8 @@ h1:focus, h2:focus, h3:focus { outline: none; }
         --mf-amber-100: rgba(245, 158, 11, 0.14);
         --mf-accounts-100: rgba(14, 165, 233, 0.16);
         --mf-accounts-text: #7dd3fc;
-        --mf-investments-100: rgba(249, 115, 22, 0.16);
-        --mf-investments-text: #fdba74;
+        --mf-investments-100: rgba(139, 92, 246, 0.18);
+        --mf-investments-text: #c4b5fd;
         --mf-income-bg: rgba(20, 113, 60, 0.18);
         --mf-income: #6fd697;
         --mf-expense-bg: rgba(181, 58, 74, 0.18);
@@ -177,8 +175,8 @@ h1:focus, h2:focus, h3:focus { outline: none; }
     --mf-amber-100: rgba(245, 158, 11, 0.14);
     --mf-accounts-100: rgba(14, 165, 233, 0.16);
     --mf-accounts-text: #7dd3fc;
-    --mf-investments-100: rgba(249, 115, 22, 0.16);
-    --mf-investments-text: #fdba74;
+    --mf-investments-100: rgba(139, 92, 246, 0.18);
+    --mf-investments-text: #c4b5fd;
     --mf-income-bg: rgba(20, 113, 60, 0.18);
     --mf-income: #6fd697;
     --mf-expense-bg: rgba(181, 58, 74, 0.18);
@@ -318,19 +316,18 @@ h1:focus-visible, h2:focus-visible, h3:focus-visible { outline: none; }
 .sidebar-nav a > svg { color: var(--mf-nav-color, currentColor); }
 .sidebar-nav a:hover { background: var(--mf-sidebar-hover); color: var(--mf-sidebar-text-strong); }
 .sidebar-nav a.active {
-    color: var(--mf-sidebar-text-strong);
-    background: rgba(143, 176, 245, 0.14);
-    border-color: rgba(143, 176, 245, 0.55);
-    box-shadow: 0 0 0 3px rgba(143, 176, 245, 0.10);
+    color: var(--mf-nav-color, var(--mf-sidebar-text-strong));
+    background: color-mix(in srgb, var(--mf-nav-color, #8fb0f5) 16%, transparent);
+    border-color: color-mix(in srgb, var(--mf-nav-color, #8fb0f5) 55%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--mf-nav-color, #8fb0f5) 10%, transparent);
 }
 .sidebar-nav a.active > svg {
-    color: var(--mf-nav-home);
-    filter: drop-shadow(0 0 6px rgba(143, 176, 245, 0.45));
+    color: var(--mf-nav-color, var(--mf-nav-home));
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--mf-nav-color, var(--mf-nav-home)) 45%, transparent));
 }
 .nav-home { --mf-nav-color: var(--mf-nav-home); }
 .nav-accounts { --mf-nav-color: var(--mf-nav-accounts); }
 .nav-operations { --mf-nav-color: var(--mf-nav-operations); }
-.nav-categories { --mf-nav-color: var(--mf-nav-categories); }
 .nav-settings { --mf-nav-color: var(--mf-nav-settings); }
 .nav-investments { --mf-nav-color: var(--mf-nav-investments); }
 .app-main {
@@ -3032,27 +3029,18 @@ input[type="date"] { font-family: inherit; }
 }
 .overview-tab:hover,
 .overview-range:hover { background: var(--mf-surface-muted); }
-.overview-tab .tab-icon { display: inline-grid; place-items: center; }
-.overview-tab.investments .tab-icon { color: #ff6a00; }
-.overview-tab.accounts .tab-icon { color: #00b2ff; }
-.overview-tab.total .tab-icon { color: #e2e8f0; }
+.overview-tab { --overview-tab-color: var(--mf-text-secondary); }
+.overview-tab.investments { --overview-tab-color: var(--mf-investments); }
+.overview-tab.accounts { --overview-tab-color: var(--mf-accounts); }
+.overview-tab.total { --overview-tab-color: var(--mf-text-secondary); }
+.overview-tab .tab-icon { display: inline-grid; place-items: center; color: var(--overview-tab-color); }
 .overview-tab.active {
-    background: var(--mf-blue-950, #101a30);
-    border-color: var(--mf-blue-800);
-    color: var(--mf-text-inverted);
+    background: color-mix(in srgb, var(--overview-tab-color) 14%, transparent);
+    border-color: color-mix(in srgb, var(--overview-tab-color) 55%, var(--mf-border));
+    color: var(--overview-tab-color);
+    box-shadow: inset 0 -2px 0 var(--overview-tab-color);
 }
-.overview-tab.active.investments {
-    background: linear-gradient(0deg, rgba(255, 106, 0, 0.16), rgba(255, 106, 0, 0.16)), var(--mf-blue-950, #101a30);
-    border-color: rgba(255, 106, 0, 0.5);
-}
-.overview-tab.active.accounts {
-    background: linear-gradient(0deg, rgba(0, 178, 255, 0.16), rgba(0, 178, 255, 0.16)), var(--mf-blue-950, #101a30);
-    border-color: rgba(0, 178, 255, 0.5);
-}
-.overview-tab.active.total {
-    background: linear-gradient(0deg, rgba(226, 232, 240, 0.14), rgba(226, 232, 240, 0.14)), var(--mf-blue-950, #101a30);
-    border-color: rgba(226, 232, 240, 0.45);
-}
+.overview-tab.active .tab-icon { color: var(--overview-tab-color); }
 .overview-range {
     padding: 6px 10px;
     font-size: var(--mf-text-xs);
@@ -3141,7 +3129,7 @@ input[type="date"] { font-family: inherit; }
     display: flex;
     flex-direction: column;
 }
-/* La barra superiore metà arancio e metà azzurro anticipa le due categorie della torta. */
+/* La barra superiore metà viola e metà azzurro anticipa le due categorie della torta. */
 .dashboard-allocation::before {
     content: "";
     position: absolute;
@@ -3840,7 +3828,11 @@ input[type="date"] { font-family: inherit; }
     cursor: pointer;
 }
 .period-year-label:hover { background: var(--mf-surface-muted); }
-.period-year-label.active { background: var(--mf-surface-muted); box-shadow: inset 0 0 0 1px var(--mf-border); }
+.period-year-label.active {
+    background: var(--mf-amber-100);
+    color: var(--mf-accent-text);
+    box-shadow: inset 0 0 0 1px var(--mf-amber-500), inset 0 -2px 0 var(--mf-amber-500);
+}
 .period-months {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -3867,12 +3859,14 @@ input[type="date"] { font-family: inherit; }
 }
 .period-month:hover { background: var(--mf-surface-muted); color: var(--mf-text); }
 .period-month.active {
-    border-color: var(--mf-border);
-    background: var(--mf-surface-muted);
-    color: var(--mf-text);
+    border-color: var(--mf-amber-500);
+    background: var(--mf-amber-100);
+    color: var(--mf-accent-text);
+    box-shadow: inset 0 -2px 0 var(--mf-amber-500);
 }
 .period-month-name { font-weight: 800; }
 .period-month-amount { color: var(--mf-text-secondary); font-size: 0.68rem; font-weight: 700; }
+.period-month.active .period-month-amount { color: var(--mf-accent-text); }
 .period-all {
     flex: none;
     align-self: center;
@@ -3887,7 +3881,12 @@ input[type="date"] { font-family: inherit; }
     cursor: pointer;
 }
 .period-all:hover { background: var(--mf-surface-muted); color: var(--mf-text); }
-.period-all.active { border-color: var(--mf-text); background: var(--mf-text); color: var(--mf-surface); }
+.period-all.active {
+    border-color: var(--mf-amber-500);
+    background: var(--mf-amber-100);
+    color: var(--mf-accent-text);
+    box-shadow: inset 0 -2px 0 var(--mf-amber-500);
+}
 .period-arrow:focus-visible,
 .period-year-label:focus-visible,
 .period-month:focus-visible,

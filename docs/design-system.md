@@ -8,16 +8,16 @@ Blazor condivisi.
 
 - **Registrazione**: strumento quotidiano. Ogni decisione visiva serve la lettura dei dati.
 - **Colore non decorativo**: blu e teal costruiscono la fiducia; l'ambra è l'accento raro
-  (<10%: azione primaria "Nuova operazione", evidenze puntuali). I colori semantici
-  (entrata/uscita/positivo/negativo) sono gli stessi in tutta l'app e **non bastano da soli**
-  (testo o icona affiancata sempre presente).
+  (<10%: azione primaria "Nuova operazione", evidenze puntuali); il viola identifica gli
+  investimenti. I colori semantici (entrata/uscita/positivo/negativo) sono gli stessi in tutta
+  l'app e **non bastano da soli** (testo o icona affiancata sempre presente).
 - **Nessuna stima**: i dati incompleti si mostrano come incompleti (chip/motivi), mai a zero.
 
 ## Token (`wwwroot/app.css`, prefisso `--mf-`)
 
 | Gruppo | Token | Note |
 |---|---|---|
-| Brand | `--mf-blue-900…100`, `--mf-teal-600/700/100`, `--mf-amber-500/700/100` | blu per rilevanza strutturale, teal per supporto grafico, ambra accento |
+| Brand | `--mf-blue-900…100`, `--mf-teal-600/700/100`, `--mf-amber-500/700/100`, `--mf-investments*` (viola) | blu per rilevanza strutturale, teal per supporto grafico, ambra accento, viola investimenti |
 | Semantici | `--mf-income(-bg/-border)`, `--mf-expense(-bg/-border)`, `--mf-warning…`, `--mf-info…` | coerenti con entrate, uscite, attenzioni |
 | Superfici | `--mf-bg`, `--mf-surface`, `--mf-surface-muted`, `--mf-surface-inset`, `--mf-sidebar*` | sfondo tinto di blu, superfici discriminate su 3 livelli |
 | Testo | `--mf-text`, `--mf-text-secondary`, `--mf-text-muted` | gerarchia a 3 livelli |
@@ -44,7 +44,7 @@ Il tema scuro riusa gli stessi token: chiave `data-theme="dark"` su `<html>`
 | `NewLoanDialog` | modale per aggiungere un prestito al conto Prestiti (debitore, importo iniziale, data) |
 | `LoanReadingDialog` | modale per aggiungere una rilevazione a un singolo prestito |
 | `AccountSettingsDialog` | impostazioni del conto: nome, tipo, stato, colore dei grafici e icona caricata |
-| `CategoryManagementPanel` | elenco e creazione categorie con icona e colore, riusato da `/categories` e dalla Configurazione |
+| `CategoryManagementPanel` | elenco e creazione categorie con icona e colore, usato dalla Configurazione |
 | `CategoryBreakdownDialog` | modale con il donut delle sottocategorie di una categoria di spesa, aperto dal pie chart della pagina Movimenti |
 
 Classi strutturali: `.page` (shell), `.app-sidebar` (rail di icone, vedi "Sidebar" sotto), `.topbar`, `.page-body`,
@@ -97,7 +97,7 @@ colore.
   entrambe le categorie sono attive; con i soli investimenti mostra anche il capitale investito;
   con il solo Totale mostra la linea del totale.
   Con entrambe attive le due serie sono linee, senza aree. I conti usano l'azzurro, gli
-  investimenti l'arancio.
+  investimenti il viola.
 - I selettori e gli intervalli sono `button` reali con `aria-pressed`; il grafico si ricrea al cambio
   di categoria o intervallo. Nella Panoramica non ci sono marker né tabella dati: il tooltip mostra
   il valore passando sulla linea.
@@ -117,7 +117,7 @@ colore.
 ## Movimenti (`/operations`)
 
 - La pagina si chiama **Movimenti** (la voce di sidebar precedente «Operazioni» è stata
-  rinominata); niente introduzione, header con icona e periodo corrente.
+  rinominata); niente introduzione, header con icona ricevuta e periodo corrente.
 - Il pulsante flottante `+` apre il modale `OperationDialog`: solo **Entrata** o **Uscita**
   (nessun trasferimento), senza conto. Per le entrate c'è un unico menu categoria (nessuna
   sottocategoria); per le uscite ci sono due menu: **Categoria** e **Sottocategoria**. Se si
@@ -139,7 +139,8 @@ colore.
   categoria** (prime 6 + «Altre categorie»); cliccando una categoria si apre
   `CategoryBreakdownDialog`, che mostra lo stesso donut limitato alle sue **sottocategorie**.
 - La migration `AddHistoricalDemoMovements` inserisce movimenti dimostrativi dal 2023 al 2026 per
-  rendere leggibili i grafici storici.
+  rendere leggibili i grafici storici; `RemoveDemoMovements` li elimina, quindi un database nuovo
+  parte senza movimenti.
 - `DefaultCategoriesSeeder` inserisce all'avvio, in modo idempotente, le categorie di spesa di
   esempio (con icona e colore) e le categorie di entrata senza sottocategorie (Stipendio, Regali,
   ExtraStipendio, Patto, Concorrenza, Premio Produzione, Rimborsi, AltroIncome), ciascuna con la
@@ -269,14 +270,15 @@ colore.
 - Rail di icone da 68px, compressa per default. Il pulsante circolare a cavallo del bordo la
   espande a 252px con etichette e nome dell'app; lo stato è salvato in `mf-sidebar-collapsed`.
   Il marchio usa la stessa icona da 20px delle voci, centrata nella rail.
-- Ordine senza titoli di gruppo: in alto Dashboard, Conti e Movimenti;
-  poi Investimenti e Patrimonio netto; in fondo **Configurazione** (ingranaggio), separata da un
-  divisore. La pagina Configurazione include anche la gestione delle categorie.
-- Ogni voce ha un'accento proprio (`--mf-nav-*`, varianti scure dei token semantici: blu per la
-  dashboard, azzurro conti, ambra operazioni, teal configurazione, arancio investimenti, verde
-  patrimonio) applicato alla sola icona; le etichette restano neutre. Ogni voce mantiene il
-  `title`/`aria-label` quando l'etichetta scritta è nascosta.
-- Lo stato attivo è un riquadro con bordo e alone blu.
+- Ordine senza titoli di gruppo: in alto Dashboard, Conti e Movimenti; poi Investimenti; in fondo
+  **Configurazione** (ingranaggio), separata da un divisore. La pagina Configurazione include anche
+  la gestione delle categorie.
+- Ogni voce ha un'accento proprio (`--mf-nav-*`): blu per la dashboard, azzurro conti, ambra
+  movimenti, viola investimenti, grigio-blu per configurazione, applicato alla sola icona; le
+  etichette restano neutre. Ogni voce mantiene il `title`/`aria-label` quando l'etichetta scritta è
+  nascosta.
+- Lo stato attivo è un riquadro con tinta, bordo e alone del colore della voce: icona ed etichetta
+  restano del colore della voce, non diventano blu.
 - Sotto 900px la sidebar diventa un pannello sovrapposto a larghezza piena, con etichette sempre
   visibili e chiusura tramite il pulsante X, il backdrop o Escape.
 

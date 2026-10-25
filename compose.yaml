@@ -1,0 +1,43 @@
+services:
+  middifranchi:
+    # Obbligatoria: immagine completa del registry, ad esempio
+    # registry.example.com:5000/middifranchi:1.0.0
+    image: ${MIDDIFRANCHI_IMAGE}
+    container_name: middifranchi
+    restart: unless-stopped
+
+    ports:
+      # Per esporre solo su localhost usare: MIDDIFRANCHI_PORT=127.0.0.1:8080
+      - "${MIDDIFRANCHI_PORT:-8080}:8080"
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ConnectionStrings__DefaultConnection: ${DB_CONNECTION_STRING}
+      Database__MigrateOnStartup: ${DB_MIGRATE_ON_STARTUP:-true}
+
+    volumes:
+      # Chiavi Data Protection: evitano di invalidare antiforgery/circuiti a ogni riavvio.
+      - middifranchi-dataprotection:/home/app/.aspnet/DataProtection-Keys
+      # Impostazioni e stato dell'aggiornamento prezzi (price-update.json).
+      - middifranchi-appdata:/home/app/.local/share/MiddiFranchi
+
+    # Serve se PostgreSQL è installato sull'host Docker (non in un container).
+    # Su Docker Engine 20.10+ host-gateway risolve host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Se PostgreSQL è un container sulla stessa rete Docker, decommentare e usare
+    # il nome del container/servizio come Host nella connection string.
+    # networks:
+    #   - middifranchi
+
+# networks:
+#   middifranchi:
+#     external: true
+#     name: middifranchi
+
+volumes:
+  middifranchi-dataprotection:
+  middifranchi-appdata:

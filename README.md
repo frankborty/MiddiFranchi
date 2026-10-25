@@ -64,8 +64,37 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Da
 Do not add connection strings, passwords, or other secrets to `appsettings.json`,
 `appsettings.Development.json`, or any other tracked file.
 
-The Web application starts without opening a database connection. The connection string is resolved
-when the `DbContext` is first used.
+The Web application resolves the connection string when the `DbContext` is first used. By default it
+applies pending EF migrations at startup (`Database:MigrateOnStartup=true`), so the database must be
+reachable when the application starts. Set `Database__MigrateOnStartup=false` to disable automatic
+migrations and manage the schema separately.
+
+## Docker and Portainer
+
+Use the Docker Registry endpoint (the one that responds on `/v2/`), not an optional web UI.
+Set your registry in a shell variable and build/publish the image:
+
+```bash
+export REGISTRY=registry.example.com:5000
+docker build -t "$REGISTRY/middifranchi:1.0.0" .
+docker push "$REGISTRY/middifranchi:1.0.0"
+```
+
+Then create a Portainer stack using [`compose.yaml`](compose.yaml) and set at least:
+
+- `MIDDIFRANCHI_IMAGE`
+- `DB_CONNECTION_STRING`
+- `MIDDIFRANCHI_PORT` (optional)
+
+For a local trial with Docker Desktop and a PostgreSQL container, see
+[docs/local-docker.md](docs/local-docker.md) and run:
+
+```bash
+docker compose -f compose.local.yaml up -d --build
+```
+
+See [docs/deployment.md](docs/deployment.md) for the full Portainer, PostgreSQL, reverse proxy,
+HTTPS, migration, upgrade, and troubleshooting guide.
 
 ## Persistence and migrations
 
@@ -79,7 +108,8 @@ dotnet ef migrations add <MigrationName> --project src/MiddiFranchi.Infrastructu
 dotnet ef database update --project src/MiddiFranchi.Infrastructure --startup-project src/MiddiFranchi.Web --configuration Release
 ```
 
-The committed migration contains schema only and no personal or financial data.
+The committed migrations include the schema. A fresh database receives the base seed data
+(special accounts and categories) but no demo movements or instruments.
 
 ## PostgreSQL integration tests
 
@@ -98,3 +128,7 @@ each test.
 
 Architecture decision records belong in `docs/decisions/`. See
 [docs/decisions/README.md](docs/decisions/README.md) for the naming convention.
+
+- [Backup and restore](docs/backup-restore.md)
+- [Data import](docs/data-import.md)
+- [Docker and Portainer deployment](docs/deployment.md)
