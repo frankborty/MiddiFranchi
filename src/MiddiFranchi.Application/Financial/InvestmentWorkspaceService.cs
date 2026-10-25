@@ -43,9 +43,19 @@ public sealed class InvestmentWorkspaceService
         var overview = await _overview.LoadAsync(cancellationToken);
         var instruments = await _instruments.ListAsync(cancellationToken);
         var prices = await _prices.ListAsync(cancellationToken);
-        var operations = (await _operations.ListAsync(cancellationToken))
+        var allOperations = await _operations.ListAsync(cancellationToken);
+        var operations = allOperations
             .OfType<InvestmentOperation>()
             .ToArray();
+        var taxByRecordedAt = allOperations
+            .OfType<Expense>()
+            .Where(expense =>
+                string.Equals(expense.Category.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
+                string.Equals(expense.Category.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase))
+            .GroupBy(expense => expense.RecordedAt)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(expense => expense.Amount.Value.Amount));
         var accounts = await _accounts.ListAsync(cancellationToken);
 
         var accountsById = accounts.ToDictionary(account => account.Id);
@@ -73,6 +83,7 @@ public sealed class InvestmentWorkspaceService
                 operationsByInstrument.GetValueOrDefault(instrument.Id) ?? [],
                 prices,
                 accountsById,
+                taxByRecordedAt,
                 valuationDate))
             .OrderBy(row => row.IsArchived)
             .ThenBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -96,6 +107,7 @@ public sealed class InvestmentWorkspaceService
         IReadOnlyList<InvestmentOperation> operations,
         IReadOnlyList<PriceObservation> prices,
         IReadOnlyDictionary<Guid, Account> accounts,
+        IReadOnlyDictionary<DateTimeOffset, decimal> taxByRecordedAt,
         DateOnly valuationDate)
     {
         var quantity = result?.Quantity;
@@ -141,7 +153,7 @@ public sealed class InvestmentWorkspaceService
         }
 
         var operationRows = operations
-            .Select(operation => BuildOperationRow(operation, accounts))
+            .Select(operation => BuildOperationRow(operation, accounts, taxByRecordedAt))
             .ToArray();
         var history = BuildInstrumentHistory(
             instrument,
@@ -272,7 +284,8 @@ public sealed class InvestmentWorkspaceService
 
     private static InvestmentOperationRow BuildOperationRow(
         InvestmentOperation operation,
-        IReadOnlyDictionary<Guid, Account> accounts)
+        IReadOnlyDictionary<Guid, Account> accounts,
+        IReadOnlyDictionary<DateTimeOffset, decimal> taxByRecordedAt)
     {
         var quoted = operation.QuotedPrice;
         var effectiveUnitPrice = operation.UnitPrice?.Price;
@@ -282,9 +295,11 @@ public sealed class InvestmentWorkspaceService
         var commission = operation.Fees
             .Where(fee => fee.Kind != FeeKind.TaxWithheld)
             .Sum(fee => fee.Amount.Value.Amount);
-        var tax = operation.Fees
-            .Where(fee => fee.Kind == FeeKind.TaxWithheld)
-            .Sum(fee => fee.Amount.Value.Amount);
+        var tax = taxByRecordedAt.TryGetValue(operation.RecordedAt, out var expenseTax)
+            ? expenseTax
+            : operation.Fees
+                .Where(fee => fee.Kind == FeeKind.TaxWithheld)
+                .Sum(fee => fee.Amount.Value.Amount);
         Money? fees = commission > 0m ? new Money(commission, Euro) : null;
         Money? taxMoney = tax > 0m ? new Money(tax, Euro) : null;
         var accountId = operation.SettlementAccount?.Id ?? Guid.Empty;
@@ -309,7 +324,8 @@ public sealed class InvestmentWorkspaceService
             NormalizeDescription(operation.Description),
             accountName,
             operation.Status == OperationStatus.Reversed,
-            taxMoney);
+            taxMoney,
+            operation.RecordedAt);
     }
 
     private static string? NormalizeDescription(string? description) =>

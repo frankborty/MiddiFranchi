@@ -74,7 +74,8 @@ public sealed record InvestmentOperationRow(
     string? Description,
     string SettlementAccountName,
     bool IsReversed,
-    Money? Tax = null);
+    Money? Tax = null,
+    DateTimeOffset RecordedAt = default);
 
 public sealed record InvestmentClassAllocation(
     AssetClass AssetClass,

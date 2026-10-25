@@ -45,10 +45,14 @@ public sealed record OperationHistoryRow(
 public sealed class OperationHistoryService
 {
     private readonly IFinancialOperationRepository _operations;
+    private readonly ICategoryRepository _categories;
 
-    public OperationHistoryService(IFinancialOperationRepository operations)
+    public OperationHistoryService(
+        IFinancialOperationRepository operations,
+        ICategoryRepository categories)
     {
         _operations = operations;
+        _categories = categories;
     }
 
     /// <summary>
@@ -59,42 +63,24 @@ public sealed class OperationHistoryService
     public async Task<IReadOnlyList<OperationHistoryRow>> ListAsync(CancellationToken cancellationToken = default)
     {
         var operations = await _operations.ListAsync(cancellationToken);
+        var categories = await _categories.ListAsync(cancellationToken);
+        var couponCategory = categories.FirstOrDefault(category =>
+            category.Type == CategoryType.Income &&
+            string.Equals(category.Name, "Cedole", StringComparison.CurrentCultureIgnoreCase));
+
         return operations
             .Where(operation => operation.Kind is not OperationKind.Investment ||
                 operation is InvestmentOperation investment &&
                 investment.InvestmentKind is
                     InvestmentOperationKind.Coupon or
-                    InvestmentOperationKind.Dividend or
-                    InvestmentOperationKind.Sell)
-            .SelectMany(operation => operation is InvestmentOperation investment &&
+                    InvestmentOperationKind.Dividend)
+            .Select(operation => operation is InvestmentOperation investment &&
                 investment.InvestmentKind is
                     InvestmentOperationKind.Coupon or
-                    InvestmentOperationKind.Dividend or
-                    InvestmentOperationKind.Sell
-                    ? ToInvestmentRows(investment)
-                    : [ToOrdinaryRow(operation)])
+                    InvestmentOperationKind.Dividend
+                    ? ToInvestmentIncomeRow(investment, couponCategory)
+                    : ToOrdinaryRow(operation))
             .ToArray();
-    }
-
-    private static IReadOnlyList<OperationHistoryRow> ToInvestmentRows(InvestmentOperation operation)
-    {
-        var rows = new List<OperationHistoryRow>();
-        if (operation.InvestmentKind is
-            InvestmentOperationKind.Coupon or InvestmentOperationKind.Dividend)
-        {
-            rows.Add(ToInvestmentIncomeRow(operation));
-        }
-
-        var tax = operation.Fees
-            .Where(fee => fee.Kind == FeeKind.TaxWithheld)
-            .Sum(fee => fee.Amount.Value.Amount);
-
-        if (tax > 0m)
-        {
-            rows.Add(ToInvestmentTaxRow(operation, tax));
-        }
-
-        return rows;
     }
 
     private static OperationHistoryRow ToOrdinaryRow(FinancialOperation operation) => new(
@@ -115,7 +101,9 @@ public sealed class OperationHistoryService
         InstrumentIdFor(operation),
         InstrumentNameFor(operation));
 
-    private static OperationHistoryRow ToInvestmentIncomeRow(InvestmentOperation operation) => new(
+    private static OperationHistoryRow ToInvestmentIncomeRow(
+        InvestmentOperation operation,
+        Category? couponCategory) => new(
         operation.Id,
         OperationKind.Income,
         operation.OperationDate,
@@ -125,32 +113,11 @@ public sealed class OperationHistoryService
         OriginalOperationId: null,
         operation.Amount?.Value,
         AccountLabel: null,
-        CategoryId: null,
-        CategoryName: "Cedola",
-        Subcategory: null,
-        CategoryIcon: "percent",
-        CategoryColor: "#0ea5e9",
-        InstrumentId: operation.Instrument?.Id,
-        InstrumentName: operation.Instrument?.Name,
-        IsInvestment: true);
-
-    private static OperationHistoryRow ToInvestmentTaxRow(InvestmentOperation operation, decimal tax) => new(
-        operation.Id,
-        OperationKind.Expense,
-        operation.OperationDate,
-        operation.RecordedAt,
-        operation.InvestmentKind == InvestmentOperationKind.Sell
-            ? "Tasse su plusvalenze"
-            : "Tasse su cedola",
-        operation.Status,
-        OriginalOperationId: null,
-        new Money(-tax, Currency.Euro),
-        AccountLabel: null,
-        CategoryId: null,
-        CategoryName: "Fees",
-        Subcategory: "Tasse Plusvalenze",
-        CategoryIcon: "percent",
-        CategoryColor: "#b4232c",
+        CategoryId: couponCategory?.Id,
+        CategoryName: couponCategory?.Name ?? "Cedole",
+        Subcategory: couponCategory?.Subcategory,
+        CategoryIcon: couponCategory?.Icon ?? "percent",
+        CategoryColor: couponCategory?.ColorHex ?? "#0ea5e9",
         InstrumentId: operation.Instrument?.Id,
         InstrumentName: operation.Instrument?.Name,
         IsInvestment: true);

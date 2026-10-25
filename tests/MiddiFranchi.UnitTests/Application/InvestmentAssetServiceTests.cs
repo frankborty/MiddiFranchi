@@ -13,6 +13,7 @@ public class InvestmentAssetServiceTests
 
     private readonly FakeInstrumentRepository _instruments = new();
     private readonly FakeAccountRepository _accounts = new();
+    private readonly FakeCategoryRepository _categories = new();
     private readonly FakeFinancialOperationRepository _operations = new();
     private readonly FakePriceObservationRepository _prices = new();
     private readonly InvestmentAssetService _service;
@@ -27,6 +28,8 @@ public class InvestmentAssetServiceTests
             _instruments,
             _operations,
             _prices,
+            _categories,
+            new FakeTransactionRunner(),
             () => Today);
     }
 

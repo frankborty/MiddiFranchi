@@ -16,17 +16,23 @@ public sealed class InvestmentAssetService
     private readonly IInstrumentRepository _instruments;
     private readonly IFinancialOperationRepository _operations;
     private readonly IPriceObservationRepository _prices;
+    private readonly ICategoryRepository _categories;
+    private readonly ITransactionRunner _transactions;
     private readonly Func<DateOnly> _currentUtcDate;
 
     public InvestmentAssetService(
         IInstrumentRepository instruments,
         IFinancialOperationRepository operations,
         IPriceObservationRepository prices,
+        ICategoryRepository categories,
+        ITransactionRunner transactions,
         Func<DateOnly>? currentUtcDateProvider = null)
     {
         _instruments = instruments;
         _operations = operations;
         _prices = prices;
+        _categories = categories;
+        _transactions = transactions;
         _currentUtcDate = currentUtcDateProvider ?? (() => DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
@@ -167,15 +173,19 @@ public sealed class InvestmentAssetService
             request.Price,
             request.FeeAmount,
             request.Amount,
-            request.Description,
-            request.TaxAmount);
+            request.Description);
 
         await EnsureChainValidAsync(
             operation,
             excludedOperationId: null,
             cancellationToken);
-        await _operations.AddAsync(operation, cancellationToken);
-        return operation;
+
+        return await _transactions.RunAsync(async token =>
+        {
+            await _operations.AddAsync(operation, token);
+            await SaveTaxExpenseAsync(operation, request.TaxAmount, token);
+            return operation;
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -224,8 +234,7 @@ public sealed class InvestmentAssetService
                 item.Operation.Price,
                 item.Operation.FeeAmount,
                 item.Operation.Amount,
-                item.Operation.Description,
-                item.Operation.TaxAmount));
+                item.Operation.Description));
         }
 
         var chain = (await _operations.ListAsync(cancellationToken).ConfigureAwait(false))
@@ -270,15 +279,19 @@ public sealed class InvestmentAssetService
             request.Price,
             request.FeeAmount,
             request.Amount,
-            request.Description,
-            request.TaxAmount);
+            request.Description);
 
         await EnsureChainValidAsync(
             updated,
             excludedOperationId: existing.Id,
             cancellationToken);
-        await _operations.UpdateInvestmentAsync(updated, cancellationToken);
-        return updated;
+
+        return await _transactions.RunAsync(async token =>
+        {
+            await _operations.UpdateInvestmentAsync(updated, token);
+            await SaveTaxExpenseAsync(updated, request.TaxAmount, token);
+            return updated;
+        }, cancellationToken);
     }
 
     public async Task DeleteOperationAsync(
@@ -296,7 +309,102 @@ public sealed class InvestmentAssetService
             candidate: null,
             excludedOperationId: existing.Id,
             cancellationToken);
-        await _operations.DeleteAsync(operationId, cancellationToken);
+
+        await _transactions.RunAsync(async token =>
+        {
+            await DeleteTaxExpenseAsync(existing, token);
+            await _operations.DeleteAsync(operationId, token);
+            return true;
+        }, cancellationToken);
+    }
+
+    private async Task SaveTaxExpenseAsync(
+        InvestmentOperation operation,
+        decimal? taxAmount,
+        CancellationToken cancellationToken)
+    {
+        if (operation.InvestmentKind is not (
+            InvestmentOperationKind.Sell or
+            InvestmentOperationKind.Dividend or
+            InvestmentOperationKind.Coupon))
+        {
+            return;
+        }
+
+        var existing = await FindTaxExpenseAsync(operation, cancellationToken);
+        if (taxAmount is null or <= 0m)
+        {
+            if (existing is not null)
+            {
+                await _operations.DeleteAsync(existing.Id, cancellationToken);
+            }
+
+            return;
+        }
+
+        var categories = await _categories.ListAsync(cancellationToken);
+        var category = categories.FirstOrDefault(candidate =>
+            candidate.Type == CategoryType.Expense &&
+            string.Equals(candidate.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
+            string.Equals(candidate.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase))
+            ?? throw new InvalidOperationException(
+                "La categoria Fees · Tasse Plusvalenze non esiste.");
+
+        var amount = new PositiveMoney(new Money(taxAmount.Value, Euro));
+        var description = operation.InvestmentKind == InvestmentOperationKind.Sell
+            ? "Tasse su plusvalenze"
+            : "Tasse su cedola";
+
+        if (existing is not null)
+        {
+            var updated = new Expense(
+                existing.Id,
+                account: null,
+                category,
+                amount,
+                operation.OperationDate,
+                operation.RecordedAt,
+                description,
+                notes: null);
+            await _operations.UpdateAsync(updated, cancellationToken);
+        }
+        else
+        {
+            var expense = new Expense(
+                Guid.NewGuid(),
+                account: null,
+                category,
+                amount,
+                operation.OperationDate,
+                operation.RecordedAt,
+                description,
+                notes: null);
+            await _operations.AddAsync(expense, cancellationToken);
+        }
+    }
+
+    private async Task DeleteTaxExpenseAsync(
+        InvestmentOperation operation,
+        CancellationToken cancellationToken)
+    {
+        var existing = await FindTaxExpenseAsync(operation, cancellationToken);
+        if (existing is not null)
+        {
+            await _operations.DeleteAsync(existing.Id, cancellationToken);
+        }
+    }
+
+    private async Task<Expense?> FindTaxExpenseAsync(
+        InvestmentOperation operation,
+        CancellationToken cancellationToken)
+    {
+        var operations = await _operations.ListAsync(cancellationToken);
+        return operations
+            .OfType<Expense>()
+            .FirstOrDefault(expense =>
+                expense.RecordedAt == operation.RecordedAt &&
+                string.Equals(expense.Category.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
+                string.Equals(expense.Category.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase));
     }
 
     public async Task<PriceObservation> RecordPriceAsync(
@@ -357,8 +465,7 @@ public sealed class InvestmentAssetService
         decimal? price,
         decimal? feeAmount,
         decimal? amount,
-        string? description,
-        decimal? taxAmount)
+        string? description)
     {
         var cleanDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
 
@@ -370,7 +477,7 @@ public sealed class InvestmentAssetService
                 settlementAccount,
                 RequireQuantity(quantity),
                 BuildQuotedPrice(instrument, price),
-                BuildFees(kind, feeAmount, taxAmount, settlementAccount),
+                BuildFees(kind, feeAmount, settlementAccount),
                 operationDate,
                 recordedAt,
                 cleanDescription,
@@ -381,7 +488,7 @@ public sealed class InvestmentAssetService
                 settlementAccount,
                 RequireQuantity(quantity),
                 BuildQuotedPrice(instrument, price),
-                BuildFees(kind, feeAmount, taxAmount, settlementAccount),
+                BuildFees(kind, feeAmount, settlementAccount),
                 operationDate,
                 recordedAt,
                 cleanDescription,
@@ -395,7 +502,7 @@ public sealed class InvestmentAssetService
                 recordedAt,
                 cleanDescription,
                 null,
-                BuildFees(kind, feeAmount, taxAmount, settlementAccount)),
+                BuildFees(kind, feeAmount, settlementAccount)),
             InvestmentOperationKind.Coupon => InvestmentOperation.Coupon(
                 id,
                 instrument,
@@ -405,7 +512,7 @@ public sealed class InvestmentAssetService
                 recordedAt,
                 cleanDescription,
                 null,
-                BuildFees(kind, feeAmount, taxAmount, settlementAccount)),
+                BuildFees(kind, feeAmount, settlementAccount)),
             _ => throw new ArgumentException(
                 $"Il tipo di operazione {kind} non è supportato dalla pagina Investimenti.",
                 nameof(kind)),
@@ -591,67 +698,41 @@ public sealed class InvestmentAssetService
     private static IReadOnlyList<FeeComponent>? BuildFees(
         InvestmentOperationKind kind,
         decimal? feeAmount,
-        decimal? taxAmount,
         Account? account)
     {
-        if (kind is not (
-            InvestmentOperationKind.Buy or
-            InvestmentOperationKind.Sell or
-            InvestmentOperationKind.Dividend or
-            InvestmentOperationKind.Coupon))
+        if (kind is InvestmentOperationKind.Dividend or InvestmentOperationKind.Coupon)
+        {
+            return null;
+        }
+
+        if (kind is not (InvestmentOperationKind.Buy or InvestmentOperationKind.Sell))
         {
             throw new ArgumentException(
-                "Le commissioni sono ammesse solo per acquisti, vendite e cedole.",
+                "Le commissioni sono ammesse solo per acquisti e vendite.",
                 nameof(feeAmount));
         }
 
-        if (feeAmount is < 0m || taxAmount is < 0m)
+        if (feeAmount is < 0m)
         {
             throw new ArgumentException(
-                "Commissioni e tasse non possono essere negative.",
+                "Le commissioni non possono essere negative.",
                 nameof(feeAmount));
+        }
+
+        if (feeAmount is not > 0m)
+        {
+            return null;
         }
 
         var currency = account?.Currency ?? Currency.Euro;
-        var fees = new List<FeeComponent>();
-
-        if (kind == InvestmentOperationKind.Buy && feeAmount is > 0m)
-        {
-            fees.Add(new FeeComponent(
-                FeeKind.BuyFee,
+        var feeKind = kind == InvestmentOperationKind.Buy ? FeeKind.BuyFee : FeeKind.SellFee;
+        return
+        [
+            new FeeComponent(
+                feeKind,
                 new PositiveMoney(new Money(feeAmount.Value, currency)),
-                account));
-        }
-
-        if (kind == InvestmentOperationKind.Sell)
-        {
-            if (feeAmount is > 0m)
-            {
-                fees.Add(new FeeComponent(
-                    FeeKind.SellFee,
-                    new PositiveMoney(new Money(feeAmount.Value, currency)),
-                    account));
-            }
-
-            if (taxAmount is > 0m)
-            {
-                fees.Add(new FeeComponent(
-                    FeeKind.TaxWithheld,
-                    new PositiveMoney(new Money(taxAmount.Value, currency)),
-                    account));
-            }
-        }
-
-        if (kind is InvestmentOperationKind.Dividend or InvestmentOperationKind.Coupon &&
-            feeAmount is > 0m)
-        {
-            fees.Add(new FeeComponent(
-                FeeKind.TaxWithheld,
-                new PositiveMoney(new Money(feeAmount.Value, currency)),
-                account));
-        }
-
-        return fees.Count == 0 ? null : fees;
+                account),
+        ];
     }
 
     private static PositiveMoney BuildAmount(decimal? amount, Account? account)

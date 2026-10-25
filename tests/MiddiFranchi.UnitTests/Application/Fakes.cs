@@ -5,6 +5,14 @@ using MiddiFranchi.Domain.Shared;
 
 namespace MiddiFranchi.UnitTests.Application;
 
+public sealed class FakeTransactionRunner : ITransactionRunner
+{
+    public Task<T> RunAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken = default) =>
+        operation(cancellationToken);
+}
+
 public sealed class FakeManualBalanceRepository : IManualBalanceRepository
 {
     public List<ManualBalance> Readings { get; } = [];

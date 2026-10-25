@@ -96,7 +96,9 @@ internal static class DataManagementScenario
         var assets = new InvestmentAssetService(
             new InstrumentRepository(context),
             new FinancialOperationRepository(context),
-            new PriceObservationRepository(context));
+            new PriceObservationRepository(context),
+            new CategoryRepository(context),
+            new EfTransactionRunner(context));
         await assets.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
             instrument.Id,
             InvestmentOperationKind.Buy,

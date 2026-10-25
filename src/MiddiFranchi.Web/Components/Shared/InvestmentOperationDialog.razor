@@ -5,6 +5,8 @@
 @using MiddiFranchi.Domain.Portfolio
 @using MiddiFranchi.Domain.Shared
 @inject InvestmentAssetService AssetService
+@inject InvestmentIncomeService InvestmentIncome
+@inject CategoryService CategoryService
 
 @if (Open && Asset is not null)
 {
@@ -401,7 +403,7 @@
                     return;
                 }
 
-                fee = parsedTax;
+                tax = parsedTax;
             }
         }
 
@@ -410,7 +412,12 @@
         _saving = true;
         try
         {
-            if (Operation is null)
+            if (Operation is null && _kind is
+                InvestmentOperationKind.Dividend or InvestmentOperationKind.Coupon)
+            {
+                await RegisterCouponIncomeAsync(amount!.Value, tax, description);
+            }
+            else if (Operation is null)
             {
                 await AssetService.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
                     Asset.InstrumentId,
@@ -455,6 +462,45 @@
         {
             _saving = false;
         }
+    }
+
+    private async Task RegisterCouponIncomeAsync(
+        decimal gross,
+        decimal? tax,
+        string? description)
+    {
+        if (Asset is null)
+        {
+            return;
+        }
+
+        var categories = await CategoryService.ListAsync();
+        var incomeCategory = categories.FirstOrDefault(category =>
+            category.Type == CategoryType.Income &&
+            string.Equals(category.Name, "Cedole", StringComparison.CurrentCultureIgnoreCase));
+        var taxCategory = categories.FirstOrDefault(category =>
+            category.Type == CategoryType.Expense &&
+            string.Equals(category.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
+            string.Equals(category.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase));
+
+        if (incomeCategory is null || taxCategory is null)
+        {
+            throw new InvalidOperationException(
+                "Mancano le categorie Cedole e Fees/Tasse Plusvalenze.");
+        }
+
+        PositiveMoney? taxMoney = tax is > 0m
+            ? new PositiveMoney(new Money(tax.Value, Currency.Euro))
+            : null;
+
+        await InvestmentIncome.RegisterAsync(new RegisterInvestmentIncomeRequest(
+            Asset.InstrumentId,
+            incomeCategory.Id,
+            taxCategory.Id,
+            new PositiveMoney(new Money(gross, Currency.Euro)),
+            taxMoney,
+            _date,
+            string.IsNullOrWhiteSpace(description) ? null : description));
     }
 
     private void StartDelete()

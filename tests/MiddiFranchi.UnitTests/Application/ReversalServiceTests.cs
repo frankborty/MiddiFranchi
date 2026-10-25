@@ -123,7 +123,7 @@ public class ReversalServiceTests
     public async Task History_ShouldExposeReversibilityAndLinks()
     {
         var income = WithRegisteredIncome();
-        var historyService = new OperationHistoryService(_operations);
+        var historyService = new OperationHistoryService(_operations, _categories);
 
         var before = (await historyService.ListAsync()).ShouldHaveSingleItem();
         before.IsReversible.ShouldBeTrue();
@@ -150,7 +150,7 @@ public class ReversalServiceTests
     public async Task History_ShouldExposeTransferAccountsAndAmount()
     {
         WithRegisteredTransfer();
-        var historyService = new OperationHistoryService(_operations);
+        var historyService = new OperationHistoryService(_operations, _categories);
 
         var row = (await historyService.ListAsync()).ShouldHaveSingleItem();
 
@@ -176,7 +176,7 @@ public class ReversalServiceTests
             new DateTimeOffset(2026, 4, 10, 12, 0, 0, TimeSpan.Zero));
         _operations.Operations.Add(buy);
         WithRegisteredIncome();
-        var historyService = new OperationHistoryService(_operations);
+        var historyService = new OperationHistoryService(_operations, _categories);
 
         var rows = await historyService.ListAsync();
 
