@@ -58,6 +58,9 @@
                         @onclick="() => OpenNewOperation(actionAsset, InvestmentOperationKind.Buy)">
                     <MfIcon Name="plus" Size="16" /> Registra operazione
                 </button>
+                <button type="button" class="secondary-button" @onclick="TogglePriceForm">
+                    <MfIcon Name="refresh" Size="16" /> Aggiorna quotazione
+                </button>
             }
             <button type="button" class="secondary-button" @onclick="OpenEditAsset">
                 <MfIcon Name="edit" Size="16" /> Modifica
@@ -92,16 +95,57 @@ else if (_asset is { } asset)
         <p class="alert alert-error" role="alert">@_actionError</p>
     }
 
-    <div class="investments-kpi-grid five-up">
-        <StatTile Label="Valore attuale" Value="@MoneyText(asset.CurrentValue)" />
-        <StatTile Label="Capitale investito" Value="@MoneyText(asset.InvestedCapital)" />
-        <StatTile Label="Prezzo medio" Value="@MoneyText(asset.AverageCost)" />
-        <StatTile Label="Rendimento"
-                  Value="@MoneySigned(asset.TotalResult)"
-                  ValueClass="@ResultClass(asset.TotalResult)" />
-        <StatTile Label="Rendimento %"
-                  Value="@SignedPercent(asset.TotalResultPercent)"
-                  ValueClass="@ResultClass(asset.TotalResultPercent)" />
+    <div class="investments-kpi-grid detail-kpi instrument-kpi-row">
+        @if (asset.AssetClass == AssetClass.Bond)
+        {
+            <StatTile Label="Valore attuale" Value="@MoneyText(asset.CurrentValue)" />
+            <StatTile Label="Cedole totali" Value="@Format.Money(asset.Income)" />
+            <StatTile Label="Cedole annuali"
+                      Value="@AnnualCouponText(asset)"
+                      Hint="@AnnualCouponHint(asset)" />
+            <StatTile Label="Scadenza"
+                      Value="@(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")"
+                      Hint="@(asset.MaturityDate is not null ? MaturityText(asset) : null)" />
+            @if (asset.CouponRate is { } couponRate)
+            {
+                <StatTile Label="Tasso di interesse" Value="@NumberPercent(couponRate)" />
+            }
+        }
+        else
+        {
+            <StatTile Label="Valore attuale" Value="@MoneyText(asset.CurrentValue)" />
+            <StatTile Label="Capitale investito" Value="@MoneyText(asset.InvestedCapital)" />
+            <StatTile Label="Prezzo medio" Value="@MoneyText(asset.AverageCost)" />
+            <StatTile Label="Rendimento"
+                      Value="@MoneySigned(asset.TotalResult)"
+                      ValueClass="@ResultClass(asset.TotalResult)" />
+            <StatTile Label="Rendimento %"
+                      Value="@SignedPercent(asset.TotalResultPercent)"
+                      ValueClass="@ResultClass(asset.TotalResultPercent)" />
+        }
+        <StatTile Label="Quotazione" Value="@QuoteValue(asset)" />
+    </div>
+
+    <div class="instrument-chart-controls-bar">
+        <div class="investment-chart-controls" role="group" aria-label="Intervallo dei grafici">
+            @foreach (var range in ChartRangeOptions)
+            {
+                <button type="button"
+                        class="investment-chart-range @(IsChartRange(range.Value) ? "active" : "")"
+                        aria-pressed="@(IsChartRange(range.Value) ? "true" : "false")"
+                        @onclick="() => SetChartRange(range.Value)">@range.Label</button>
+            }
+        </div>
+        <label class="investment-chart-year">
+            <span class="visually-hidden">Anno dei grafici</span>
+            <select value="@(_chartYear?.ToString() ?? "")" @onchange="OnChartYearChanged">
+                <option value="">Tutti gli anni</option>
+                @foreach (var year in HistoryYears)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
+        </label>
     </div>
 
     <div class="bento instrument-charts">
@@ -120,7 +164,9 @@ else if (_asset is { } asset)
                 <ApexTimeSeriesChart Title=""
                                      Currency="@Currency.Euro"
                                      Series="@ValueSeries"
-                                     XAxisLabelMode="@HistoryLabelMode"
+                                     XAxisMin="@ChartAxisMin"
+                                     XAxisMax="@ChartAxisMax"
+                                     XAxisLabelMode="@ChartAxisLabelMode"
                                      Height="@(260)"
                                      ShowMarkers="false"
                                      ShowHeader="false"
@@ -129,35 +175,72 @@ else if (_asset is { } asset)
             }
             else
             {
-                <p class="page-status">Dati insufficienti per il grafico.</p>
+                <p class="page-status">Dati insufficienti per il periodo selezionato.</p>
             }
         </section>
 
         <section class="card investment-chart-card" aria-labelledby="instrument-return-title">
             <div class="section-head">
                 <div>
-                    <h2 id="instrument-return-title"><MfIcon Name="trend" Size="18" /> Rendimento nel tempo</h2>
+                    <h2 id="instrument-return-title"><MfIcon Name="trend" Size="18" /> Rendimento</h2>
                 </div>
-                <div class="investment-chart-legend" aria-hidden="true">
-                    <span><span class="investment-class-dot" style="background:#8b5cf6"></span> Rendimento %</span>
+                <div class="investment-chart-units" role="group" aria-label="Vista del rendimento">
+                    <button type="button"
+                            class="investment-chart-unit @(_returnView == ReturnView.Cumulative ? "active" : "")"
+                            aria-pressed="@(_returnView == ReturnView.Cumulative ? "true" : "false")"
+                            @onclick="() => SetReturnView(ReturnView.Cumulative)">Cumulativo</button>
+                    <button type="button"
+                            class="investment-chart-unit @(_returnView == ReturnView.Period ? "active" : "")"
+                            aria-pressed="@(_returnView == ReturnView.Period ? "true" : "false")"
+                            @onclick="() => SetReturnView(ReturnView.Period)">Periodo</button>
                 </div>
             </div>
-            @if (ReturnSeries.Count > 0)
+            @if (_returnView == ReturnView.Cumulative)
             {
-                <ApexTimeSeriesChart Title=""
-                                     Currency="@Currency.Euro"
-                                     Series="@ReturnSeries"
-                                     PercentageValues="true"
-                                     XAxisLabelMode="@HistoryLabelMode"
-                                     Height="@(260)"
-                                     ShowMarkers="false"
-                                     ShowHeader="false"
-                                     ShowFooter="false"
-                                     ShowDataTable="false" />
+                @if (ReturnSeries.Count > 0)
+                {
+                    <ApexTimeSeriesChart Title=""
+                                         Currency="@Currency.Euro"
+                                         Series="@ReturnSeries"
+                                         PercentageValues="true"
+                                         XAxisMin="@ChartAxisMin"
+                                         XAxisMax="@ChartAxisMax"
+                                         XAxisLabelMode="@ChartAxisLabelMode"
+                                         Height="@(260)"
+                                         ShowMarkers="false"
+                                         ShowHeader="false"
+                                         ShowFooter="false"
+                                         ShowDataTable="false" />
+                }
+                else
+                {
+                    <p class="page-status">Dati insufficienti per il periodo selezionato.</p>
+                }
             }
             else
             {
-                <p class="page-status">Dati insufficienti per il grafico.</p>
+                @if (PeriodReturnPoints.Count > 0)
+                {
+                    <ApexTimeSeriesChart Title=""
+                                         Currency="@Currency.Euro"
+                                         Series="@PeriodReturnSeries"
+                                         Stacked="true"
+                                         ShowStackedTotal="false"
+                                         PercentageValues="true"
+                                         ColorPointsBySign="true"
+                                         TooltipDateMode="@PeriodTooltipMode"
+                                         XAxisLabelMode="@PeriodAxisLabelMode"
+                                         XAxisTickAmount="@PeriodTickAmount"
+                                         Height="@(260)"
+                                         ShowMarkers="false"
+                                         ShowHeader="false"
+                                         ShowFooter="false"
+                                         ShowDataTable="false" />
+                }
+                else
+                {
+                    <p class="page-status">Dati insufficienti per il periodo selezionato.</p>
+                }
             }
         </section>
     </div>
@@ -177,7 +260,6 @@ else if (_asset is { } asset)
         {
             <div class="table-scroll" tabindex="0">
                 <table class="data-table investment-operations-table">
-                    <caption class="table-hint">Operazioni dello strumento</caption>
                     <thead>
                         <tr>
                             <th scope="col">Data</th>
@@ -186,8 +268,6 @@ else if (_asset is { } asset)
                             <th scope="col" class="num">Prezzo</th>
                             <th scope="col" class="num">Importo</th>
                             <th scope="col" class="num">Commissioni</th>
-                            <th scope="col" class="hide-sm">Conto</th>
-                            <th scope="col" class="hide-sm">Note</th>
                             <th scope="col"><span class="visually-hidden">Azioni</span></th>
                         </tr>
                     </thead>
@@ -205,34 +285,17 @@ else if (_asset is { } asset)
                                 <td class="num">@OperationPrice(operation, asset)</td>
                                 <td class="num">@OperationAmount(operation)</td>
                                 <td class="num">@(operation.Fees is { } fees ? Format.Money(fees) : "—")</td>
-                                <td class="hide-sm">@operation.SettlementAccountName</td>
-                                <td class="hide-sm">@(operation.Description ?? "—")</td>
                                 <td class="num investment-operation-actions">
                                     @if (operation.IsReversed)
                                     {
                                         <StatusBadge Tone="warning">Stornata</StatusBadge>
                                     }
-                                    else if (_confirmDeleteOperationId == operation.Id)
+                                    else if (CanEditOperation(operation))
                                     {
-                                        <button type="button" class="delete-button compact"
-                                                @onclick="() => DeleteOperationAsync(operation)">Conferma</button>
-                                        <button type="button" class="secondary-button"
-                                                @onclick="CancelOperationDelete">Annulla</button>
-                                    }
-                                    else
-                                    {
-                                        @if (CanEditOperation(operation))
-                                        {
-                                            <button type="button" class="icon-button"
-                                                    aria-label="Modifica operazione"
-                                                    @onclick="() => OpenEditOperation(asset, operation)">
-                                                <MfIcon Name="edit" Size="16" />
-                                            </button>
-                                        }
                                         <button type="button" class="icon-button"
-                                                aria-label="Elimina operazione"
-                                                @onclick="() => RequestOperationDelete(operation)">
-                                            <MfIcon Name="trash" Size="16" />
+                                                aria-label="Modifica operazione"
+                                                @onclick="() => OpenEditOperation(asset, operation)">
+                                            <MfIcon Name="edit" Size="16" />
                                         </button>
                                     }
                                 </td>
@@ -244,85 +307,75 @@ else if (_asset is { } asset)
         }
     </section>
 
-    <div class="bento instrument-bottom">
-        <section class="card" aria-labelledby="instrument-quote-title">
-            <div class="section-head">
-                <div>
-                    <h2 id="instrument-quote-title"><MfIcon Name="refresh" Size="18" /> Quotazione</h2>
-                </div>
-                @if (!asset.IsArchived)
-                {
-                    <button type="button" class="secondary-button" @onclick="TogglePriceForm">
-                        Aggiorna quotazione
-                    </button>
-                }
-            </div>
-
-            <div class="instrument-quote-grid">
-                <div>
-                    <span class="investment-detail-label">Prezzo attuale</span>
-                    <strong>@(asset.CurrentUnitPrice is { } unitPrice ? Format.Money(unitPrice) : "—")</strong>
-                </div>
-                <div>
-                    <span class="investment-detail-label">Ultima quotazione</span>
-                    <strong>@(asset.PriceDate is { } priceDate ? Format.Date(priceDate) : "Nessuna")</strong>
-                </div>
-                <div>
-                    <span class="investment-detail-label">Fonte</span>
-                    <strong>@(asset.PriceSource ?? "—")</strong>
-                </div>
-            </div>
-
-            @if (_showPriceForm)
-            {
-                <form class="investment-price-form" @onsubmit="SavePriceAsync">
-                    <label>
-                        <span>@(asset.PriceUnit == PriceUnit.PercentOfNominal ? "Prezzo (% del nominale)" : "Prezzo per unità (EUR)")</span>
-                        <input type="number" inputmode="decimal" step="any" min="0"
-                               required aria-required="true" @bind="_priceValueText" />
-                    </label>
-                    <label>
-                        <span>Data</span>
-                        <input type="date" required aria-required="true" @bind="_priceDate" />
-                    </label>
-                    <button type="submit" class="primary-button" disabled="@_priceSaving">Salva</button>
-                    <button type="button" class="secondary-button" @onclick="CancelPrice">Annulla</button>
-                </form>
-                @if (_priceError is not null)
-                {
-                    <p class="alert alert-error" role="alert">@_priceError</p>
-                }
-            }
-        </section>
-
-        <section class="card" aria-labelledby="instrument-info-title">
+    <section class="card instrument-bottom-card instrument-info-card" aria-labelledby="instrument-info-title">
             <div class="section-head">
                 <div>
                     <h2 id="instrument-info-title"><MfIcon Name="info" Size="18" /> Informazioni</h2>
                 </div>
+                <StatusBadge Tone="@(asset.IsArchived ? "neutral" : "income")">
+                    @(asset.IsArchived ? "Archiviato" : "Attivo")
+                </StatusBadge>
             </div>
 
-            <div class="instrument-info-grid">
-                <div>
-                    <span class="investment-detail-label">Stato</span>
-                    <strong>@(asset.IsArchived ? "Archiviato" : "Attivo")</strong>
+            <dl class="instrument-info-list">
+                <div class="instrument-info-row">
+                    <dt><MfIcon Name="tag" Size="15" /> Classe</dt>
+                    <dd>@Format.AssetClassLabel(asset.AssetClass)</dd>
                 </div>
-                @if (asset.AssetClass == AssetClass.Bond)
+                <div class="instrument-info-row">
+                    <dt><MfIcon Name="coin" Size="15" /> Unità di prezzo</dt>
+                    <dd>@Format.PriceUnitLabel(asset.PriceUnit)</dd>
+                </div>
+                @if (asset.Symbol is { } symbol)
                 {
-                    <div>
-                        <span class="investment-detail-label">Scadenza</span>
-                        <strong>@(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")</strong>
-                    </div>
-                    <div>
-                        <span class="investment-detail-label">Rendimento annuo</span>
-                        <strong>@(asset.CouponRate is { } coupon ? NumberPercent(coupon) : "Non indicato")</strong>
-                    </div>
-                    <div>
-                        <span class="investment-detail-label">Nominale per unità</span>
-                        <strong>@(asset.NotionalValue is { } notional ? Format.Money(notional) : "—")</strong>
+                    <div class="instrument-info-row">
+                        <dt><MfIcon Name="chart" Size="15" /> Simbolo</dt>
+                        <dd>@symbol</dd>
                     </div>
                 }
-            </div>
+                @if (asset.Isin is { } isin)
+                {
+                    <div class="instrument-info-row">
+                        <dt><MfIcon Name="doc" Size="15" /> Codice ISIN</dt>
+                        <dd>@isin</dd>
+                    </div>
+                }
+                @if (asset.AssetClass == AssetClass.Bond)
+                {
+                    <div class="instrument-info-row">
+                        <dt><MfIcon Name="calendar" Size="15" /> Scadenza</dt>
+                        <dd>
+                            @(asset.MaturityDate is { } maturity ? Format.Date(maturity) : "Non indicata")
+                            @if (asset.MaturityDate is not null)
+                            {
+                                <span class="instrument-info-hint">@MaturityText(asset)</span>
+                            }
+                        </dd>
+                    </div>
+                    <div class="instrument-info-row">
+                        <dt><MfIcon Name="trend" Size="15" /> Tasso annuo</dt>
+                        <dd>@(asset.CouponRate is { } coupon ? NumberPercent(coupon) : "Non indicato")</dd>
+                    </div>
+                    <div class="instrument-info-row">
+                        <dt><MfIcon Name="coin" Size="15" /> Nominale per unità</dt>
+                        <dd>@(asset.NotionalValue is { } notional ? Format.Money(notional) : "—")</dd>
+                    </div>
+                }
+                <div class="instrument-info-row">
+                    <dt><MfIcon Name="external-link" Size="15" /> Scheda</dt>
+                    <dd>
+                        @if (asset.ReferenceUrl is { } referenceUrl)
+                        {
+                            <a class="instrument-sheet-link" href="@referenceUrl" target="_blank"
+                               rel="noopener noreferrer">Apri scheda</a>
+                        }
+                        else
+                        {
+                            <span class="investment-muted">Non impostato</span>
+                        }
+                    </dd>
+                </div>
+            </dl>
 
             @if (!string.IsNullOrWhiteSpace(asset.Notes))
             {
@@ -394,7 +447,48 @@ else if (_asset is { } asset)
                 </div>
             }
         </section>
-    </div>
+
+    @if (_showPriceForm)
+    {
+        <div class="modal-backdrop" @onclick="CancelPrice">
+            <div class="modal-card" role="dialog" aria-modal="true"
+                 aria-labelledby="instrument-price-dialog-title" @onclick:stopPropagation="true">
+                <div class="section-head">
+                    <div>
+                        <h2 id="instrument-price-dialog-title">Aggiorna quotazione</h2>
+                        <p class="section-sub">@asset.Name</p>
+                    </div>
+                    <button type="button" class="icon-button" aria-label="Chiudi"
+                            disabled="@_priceSaving" @onclick="CancelPrice">
+                        <MfIcon Name="close" Size="18" />
+                    </button>
+                </div>
+
+                @if (_priceError is not null)
+                {
+                    <p class="alert alert-error" role="alert">@_priceError</p>
+                }
+
+                <form class="form-grid" @onsubmit="SavePriceAsync">
+                    <label>
+                        <span>@(asset.PriceUnit == PriceUnit.PercentOfNominal ? "Prezzo (% del nominale)" : "Prezzo per unità (€)")</span>
+                        <input type="number" inputmode="decimal" step="any" min="0"
+                               required aria-required="true" @bind="_priceValueText" />
+                    </label>
+                    <label>
+                        <span>Data</span>
+                        <input type="date" required aria-required="true" @bind="_priceDate" />
+                    </label>
+                    <div class="form-actions">
+                        <button type="submit" class="primary-button" disabled="@_priceSaving">Salva</button>
+                        <button type="button" class="secondary-button" disabled="@_priceSaving" @onclick="CancelPrice">
+                            Annulla
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
 }
 
 <InvestmentOperationDialog Open="_operationDialogOpen"
@@ -406,7 +500,8 @@ else if (_asset is { } asset)
                            PresetQuantity="_operationPresetQuantity"
                            PresetPrice="_operationPresetPrice"
                            OnClose="CloseOperationDialog"
-                           OnSaved="OnOperationSaved" />
+                           OnSaved="OnOperationSaved"
+                           OnDeleted="OnOperationDeleted" />
 
 <InvestmentAssetDialog Open="_assetDialogOpen"
                        Asset="_asset"
@@ -437,7 +532,6 @@ else if (_asset is { } asset)
     private decimal? _operationPresetQuantity;
     private decimal? _operationPresetPrice;
     private bool _archiveAfterOperation;
-    private Guid? _confirmDeleteOperationId;
 
     private bool _showPriceForm;
     private string _priceValueText = "";
@@ -447,6 +541,10 @@ else if (_asset is { } asset)
 
     private bool _confirmArchive;
     private bool _confirmAssetDelete;
+
+    private ChartRange _chartRange = ChartRange.Max;
+    private int? _chartYear;
+    private ReturnView _returnView = ReturnView.Cumulative;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -491,34 +589,77 @@ else if (_asset is { } asset)
     private InvestmentAssetRow? FindAsset() =>
         _workspace?.Assets.FirstOrDefault(asset => asset.InstrumentId == InstrumentId);
 
-    private IReadOnlyList<InvestmentHistoryPoint> HistoryPoints =>
-        _asset?.History ?? [];
+    private static readonly (ChartRange Value, string Label)[] ChartRangeOptions =
+    [
+        (ChartRange.SevenDays, "7G"),
+        (ChartRange.OneMonth, "1M"),
+        (ChartRange.SixMonths, "6M"),
+        (ChartRange.YearToDate, "YTD"),
+        (ChartRange.OneYear, "1A"),
+        (ChartRange.Max, "Max"),
+    ];
+
+    private DateOnly ValuationDate =>
+        _workspace?.Overview.ValuationDate ?? DateOnly.FromDateTime(DateTime.Today);
+
+    private IReadOnlyList<InvestmentHistoryPoint> FilteredHistory
+    {
+        get
+        {
+            var all = _asset?.History ?? [];
+            if (all.Count == 0)
+            {
+                return all;
+            }
+
+            var (from, to) = ChartWindow();
+            if (from is null && to is null)
+            {
+                return all;
+            }
+
+            var points = all
+                .Where(point => (from is null || point.Date > from) && (to is null || point.Date <= to))
+                .ToList();
+
+            if (from is { } start)
+            {
+                var last = all.LastOrDefault(point => point.Date <= start);
+                if (last is not null)
+                {
+                    points.Insert(0, new InvestmentHistoryPoint(start, last.InvestedCapital, last.CurrentValue));
+                }
+            }
+
+            return points;
+        }
+    }
 
     private IReadOnlyList<TimeSeriesSeries> ValueSeries =>
-        HistoryPoints.Count < 2
+        FilteredHistory.Count < 2
             ? []
             : [
                 new(
                     "Valore attuale",
-                    HistoryPoints
+                    FilteredHistory
                         .Select(point => new TimeSeriesPoint(point.Date, point.CurrentValue?.Amount))
                         .ToArray(),
                     Color: "#f97316"),
                 new(
                     "Capitale investito",
-                    HistoryPoints
+                    FilteredHistory
                         .Select(point => new TimeSeriesPoint(point.Date, point.InvestedCapital?.Amount))
                         .ToArray(),
                     Color: "#0c8fa5"),
             ];
 
     private IReadOnlyList<TimeSeriesSeries> ReturnSeries =>
-        HistoryPoints.Count < 2
+        FilteredHistory.Count < 2
             ? []
             : [
                 new(
                     "Rendimento %",
-                    HistoryPoints
+                    FilteredHistory
                         .Select(point => new TimeSeriesPoint(
                             point.Date,
                             point.CurrentValue is { } current &&
@@ -529,19 +670,168 @@ else if (_asset is { } asset)
                     Color: "#8b5cf6"),
             ];
 
-    private string HistoryLabelMode
+    private IReadOnlyList<TimeSeriesPoint> PeriodReturnPoints
     {
         get
         {
-            if (HistoryPoints.Count < 2)
+            var all = _asset?.History;
+            if (all is null || all.Count < 2)
             {
-                return "short";
+                return [];
             }
 
-            var days = HistoryPoints[^1].Date.DayNumber - HistoryPoints[0].Date.DayNumber;
-            return days > 730 ? "year" : days > 120 ? "month" : "short";
+            var samples = all
+                .Where(point => point.CurrentValue is not null && point.InvestedCapital is not null)
+                .OrderBy(point => point.Date)
+                .ToArray();
+            if (samples.Length < 2)
+            {
+                return [];
+            }
+
+            var (from, to) = ChartWindow();
+            InvestmentHistoryPoint? previous = from is { } start
+                ? samples.LastOrDefault(point => point.Date <= start)
+                : null;
+            var granularity = ReturnGranularity;
+            var results = new List<TimeSeriesPoint>();
+
+            foreach (var group in samples
+                         .Where(point => (from is null || point.Date > from) && (to is null || point.Date <= to))
+                         .GroupBy(point => PeriodKey(point.Date, granularity))
+                         .OrderBy(group => group.Key))
+            {
+                var end = group.OrderBy(point => point.Date).Last();
+                if (previous is { } startPoint &&
+                    startPoint.CurrentValue is { } startValue &&
+                    startPoint.InvestedCapital is { Amount: > 0m } startInvested)
+                {
+                    var startResult = startValue.Amount - startInvested.Amount;
+                    var endResult = end.CurrentValue!.Value.Amount - end.InvestedCapital!.Value.Amount;
+                    results.Add(new TimeSeriesPoint(
+                        group.Key,
+                        (endResult - startResult) / startInvested.Amount));
+                }
+
+                previous = end;
+            }
+
+            return results;
         }
     }
+
+    private IReadOnlyList<TimeSeriesSeries> PeriodReturnSeries =>
+        PeriodReturnPoints.Count == 0
+            ? []
+            : [
+                new(
+                    PeriodReturnTitle,
+                    PeriodReturnPoints,
+                    Color: "#22c55e",
+                    Kind: TimeSeriesSeriesKind.Bar),
+            ];
+
+    private PeriodGranularity ReturnGranularity =>
+        _chartYear is not null
+            ? PeriodGranularity.Month
+            : _chartRange switch
+            {
+                ChartRange.SevenDays or ChartRange.OneMonth => PeriodGranularity.Day,
+                ChartRange.Max => PeriodGranularity.Year,
+                _ => PeriodGranularity.Month,
+            };
+
+    private string PeriodReturnTitle => ReturnGranularity switch
+    {
+        PeriodGranularity.Day => "Rendimento giornaliero",
+        PeriodGranularity.Month => "Rendimento mensile",
+        _ => "Rendimento annuale",
+    };
+
+    private void SetReturnView(ReturnView view) => _returnView = view;
+
+    private string PeriodTooltipMode => ReturnGranularity switch
+    {
+        PeriodGranularity.Day => "day",
+        PeriodGranularity.Month => "month",
+        _ => "year",
+    };
+
+    private string PeriodAxisLabelMode => ReturnGranularity switch
+    {
+        PeriodGranularity.Day => "short",
+        PeriodGranularity.Month => "month",
+        _ => "year",
+    };
+
+    private int PeriodTickAmount => ReturnGranularity switch
+    {
+        PeriodGranularity.Day => 8,
+        PeriodGranularity.Month => 8,
+        _ => 5,
+    };
+
+    private IReadOnlyList<int> HistoryYears =>
+        (_asset?.History ?? [])
+            .Select(point => point.Date.Year)
+            .Distinct()
+            .OrderByDescending(year => year)
+            .ToArray();
+
+    private DateTime? ChartAxisMin =>
+        ChartWindow().From?.ToDateTime(TimeOnly.MinValue);
+
+    private DateTime? ChartAxisMax =>
+        ChartWindow().To?.ToDateTime(TimeOnly.MinValue);
+
+    private string ChartAxisLabelMode =>
+        _chartYear is not null
+            ? "month"
+            : _chartRange switch
+            {
+                ChartRange.SevenDays or ChartRange.OneMonth => "short",
+                ChartRange.SixMonths or ChartRange.YearToDate or ChartRange.OneYear => "month",
+                _ => "year",
+            };
+
+    private bool IsChartRange(ChartRange range) =>
+        _chartYear is null && _chartRange == range;
+
+    private void SetChartRange(ChartRange range)
+    {
+        _chartRange = range;
+        _chartYear = null;
+    }
+
+    private void OnChartYearChanged(ChangeEventArgs args) =>
+        _chartYear = int.TryParse(args.Value?.ToString(), out var year) ? year : null;
+
+    private (DateOnly? From, DateOnly? To) ChartWindow()
+    {
+        if (_chartYear is { } year)
+        {
+            var to = year == ValuationDate.Year ? ValuationDate : new DateOnly(year, 12, 31);
+            return (new DateOnly(year, 1, 1), to);
+        }
+
+        return _chartRange switch
+        {
+            ChartRange.SevenDays => (ValuationDate.AddDays(-7), ValuationDate),
+            ChartRange.OneMonth => (ValuationDate.AddMonths(-1), ValuationDate),
+            ChartRange.SixMonths => (ValuationDate.AddMonths(-6), ValuationDate),
+            ChartRange.YearToDate => (new DateOnly(ValuationDate.Year, 1, 1), ValuationDate),
+            ChartRange.OneYear => (ValuationDate.AddYears(-1), ValuationDate),
+            _ => (null, null),
+        };
+    }
+
+    private static DateOnly PeriodKey(DateOnly date, PeriodGranularity granularity) =>
+        granularity switch
+        {
+            PeriodGranularity.Day => date,
+            PeriodGranularity.Month => new DateOnly(date.Year, date.Month, 1),
+            _ => new DateOnly(date.Year, 1, 1),
+        };
 
     private void OpenNewOperation(InvestmentAssetRow asset, InvestmentOperationKind kind)
     {
@@ -612,29 +902,11 @@ else if (_asset is { } asset)
         }
     }
 
-    private void RequestOperationDelete(InvestmentOperationRow operation)
+    private async Task OnOperationDeleted()
     {
-        _confirmDeleteOperationId = operation.Id;
-        _confirmArchive = false;
-        _confirmAssetDelete = false;
-    }
-
-    private void CancelOperationDelete() => _confirmDeleteOperationId = null;
-
-    private async Task DeleteOperationAsync(InvestmentOperationRow operation)
-    {
+        _message = "Operazione eliminata.";
         _actionError = null;
-        try
-        {
-            await AssetService.DeleteOperationAsync(operation.Id);
-            _confirmDeleteOperationId = null;
-            _message = "Operazione eliminata.";
-            await ReloadAsync();
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
-        {
-            _actionError = exception.Message;
-        }
+        await ReloadAsync();
     }
 
     private void OpenEditAsset()
@@ -673,6 +945,11 @@ else if (_asset is { } asset)
 
     private void CancelPrice()
     {
+        if (_priceSaving)
+        {
+            return;
+        }
+
         _showPriceForm = false;
         _priceError = null;
     }
@@ -816,6 +1093,9 @@ else if (_asset is { } asset)
     private static string MoneyText(Money? value) =>
         value is { } money ? Format.Money(money) : "—";
 
+    private static string QuoteValue(InvestmentAssetRow asset) =>
+        asset.CurrentUnitPrice is { } unitPrice ? Format.Money(unitPrice) : "—";
+
     private static string MoneySigned(Money? value) =>
         value is { } money ? Format.MoneySigned(money) : "—";
 
@@ -839,6 +1119,37 @@ else if (_asset is { } asset)
     private static string NumberPercent(decimal value) =>
         $"{value.ToString("N2", ItalianCulture)} %";
 
+    private static string AnnualCouponText(InvestmentAssetRow asset) =>
+        asset.CouponRate is { } rate &&
+        asset.NotionalValue is { } notional &&
+        asset.Quantity is { } quantity
+            ? Format.Money(new Money(
+                notional.Amount * quantity.Value * rate / 100m,
+                asset.QuoteCurrency))
+            : "—";
+
+    private static string? AnnualCouponHint(InvestmentAssetRow asset) =>
+        asset.CouponRate is null ? "Tasso non indicato"
+        : asset.NotionalValue is null ? "Nominale non indicato"
+        : asset.Quantity is null ? "Quantità non disponibile"
+        : null;
+
+    private string MaturityText(InvestmentAssetRow asset)
+    {
+        if (asset.MaturityDate is not { } maturity)
+        {
+            return "";
+        }
+
+        var days = maturity.DayNumber - ValuationDate.DayNumber;
+        return days switch
+        {
+            < 0 => $"Scaduta da {-days} giorni",
+            0 => "Scade oggi",
+            _ => $"Mancano {days} giorni",
+        };
+    }
+
     private static string JustEtfUrl(string isin) =>
         $"https://www.justetf.com/it/etf-profile.html?isin={isin}";
 
@@ -852,5 +1163,28 @@ else if (_asset is { } asset)
 
         return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
             || decimal.TryParse(text, NumberStyles.Float, ItalianCulture, out value);
+    }
+
+    private enum ChartRange
+    {
+        SevenDays,
+        OneMonth,
+        SixMonths,
+        YearToDate,
+        OneYear,
+        Max,
+    }
+
+    private enum PeriodGranularity
+    {
+        Day,
+        Month,
+        Year,
+    }
+
+    private enum ReturnView
+    {
+        Cumulative,
+        Period,
     }
 }

@@ -1,0 +1,390 @@
+@page "/settings/equities"
+@rendermode InteractiveServer
+@using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Portfolio
+@inject InvestmentWorkspaceService Workspace
+@inject InvestmentAssetService AssetService
+
+<PageTitle>Titoli azionari</PageTitle>
+
+<a class="section-link settings-back" href="/settings">
+    <MfIcon Name="arrow-left" Size="16" /> Configurazione
+</a>
+
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="chart" Size="18" /></span>
+            Titoli azionari
+        </h1>
+    </div>
+    @if (!_loading && _loadError is null)
+    {
+        <div class="dashboard-header-meta">
+            <StatusBadge Tone="brand">@EquityCountLabel</StatusBadge>
+        </div>
+    }
+</div>
+
+@if (_loading)
+{
+    <p class="page-status" role="status">Caricamento dei titoli azionari…</p>
+}
+else if (_loadError is not null)
+{
+    <p class="alert alert-error" role="alert">@_loadError</p>
+}
+else
+{
+    @if (_message is not null)
+    {
+        <p class="alert alert-success" role="status">@_message</p>
+    }
+    @if (_actionError is not null)
+    {
+        <p class="alert alert-error" role="alert">@_actionError</p>
+    }
+
+    <div class="bento">
+        <div class="sp-7">
+            <section class="card settings-equities-card" aria-labelledby="settings-equities-title">
+                <div class="section-head">
+                    <div class="section-title-row">
+                        <h2 id="settings-equities-title"><MfIcon Name="chart" Size="18" /> Catalogo azionario</h2>
+                        <StatusBadge Tone="accounts">@FilteredAssets.Count</StatusBadge>
+                    </div>
+                    <button type="button" class="secondary-button" @onclick="ToggleShowArchived">
+                        @(_showArchived ? "Nascondi archiviati" : "Mostra archiviati")
+                    </button>
+                </div>
+
+                <div class="category-search settings-equity-search">
+                    <MfIcon Name="search" Size="16" />
+                    <input type="search"
+                           aria-label="Cerca titoli azionari"
+                           placeholder="Cerca per nome, simbolo o ISIN…"
+                           @bind="_search"
+                           @bind:event="oninput" />
+                    @if (!string.IsNullOrWhiteSpace(_search))
+                    {
+                        <button type="button" class="category-search-clear" aria-label="Azzera ricerca" @onclick="ClearSearch">
+                            <MfIcon Name="close" Size="14" />
+                        </button>
+                    }
+                </div>
+
+                @if (EquityAssets.Count == 0)
+                {
+                    <EmptyState Title="Nessun titolo azionario"
+                                Hint="Aggiungi il primo titolo dal pannello accanto."
+                                Icon="chart" />
+                }
+                else if (FilteredAssets.Count == 0)
+                {
+                    <EmptyState Title="Nessun titolo corrisponde ai filtri" Icon="filter" />
+                }
+                else
+                {
+                    <div class="table-scroll" tabindex="0">
+                        <table class="data-table settings-equities-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Titolo</th>
+                                    <th scope="col" class="num">Quotazione</th>
+                                    <th scope="col">Stato</th>
+                                    <th scope="col"><span class="visually-hidden">Azioni</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var asset in FilteredAssets)
+                                {
+                                    <tr class="investment-row @(asset.IsArchived ? "archived" : "")">
+                                        <td>
+                                            <button type="button"
+                                                    class="settings-account-link"
+                                                    aria-label="@($"Impostazioni di {asset.Name}")"
+                                                    title="Apri impostazioni titolo"
+                                                    @onclick="() => OpenEdit(asset)">
+                                                <span class="account-avatar investments" aria-hidden="true">
+                                                    <MfIcon Name="chart" Size="16" />
+                                                </span>
+                                                <span class="settings-account-name-text">@asset.Name</span>
+                                                @if (asset.Symbol is { } symbol)
+                                                {
+                                                    <span class="status-chip neutral">@symbol</span>
+                                                }
+                                                @if (asset.Isin is { } isin)
+                                                {
+                                                    <span class="investment-isin">@isin</span>
+                                                }
+                                            </button>
+                                        </td>
+                                        <td class="num">
+                                            @if (asset.CurrentUnitPrice is { } price)
+                                            {
+                                                <span class="investment-strong">@Format.Money(price)</span>
+                                                @if (asset.PriceDate is { } priceDate)
+                                                {
+                                                    <span class="investment-subvalue">@Format.Date(priceDate)</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="investment-muted">—</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <StatusBadge Tone="@(asset.IsArchived ? "neutral" : "income")">
+                                                @(asset.IsArchived ? "Archiviato" : "Attivo")
+                                            </StatusBadge>
+                                        </td>
+                                        <td class="num settings-equity-actions">
+                                            <button type="button" class="category-icon-action"
+                                                    title="Modifica titolo"
+                                                    aria-label="Modifica titolo"
+                                                    @onclick="() => OpenEdit(asset)">
+                                                <MfIcon Name="settings" Size="15" />
+                                            </button>
+                                            @{
+                                                var hasHeldQuantity = asset.Quantity is { Value: > 0m };
+                                                var canArchive = asset.IsArchived || !hasHeldQuantity;
+                                            }
+                                            <button type="button" class="category-icon-action"
+                                                    title="@(canArchive
+                                                        ? (asset.IsArchived ? "Riattiva titolo" : "Archivia titolo")
+                                                        : "Vendi tutte le quote prima di archiviare")"
+                                                    aria-label="@(canArchive
+                                                        ? (asset.IsArchived ? "Riattiva titolo" : "Archivia titolo")
+                                                        : "Archiviazione non disponibile: quote ancora detenute")"
+                                                    disabled="@(_working || !canArchive)"
+                                                    @onclick="() => ToggleArchiveAsync(asset)">
+                                                <MfIcon Name="@(asset.IsArchived ? "refresh" : "archive")" Size="15" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="table-hint">
+                        Le quotazioni si aggiornano dalla pagina di dettaglio dello strumento. I titoli
+                        con operazioni o quotazioni registrate non possono essere eliminati.
+                    </p>
+                }
+            </section>
+        </div>
+
+        <div class="sp-5">
+            <section class="card settings-equities-create" aria-labelledby="settings-equities-create-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="settings-equities-create-title"><MfIcon Name="plus" Size="18" /> Nuovo titolo</h2>
+                    </div>
+                </div>
+                <p class="table-hint">
+                    Aggiungi un titolo al catalogo azionario. Potrai configurarne nome, simbolo, ISIN,
+                    unità di prezzo, link alla scheda e note. La classe resta bloccata su Azionario.
+                </p>
+                <div class="form-actions">
+                    <button type="button" class="primary-button" @onclick="OpenCreate">
+                        <MfIcon Name="plus" Size="18" /> Aggiungi titolo azionario
+                    </button>
+                </div>
+
+                <ul class="settings-equities-hints" aria-label="Campi configurabili">
+                    <li><MfIcon Name="tag" Size="14" /> Nome e classe</li>
+                    <li><MfIcon Name="chart" Size="14" /> Simbolo e codice ISIN</li>
+                    <li><MfIcon Name="coin" Size="14" /> Unità di prezzo</li>
+                    <li><MfIcon Name="link" Size="14" /> Link alla scheda</li>
+                    <li><MfIcon Name="doc" Size="14" /> Note dello strumento</li>
+                </ul>
+            </section>
+        </div>
+    </div>
+}
+
+<InvestmentAssetDialog Open="_dialogOpen"
+                       Asset="_assetBeingEdited"
+                       CanDelete="@(_assetBeingEdited is { } selected && CanDelete(selected))"
+                       DefaultAssetClass="@AssetClass.Equity"
+                       LockAssetClass="true"
+                       OnClose="CloseDialog"
+                       OnSaved="OnAssetSaved"
+                       OnDeleted="OnAssetDeleted" />
+
+@code {
+    private InvestmentWorkspace? _workspace;
+    private bool _loading = true;
+    private string? _loadError;
+    private string? _message;
+    private string? _actionError;
+    private string _search = "";
+    private bool _showArchived;
+    private bool _working;
+    private bool _dialogOpen;
+    private InvestmentAssetRow? _assetBeingEdited;
+
+    private IReadOnlyList<InvestmentAssetRow> EquityAssets => _workspace is null
+        ? []
+        : _workspace.Assets
+            .Where(asset => asset.AssetClass == AssetClass.Equity)
+            .ToArray();
+
+    private IReadOnlyList<InvestmentAssetRow> FilteredAssets
+    {
+        get
+        {
+            IEnumerable<InvestmentAssetRow> rows = EquityAssets;
+            if (!_showArchived)
+            {
+                rows = rows.Where(asset => !asset.IsArchived);
+            }
+
+            var term = _search.Trim();
+            if (term.Length > 0)
+            {
+                rows = rows.Where(asset =>
+                    Contains(asset.Name, term) ||
+                    Contains(asset.Symbol, term) ||
+                    Contains(asset.Isin, term));
+            }
+
+            return rows
+                .OrderBy(asset => asset.IsArchived)
+                .ThenBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+        }
+    }
+
+    private string EquityCountLabel
+    {
+        get
+        {
+            var active = EquityAssets.Count(asset => !asset.IsArchived);
+            var archived = EquityAssets.Count(asset => asset.IsArchived);
+            var label = active == 1 ? "1 titolo attivo" : $"{active} titoli attivi";
+            return archived > 0 ? $"{label} · {archived} archiviati" : label;
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        _workspace = null;
+
+        try
+        {
+            _workspace = await Workspace.LoadAsync();
+        }
+        catch (InvalidOperationException exception)
+            when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _loadError = "Impossibile caricare i titoli azionari. Verificare che PostgreSQL sia raggiungibile e che la connection string sia corretta.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _workspace = await Workspace.LoadAsync();
+            _loadError = null;
+        }
+        catch (Exception)
+        {
+            _actionError = "Impossibile aggiornare i titoli azionari. Verificare la connessione al database e riprovare.";
+        }
+    }
+
+    private static bool Contains(string? value, string term) =>
+        value is not null && value.Contains(term, StringComparison.CurrentCultureIgnoreCase);
+
+    private static bool CanDelete(InvestmentAssetRow asset) =>
+        !asset.HasOperations && asset.PriceDate is null;
+
+    private void ClearSearch() => _search = "";
+
+    private void ToggleShowArchived() => _showArchived = !_showArchived;
+
+    private void OpenCreate()
+    {
+        _message = null;
+        _actionError = null;
+        _assetBeingEdited = null;
+        _dialogOpen = true;
+    }
+
+    private void OpenEdit(InvestmentAssetRow asset)
+    {
+        _message = null;
+        _actionError = null;
+        _assetBeingEdited = asset;
+        _dialogOpen = true;
+    }
+
+    private void CloseDialog() => _dialogOpen = false;
+
+    private async Task OnAssetSaved()
+    {
+        _message = "Titolo azionario salvato.";
+        _actionError = null;
+        await ReloadAsync();
+    }
+
+    private async Task OnAssetDeleted()
+    {
+        _message = "Titolo azionario eliminato.";
+        _actionError = null;
+        await ReloadAsync();
+    }
+
+    private async Task ToggleArchiveAsync(InvestmentAssetRow asset)
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _working = true;
+        _message = null;
+        _actionError = null;
+        try
+        {
+            if (asset.IsArchived)
+            {
+                await AssetService.ReactivateAsync(asset.InstrumentId);
+                _message = $"«{asset.Name}» riattivato.";
+            }
+            else
+            {
+                await AssetService.ArchiveAsync(asset.InstrumentId);
+                _message = $"«{asset.Name}» archiviato.";
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _actionError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _actionError = "Operazione non riuscita: verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+}

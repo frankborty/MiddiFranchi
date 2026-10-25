@@ -52,7 +52,7 @@
                 <p class="alert alert-error" role="alert">@_error</p>
             }
 
-            @if (SettlementAccounts.Count == 0)
+            @if (Operation is null && SettlementAccounts.Count == 0)
             {
                 <p class="alert alert-warning" role="status">
                     Non ci sono conti attivi utilizzabili per la regolazione.
@@ -65,26 +65,28 @@
                     Quantità detenuta: @Format.Quantity(available)
                     @if (Asset.LatestPrice is { } latest)
                     {
-                        <text> · ultima quotazione @latest.ToString("N4", CultureInfo.GetCultureInfo("it-IT"))</text>
-                        <text> @(Asset.PriceUnit == PriceUnit.PercentOfNominal ? "% del nominale" : "EUR")</text>
+                        <text> · ultima quotazione @latest.ToString("N4", CultureInfo.GetCultureInfo("it-IT")) @(Asset.PriceUnit == PriceUnit.PercentOfNominal ? "% del nominale" : "€")</text>
                     }
                 </p>
             }
 
             <form class="form-grid" @onsubmit="SaveAsync">
-                <label>
-                    <span>Conto di regolamento *</span>
-                    <select @bind="_accountId" required aria-required="true">
-                        @if (SettlementAccounts.Count == 0)
-                        {
-                            <option value="">Nessun conto disponibile</option>
-                        }
-                        @foreach (var account in SettlementAccounts)
-                        {
-                            <option value="@account.Id">@account.Name</option>
-                        }
-                    </select>
-                </label>
+                @if (Operation is null)
+                {
+                    <label>
+                        <span>Conto di regolamento *</span>
+                        <select @bind="_accountId" required aria-required="true">
+                            @if (SettlementAccounts.Count == 0)
+                            {
+                                <option value="">Nessun conto disponibile</option>
+                            }
+                            @foreach (var account in SettlementAccounts)
+                            {
+                                <option value="@account.Id">@account.Name</option>
+                            }
+                        </select>
+                    </label>
+                }
 
                 <label>
                     <span>Data *</span>
@@ -106,7 +108,7 @@
                     </label>
 
                     <label>
-                        <span>Commissioni (EUR)</span>
+                        <span>Commissioni (€)</span>
                         <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00"
                                @bind="_feeText" />
                     </label>
@@ -114,7 +116,7 @@
                 else
                 {
                     <label>
-                        <span>@(IsDividend ? "Importo del dividendo (EUR)" : "Importo della cedola (EUR)") *</span>
+                        <span>@(IsDividend ? "Importo del dividendo (€)" : "Importo della cedola (€)") *</span>
                         <input type="number" inputmode="decimal" step="any" min="0" placeholder="0,00"
                                required aria-required="true" @bind="_amountText" />
                     </label>
@@ -136,15 +138,45 @@
 
                 <div class="form-actions">
                     <button type="submit" class="primary-button"
-                            disabled="@(_saving || SettlementAccounts.Count == 0)">
+                            disabled="@(_saving || _deleting || (Operation is null && SettlementAccounts.Count == 0))">
                         <MfIcon Name="@SaveIcon" Size="18" />
                         @SubmitLabel
                     </button>
-                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">
+                    <button type="button" class="secondary-button" disabled="@(_saving || _deleting)" @onclick="CloseAsync">
                         Annulla
                     </button>
                 </div>
             </form>
+
+            @if (Operation is not null)
+            {
+                <div class="settings-danger-zone investment-delete-zone">
+                    @if (_deleteError is not null)
+                    {
+                        <p class="alert alert-error" role="alert">@_deleteError</p>
+                    }
+                    @if (_confirmingDelete)
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            <div>Eliminare questa operazione? L'operazione non è reversibile.</div>
+                            <div class="form-actions">
+                                <button type="button" class="danger-button" disabled="@_deleting" @onclick="DeleteAsync">
+                                    <MfIcon Name="trash" Size="16" /> Elimina definitivamente
+                                </button>
+                                <button type="button" class="secondary-button" disabled="@_deleting" @onclick="CancelDelete">
+                                    Annulla
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="delete-button" disabled="@(_saving || _deleting)" @onclick="StartDelete">
+                            <MfIcon Name="trash" Size="16" /> Elimina operazione
+                        </button>
+                    }
+                </div>
+            }
         </div>
     </div>
 }
@@ -172,9 +204,14 @@
 
     [Parameter] public EventCallback OnSaved { get; set; }
 
+    [Parameter] public EventCallback OnDeleted { get; set; }
+
     private bool _wasOpen;
     private bool _saving;
+    private bool _deleting;
+    private bool _confirmingDelete;
     private string? _error;
+    private string? _deleteError;
     private InvestmentOperationKind _kind = InvestmentOperationKind.Buy;
     private string _accountId = "";
     private DateOnly _date = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -213,7 +250,7 @@
 
     private string PriceLabel => Asset?.PriceUnit == PriceUnit.PercentOfNominal
         ? "Prezzo (% del nominale)"
-        : "Prezzo per unità (EUR)";
+        : "Prezzo per unità (€)";
 
     private Quantity? QuantityPreview => Asset?.Quantity;
 
@@ -260,7 +297,10 @@
 
         _wasOpen = true;
         _saving = false;
+        _deleting = false;
+        _confirmingDelete = false;
         _error = null;
+        _deleteError = null;
         _kind = Operation?.Kind ?? PresetKind;
 
         var lastAssetAccount = Asset?.Operations
@@ -299,7 +339,7 @@
 
     private async Task SaveAsync()
     {
-        if (_saving || Asset is null)
+        if (_saving || _deleting || Asset is null)
         {
             return;
         }
@@ -408,9 +448,50 @@
         }
     }
 
+    private void StartDelete()
+    {
+        _deleteError = null;
+        _confirmingDelete = true;
+    }
+
+    private void CancelDelete()
+    {
+        _confirmingDelete = false;
+        _deleteError = null;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Operation is null || _deleting)
+        {
+            return;
+        }
+
+        _deleting = true;
+        _deleteError = null;
+        try
+        {
+            await AssetService.DeleteOperationAsync(Operation.Id);
+            await OnDeleted.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _deleteError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _deleteError = "Impossibile eliminare l'operazione. Verificare la connessione al database e riprovare.";
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
     private async Task CloseAsync()
     {
-        if (_saving)
+        if (_saving || _deleting)
         {
             return;
         }

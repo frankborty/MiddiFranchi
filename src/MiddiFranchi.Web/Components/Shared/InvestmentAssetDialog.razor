@@ -15,9 +15,6 @@
                     <h2 id="investment-asset-dialog-title">
                         @(Asset is null ? "Nuovo strumento" : "Modifica strumento")
                     </h2>
-                    <p class="section-sub">
-                        Identità, classificazione e dettagli dell'obbligazione. La valuta è sempre EUR.
-                    </p>
                 </div>
                 <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_saving" @onclick="CloseAsync">
                     <MfIcon Name="close" Size="18" />
@@ -29,79 +26,102 @@
                 <p class="alert alert-error" role="alert">@_error</p>
             }
 
-            <form class="form-grid" @onsubmit="SaveAsync">
-                <label class="operation-form-wide">
-                    <span>Nome *</span>
-                    <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
-                </label>
+            <form class="form-grid investment-asset-form" @onsubmit="SaveAsync">
+                <fieldset class="investment-form-section">
+                    <legend><MfIcon Name="tag" Size="16" /> Identità e classificazione</legend>
+                    <div class="investment-form-grid">
+                        <label class="investment-form-wide">
+                            <span>Nome *</span>
+                            <input type="text" maxlength="200" required aria-required="true" @bind="_name" />
+                        </label>
 
-                <label>
-                    <span>Classe di attività *</span>
-                    <select @bind="_assetClass" required aria-required="true">
-                        @foreach (var value in Enum.GetValues<AssetClass>())
+                        @if (LockAssetClass)
                         {
-                            <option value="@value">@Format.AssetClassLabel(value)</option>
+                            <label>
+                                <span>Classe di attività</span>
+                                <span class="status-chip neutral">@Format.AssetClassLabel(_assetClass)</span>
+                            </label>
                         }
-                    </select>
-                </label>
-
-                <label>
-                    <span>Unità di prezzo *</span>
-                    <select @bind="_priceUnit" required aria-required="true">
-                        @foreach (var value in Enum.GetValues<PriceUnit>())
+                        else
                         {
-                            <option value="@value">@Format.PriceUnitLabel(value)</option>
+                            <label>
+                                <span>Classe di attività *</span>
+                                <select @bind="_assetClass" required aria-required="true">
+                                    @foreach (var value in AvailableAssetClasses)
+                                    {
+                                        <option value="@value">@Format.AssetClassLabel(value)</option>
+                                    }
+                                </select>
+                            </label>
                         }
-                    </select>
-                </label>
 
-                <label>
-                    <span>Sigla per il pricing</span>
-                    <input type="text" maxlength="32" placeholder="Es. V3MA" @bind="_symbol" />
-                </label>
+                        <label>
+                            <span>Unità di prezzo *</span>
+                            <select @bind="_priceUnit" required aria-required="true">
+                                @foreach (var value in Enum.GetValues<PriceUnit>())
+                                {
+                                    <option value="@value">@Format.PriceUnitLabel(value)</option>
+                                }
+                            </select>
+                        </label>
 
-                <label>
-                    <span>Codice ISIN</span>
-                    <input type="text" maxlength="12" placeholder="12 caratteri" @bind="_isin" />
-                </label>
+                        <label>
+                            <span>Sigla per il pricing</span>
+                            <input type="text" maxlength="32" placeholder="Es. V3MA" @bind="_symbol" />
+                        </label>
 
-                <label>
-                    <span>Valuta</span>
-                    <span class="status-chip neutral investment-currency-chip">EUR</span>
-                </label>
+                        <label>
+                            <span>Codice ISIN</span>
+                            <input type="text" maxlength="12" placeholder="12 caratteri" @bind="_isin" />
+                        </label>
+                    </div>
+                </fieldset>
 
-                @if (UsesNotionalValue)
+                @if (UsesNotionalValue || IsBond)
                 {
-                    <label>
-                        <span>Valore nominale per unità (EUR) *</span>
-                        <input type="number" inputmode="decimal" step="any" min="0" placeholder="1000,00"
-                               required aria-required="true" @bind="_notionalText" />
-                    </label>
+                    <fieldset class="investment-form-section">
+                        <legend><MfIcon Name="coin" Size="16" /> Dettagli finanziari</legend>
+                        <div class="investment-form-grid">
+                            @if (UsesNotionalValue)
+                            {
+                                <label>
+                                    <span>Valore nominale per unità (€) *</span>
+                                    <input type="number" inputmode="decimal" step="any" min="0" placeholder="1000,00"
+                                           required aria-required="true" @bind="_notionalText" />
+                                </label>
+                            }
+
+                            @if (IsBond)
+                            {
+                                <label>
+                                    <span>Scadenza</span>
+                                    <input type="date" @bind="_maturityDate" />
+                                </label>
+                                <label>
+                                    <span>Rendimento annuo (%)</span>
+                                    <input type="number" inputmode="decimal" step="any" min="0" max="100"
+                                           placeholder="Es. 3,5" @bind="_couponRateText" />
+                                </label>
+                            }
+                        </div>
+                    </fieldset>
                 }
 
-                @if (IsBond)
-                {
-                    <label>
-                        <span>Scadenza</span>
-                        <input type="date" @bind="_maturityDate" />
-                    </label>
-                    <label>
-                        <span>Rendimento annuo (%)</span>
-                        <input type="number" inputmode="decimal" step="any" min="0" max="100"
-                               placeholder="Es. 3,5" @bind="_couponRateText" />
-                    </label>
-                }
+                <fieldset class="investment-form-section">
+                    <legend><MfIcon Name="link" Size="16" /> Riferimenti e note</legend>
+                    <div class="investment-form-grid">
+                        <label class="investment-form-wide">
+                            <span>Link alla scheda dello strumento</span>
+                            <input type="url" maxlength="500" placeholder="https://…" @bind="_referenceUrl" />
+                        </label>
 
-                <label class="operation-form-wide">
-                    <span>Link alla scheda dello strumento</span>
-                    <input type="url" maxlength="500" placeholder="https://…" @bind="_referenceUrl" />
-                </label>
-
-                <label class="operation-form-wide">
-                    <span>Nota breve</span>
-                    <textarea rows="3" maxlength="1000" placeholder="Es. PAC mensile, commissioni, strategia…"
-                              @bind="_notes"></textarea>
-                </label>
+                        <label class="investment-form-wide">
+                            <span>Nota breve</span>
+                            <textarea rows="3" maxlength="1000" placeholder="Es. PAC mensile, commissioni, strategia…"
+                                      @bind="_notes"></textarea>
+                        </label>
+                    </div>
+                </fieldset>
 
                 <div class="form-actions">
                     <button type="submit" class="primary-button" disabled="@_saving">
@@ -114,20 +134,14 @@
                 </div>
             </form>
 
-            @if (Asset is not null)
+            @if (Asset is not null && CanDelete)
             {
-                <div class="settings-danger-zone">
+                <div class="settings-danger-zone investment-delete-zone">
                     @if (_deleteError is not null)
                     {
                         <p class="alert alert-error" role="alert">@_deleteError</p>
                     }
-                    @if (!CanDelete)
-                    {
-                        <p class="table-hint">
-                            Lo strumento ha operazioni o quotazioni registrate: archivialo invece di eliminarlo.
-                        </p>
-                    }
-                    else if (_confirmingDelete)
+                    @if (_confirmingDelete)
                     {
                         <div class="alert alert-warning" role="alert">
                             <div>Eliminare definitivamente «@_name»? L'operazione non è reversibile.</div>
@@ -160,11 +174,23 @@
 
     [Parameter] public bool CanDelete { get; set; }
 
+    [Parameter] public AssetClass DefaultAssetClass { get; set; } = AssetClass.Equity;
+
+    [Parameter] public bool LockAssetClass { get; set; }
+
     [Parameter] public EventCallback OnClose { get; set; }
 
     [Parameter] public EventCallback OnSaved { get; set; }
 
     [Parameter] public EventCallback OnDeleted { get; set; }
+
+    private static readonly AssetClass[] AvailableAssetClasses =
+    [
+        AssetClass.Equity,
+        AssetClass.Bond,
+        AssetClass.MoneyMarket,
+        AssetClass.Other,
+    ];
 
     private bool _wasOpen;
     private bool _saving;
@@ -210,7 +236,7 @@
         _deleteError = null;
 
         _name = Asset?.Name ?? "";
-        _assetClass = Asset?.AssetClass ?? AssetClass.Equity;
+        _assetClass = Asset?.AssetClass ?? DefaultAssetClass;
         _priceUnit = Asset?.PriceUnit ?? PriceUnit.PerUnit;
         _symbol = Asset?.Symbol ?? "";
         _isin = Asset?.Isin ?? "";

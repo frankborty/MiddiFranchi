@@ -166,7 +166,7 @@ else
                                 <button type="button" class="category-tool" @onclick="() => OpenMoveGroup(selected)">
                                     <MfIcon Name="transfer" Size="14" /> Sposta
                                 </button>
-                                <button type="button" class="delete-button compact" @onclick="() => OpenDeleteGroup(selected)">
+                                <button type="button" class="delete-button" @onclick="() => OpenDeleteGroup(selected)">
                                     <MfIcon Name="trash" Size="14" /> Elimina
                                 </button>
                             </div>
@@ -318,6 +318,9 @@ else
                                                     <button type="button" class="secondary-button" disabled="@_subcategoryWorking" @onclick="CancelInlineSubcategoryEdit">
                                                         Annulla
                                                     </button>
+                                                    <button type="button" class="secondary-button" disabled="@_subcategoryWorking" @onclick="OpenMoveSubcategoryFromEditor">
+                                                        <MfIcon Name="transfer" Size="14" /> Sposta
+                                                    </button>
                                                 </div>
                                             </form>
                                         </div>
@@ -330,14 +333,17 @@ else
                                                 <span>@OperationLabel(row.OperationCount)</span>
                                             </div>
                                             <div class="category-subcategory-actions">
-                                                <button type="button" class="category-tool small" @onclick="() => StartInlineSubcategoryEdit(row)">
-                                                    <MfIcon Name="settings" Size="13" /> Modifica
+                                                <button type="button" class="category-icon-action"
+                                                        title="Modifica sottocategoria"
+                                                        aria-label="Modifica sottocategoria"
+                                                        @onclick="() => StartInlineSubcategoryEdit(row)">
+                                                    <MfIcon Name="settings" Size="15" />
                                                 </button>
-                                                <button type="button" class="category-tool small" @onclick="() => OpenMoveSubcategory(row)">
-                                                    <MfIcon Name="transfer" Size="13" /> Sposta
-                                                </button>
-                                                <button type="button" class="delete-button compact" @onclick="() => OpenDeleteSubcategory(row)">
-                                                    <MfIcon Name="trash" Size="13" /> Elimina
+                                                <button type="button" class="category-icon-action danger"
+                                                        title="Elimina sottocategoria"
+                                                        aria-label="Elimina sottocategoria"
+                                                        @onclick="() => OpenDeleteSubcategory(row)">
+                                                    <MfIcon Name="trash" Size="15" />
                                                 </button>
                                             </div>
                                         </div>
@@ -528,9 +534,14 @@ else
         <div class="modal-card category-admin-modal" role="dialog" aria-modal="true" aria-labelledby="category-delete-title"
              @onclick:stopPropagation="true">
             <div class="section-head">
-                <div>
-                    <h2 id="category-delete-title">Elimina @(_deleteGroupMode ? "categoria" : "sottocategoria")</h2>
-                    <p class="section-sub">@DeleteDescription</p>
+                <div class="category-delete-heading">
+                    <span class="category-delete-icon" aria-hidden="true">
+                        <MfIcon Name="trash" Size="18" />
+                    </span>
+                    <div>
+                        <h2 id="category-delete-title">Elimina @(_deleteGroupMode ? "categoria" : "sottocategoria")</h2>
+                        <p class="section-sub">@DeleteDescription</p>
+                    </div>
                 </div>
                 <button type="button" class="icon-button" aria-label="Chiudi" disabled="@_working" @onclick="CloseDelete">
                     <MfIcon Name="close" Size="18" />
@@ -542,66 +553,74 @@ else
                 <p class="alert alert-error" role="alert">@_deleteError</p>
             }
 
-            @if (DeleteOperationCount > 0)
-            {
-                <p class="alert alert-warning" role="alert">
-                    Ci sono @DeleteOperationCount operazioni collegate. Scegli dove spostarle prima di eliminare.
-                </p>
-
-                @if (!_deleteGroupMode)
+            <div class="category-delete-body">
+                @if (DeleteOperationCount > 0)
                 {
-                    <label class="form-field">
-                        <span>Sposta le operazioni in</span>
-                        <select @bind="_deleteDestinationRowId" disabled="@_working">
-                            @foreach (var row in DeleteSubcategoryDestinations)
-                            {
-                                <option value="@row.Category.Id">@DeleteRowLabel(row)</option>
-                            }
-                        </select>
-                    </label>
-                }
-                else if (_deleteGroup is { } group)
-                {
-                    <label class="form-field">
-                        <span>Categoria di destinazione</span>
-                        <select @bind="_deleteDestinationGroup" @bind:after="OnDeleteGroupChanged" disabled="@_working">
-                            @foreach (var destination in DeleteGroupDestinations)
-                            {
-                                <option value="@destination.Name">@destination.Name</option>
-                            }
-                        </select>
-                    </label>
+                    <p class="alert alert-warning" role="alert">
+                        Ci sono @DeleteOperationCount operazioni collegate. Scegli dove spostarle prima di eliminare.
+                    </p>
 
-                    @if (group.Type == CategoryType.Expense)
+                    <div class="category-delete-fields">
+                        @if (!_deleteGroupMode)
+                        {
+                            <label class="form-field">
+                                <span>Sposta le operazioni in</span>
+                                <select @bind="_deleteDestinationRowId" disabled="@_working">
+                                    @foreach (var row in DeleteSubcategoryDestinations)
+                                    {
+                                        <option value="@row.Category.Id">@DeleteRowLabel(row)</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                        else if (_deleteGroup is { } group)
+                        {
+                            <label class="form-field">
+                                <span>Categoria di destinazione</span>
+                                <select @bind="_deleteDestinationGroup" @bind:after="OnDeleteGroupChanged" disabled="@_working">
+                                    @foreach (var destination in DeleteGroupDestinations)
+                                    {
+                                        <option value="@destination.Name">@destination.Name</option>
+                                    }
+                                </select>
+                            </label>
+
+                            @if (group.Type == CategoryType.Expense)
+                            {
+                                <label class="form-field">
+                                    <span>Sottocategoria di destinazione</span>
+                                    <select @bind="_deleteDestinationRowId" disabled="@_working">
+                                        @foreach (var row in DeleteDestinationRows)
+                                        {
+                                            <option value="@row.Category.Id">@row.Category.Subcategory</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        }
+                    </div>
+
+                    @if (!CanConfirmDelete)
                     {
-                        <label class="form-field">
-                            <span>Sottocategoria di destinazione</span>
-                            <select @bind="_deleteDestinationRowId" disabled="@_working">
-                                @foreach (var row in DeleteDestinationRows)
-                                {
-                                    <option value="@row.Category.Id">@row.Category.Subcategory</option>
-                                }
-                            </select>
-                        </label>
+                        <p class="table-hint">Crea prima una destinazione disponibile.</p>
                     }
                 }
-
-                @if (!CanConfirmDelete)
+                else
                 {
-                    <p class="table-hint">Crea prima una destinazione disponibile.</p>
+                    <p class="alert alert-info" role="status">
+                        Non ci sono operazioni collegate: puoi eliminare senza spostamenti.
+                    </p>
                 }
-            }
-            else
-            {
-                <p class="table-hint">Non ci sono operazioni collegate: puoi eliminare senza spostamenti.</p>
-            }
+            </div>
 
-            <div class="form-actions">
-                <button type="button" class="danger-button" disabled="@(_working || !CanConfirmDelete)" @onclick="ConfirmDeleteAsync">
-                    <MfIcon Name="trash" Size="16" />
-                    @if (DeleteOperationCount > 0) { <text>Sposta e elimina</text> } else { <text>Elimina</text> }
-                </button>
-                <button type="button" class="secondary-button" disabled="@_working" @onclick="CloseDelete">Annulla</button>
+            <div class="settings-danger-zone category-delete-actions">
+                <div class="form-actions">
+                    <button type="button" class="danger-button" disabled="@(_working || !CanConfirmDelete)" @onclick="ConfirmDeleteAsync">
+                        <MfIcon Name="trash" Size="16" />
+                        @if (DeleteOperationCount > 0) { <text>Sposta e elimina</text> } else { <text>Elimina</text> }
+                    </button>
+                    <button type="button" class="secondary-button" disabled="@_working" @onclick="CloseDelete">Annulla</button>
+                </div>
             </div>
         </div>
     </div>
@@ -978,6 +997,17 @@ else
     {
         _editingSubcategoryRow = null;
         _inlineEditSubcategoryError = null;
+    }
+
+    private void OpenMoveSubcategoryFromEditor()
+    {
+        if (_editingSubcategoryRow is not { } row)
+        {
+            return;
+        }
+
+        CancelInlineSubcategoryEdit();
+        OpenMoveSubcategory(row);
     }
 
     private async Task SaveInlineSubcategoryAsync()
