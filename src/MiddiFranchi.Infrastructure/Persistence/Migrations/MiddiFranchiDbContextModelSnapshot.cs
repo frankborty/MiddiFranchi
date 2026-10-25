@@ -114,6 +114,23 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.AppMetadataRecord", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("AppMetadata", (string)null);
+                });
+
             modelBuilder.Entity("MiddiFranchi.Infrastructure.Persistence.Entities.CategoryRecord", b =>
                 {
                     b.Property<Guid>("Id")

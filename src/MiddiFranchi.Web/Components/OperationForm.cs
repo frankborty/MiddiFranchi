@@ -48,7 +48,7 @@ public sealed record CategoryGroup(string Name, IReadOnlyList<Category> Categori
 /// </summary>
 public sealed record OperationFormModel
 {
-    public OperationFormKind Kind { get; init; } = OperationFormKind.Income;
+    public OperationFormKind Kind { get; init; } = OperationFormKind.Expense;
 
     public Guid? CategoryId { get; init; }
 

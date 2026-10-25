@@ -1,36 +1,39 @@
+using MiddiFranchi.Application.DataManagement;
+
 namespace MiddiFranchi.Application.Financial;
 
 public sealed class PriceUpdateService
 {
-    private static readonly SemaphoreSlim RunLock = new(1, 1);
-
     private readonly InvestmentWorkspaceService _workspace;
     private readonly InvestmentAssetService _assets;
     private readonly IInvestmentQuoteProvider _quotes;
     private readonly IPriceUpdateStore _store;
+    private readonly DataMaintenanceGate _gate;
 
     public PriceUpdateService(
         InvestmentWorkspaceService workspace,
         InvestmentAssetService assets,
         IInvestmentQuoteProvider quotes,
-        IPriceUpdateStore store)
+        IPriceUpdateStore store,
+        DataMaintenanceGate gate)
     {
         _workspace = workspace;
         _assets = assets;
         _quotes = quotes;
         _store = store;
+        _gate = gate;
     }
 
     public async Task<PriceUpdateResult> UpdateInstrumentAsync(
         Guid instrumentId,
         CancellationToken cancellationToken = default)
     {
-        if (!await RunLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!_gate.TryEnter(out var handle))
         {
             return PriceUpdateResult.Failure(
                 instrumentId,
                 "",
-                "Un aggiornamento è già in corso. Riprova tra poco.");
+                "Un aggiornamento o una manutenzione dei dati è già in corso. Riprova tra poco.");
         }
 
         try
@@ -55,21 +58,21 @@ public sealed class PriceUpdateService
         }
         finally
         {
-            RunLock.Release();
+            handle?.Dispose();
         }
     }
 
     public async Task<IReadOnlyList<PriceUpdateResult>> UpdateAllAsync(
         CancellationToken cancellationToken = default)
     {
-        if (!await RunLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!_gate.TryEnter(out var handle))
         {
             return
             [
                 PriceUpdateResult.Failure(
                     Guid.Empty,
                     "",
-                    "Un aggiornamento è già in corso. Riprova tra poco."),
+                    "Un aggiornamento o una manutenzione dei dati è già in corso. Riprova tra poco."),
             ];
         }
 
@@ -133,7 +136,7 @@ public sealed class PriceUpdateService
         }
         finally
         {
-            RunLock.Release();
+            handle?.Dispose();
         }
     }
 

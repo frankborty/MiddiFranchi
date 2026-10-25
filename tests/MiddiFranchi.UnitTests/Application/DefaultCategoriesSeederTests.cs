@@ -7,11 +7,12 @@ namespace MiddiFranchi.UnitTests.Application;
 public class DefaultCategoriesSeederTests
 {
     private readonly FakeCategoryRepository _categories = new();
+    private readonly FakeAppMetadataRepository _metadata = new();
     private readonly DefaultCategoriesSeeder _seeder;
 
     public DefaultCategoriesSeederTests()
     {
-        _seeder = new DefaultCategoriesSeeder(_categories);
+        _seeder = new DefaultCategoriesSeeder(_categories, _metadata);
     }
 
     [Fact]
@@ -33,6 +34,7 @@ public class DefaultCategoriesSeederTests
             category.Type == CategoryType.Income &&
             category.Icon == "wallet" &&
             category.ColorHex == "#16a34a");
+        _metadata.Values[DefaultCategoriesSeeder.SeedKey].ShouldBe("done");
     }
 
     [Fact]
@@ -60,6 +62,17 @@ public class DefaultCategoriesSeederTests
         _categories.Categories.ShouldContain(custom);
         _categories.Categories.Count(category =>
             category.Name == "Alimentazione" && category.Subcategory == "Spesa").ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Ensure_ShouldSkip_WhenSeedMarkerIsPresent()
+    {
+        _metadata.Values[DefaultCategoriesSeeder.SeedKey] = "done";
+
+        var added = await _seeder.EnsureAsync();
+
+        added.ShouldBe(0);
+        _categories.Categories.ShouldBeEmpty();
     }
 
     [Fact]

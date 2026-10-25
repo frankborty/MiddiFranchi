@@ -239,7 +239,7 @@ colore.
   mostrati nell'elenco e modificabili da `CategorySettingsDialog`. Le categorie di uscita hanno
   una sottocategoria obbligatoria in creazione e modifica; le categorie di entrata possono non
   averla. Il nome apre `CategorySettingsDialog` per aggiornarla. Le categorie di spesa di esempio
-  sono raggruppate in Abitazione & Utenze,
+  sono raggruppate in Casa & Utenze,
   Trasporti, Auto, Fees, Fun & Shopping, Salute & Benessere, Alimentazione, Streaming e Varie,
   ciascuna con un'icona e un colore univoco. La migration
   `AddCategoryAppearanceAndResetExpenseCategories` ha sostituito le vecchie categorie di spesa

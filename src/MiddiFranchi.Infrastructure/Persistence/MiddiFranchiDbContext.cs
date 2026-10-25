@@ -29,6 +29,8 @@ public sealed class MiddiFranchiDbContext : DbContext
 
     public DbSet<LoanReadingRecord> LoanReadings => Set<LoanReadingRecord>();
 
+    public DbSet<AppMetadataRecord> AppMetadata => Set<AppMetadataRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MiddiFranchiDbContext).Assembly);

@@ -16,6 +16,8 @@ public sealed record DefaultCategory(
 /// </summary>
 public sealed class DefaultCategoriesSeeder
 {
+    public const string SeedKey = "seed.categories.v1";
+
     public static readonly IReadOnlyList<DefaultCategory> Defaults =
     [
         // Entrate: nessuna sottocategoria, icona e colore per categoria.
@@ -29,13 +31,14 @@ public sealed class DefaultCategoriesSeeder
         new("AltroIncome", null, CategoryType.Income, "tag", "#94a3b8"),
 
         // Uscite con icona e colore univoco per categoria.
-        new("Abitazione & Utenze", "Elettricità Maranello", CategoryType.Expense, "home", "#2563eb"),
-        new("Abitazione & Utenze", "Elettricità NonnaMaria", CategoryType.Expense, "home", "#2563eb"),
-        new("Abitazione & Utenze", "Elettricità Mamma", CategoryType.Expense, "home", "#2563eb"),
-        new("Abitazione & Utenze", "Gas", CategoryType.Expense, "home", "#2563eb"),
-        new("Abitazione & Utenze", "Telefono", CategoryType.Expense, "home", "#2563eb"),
-        new("Abitazione & Utenze", "Internet", CategoryType.Expense, "home", "#2563eb"),
-        new("Abitazione & Utenze", "AltroCasa", CategoryType.Expense, "home", "#2563eb"),
+        new("Casa & Utenze", "Elettricità Maranello", CategoryType.Expense, "home", "#2563eb"),
+        new("Casa & Utenze", "Elettricità NonnaMaria", CategoryType.Expense, "home", "#2563eb"),
+        new("Casa & Utenze", "Elettricità Mamma", CategoryType.Expense, "home", "#2563eb"),
+        new("Casa & Utenze", "Gas", CategoryType.Expense, "home", "#2563eb"),
+        new("Casa & Utenze", "Telefono", CategoryType.Expense, "home", "#2563eb"),
+        new("Casa & Utenze", "Internet", CategoryType.Expense, "home", "#2563eb"),
+        new("Casa & Utenze", "IA", CategoryType.Expense, "bulb", "#2563eb"),
+        new("Casa & Utenze", "AltroCasa", CategoryType.Expense, "home", "#2563eb"),
 
         new("Trasporti", "Mezzi pubblici", CategoryType.Expense, "bus", "#0ea5e9"),
         new("Trasporti", "Pedaggio", CategoryType.Expense, "bus", "#0ea5e9"),
@@ -90,14 +93,21 @@ public sealed class DefaultCategoriesSeeder
     ];
 
     private readonly ICategoryRepository _categories;
+    private readonly IAppMetadataRepository _metadata;
 
-    public DefaultCategoriesSeeder(ICategoryRepository categories)
+    public DefaultCategoriesSeeder(ICategoryRepository categories, IAppMetadataRepository metadata)
     {
         _categories = categories;
+        _metadata = metadata;
     }
 
     public async Task<int> EnsureAsync(CancellationToken cancellationToken = default)
     {
+        if (await _metadata.IsSeedCompletedAsync(SeedKey, cancellationToken))
+        {
+            return 0;
+        }
+
         var existing = await _categories.ListAsync(cancellationToken);
         var keys = existing
             .Select(category => Key(category.Name, category.Subcategory, category.Type))
@@ -122,6 +132,8 @@ public sealed class DefaultCategoriesSeeder
                 cancellationToken);
             added++;
         }
+
+        await _metadata.SetAsync(SeedKey, "done", cancellationToken);
 
         return added;
     }

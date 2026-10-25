@@ -19,11 +19,11 @@
             </div>
 
             <div class="operation-kind-tabs two" role="group" aria-label="Tipo di operazione">
-                <button type="button" class="@KindTabClass(OperationFormKind.Income)" aria-pressed="@AriaPressed(_kind == OperationFormKind.Income)" @onclick="() => SelectKind(OperationFormKind.Income)">
-                    <MfIcon Name="trend" Size="16" /> Entrata
-                </button>
                 <button type="button" class="@KindTabClass(OperationFormKind.Expense)" aria-pressed="@AriaPressed(_kind == OperationFormKind.Expense)" @onclick="() => SelectKind(OperationFormKind.Expense)">
                     <MfIcon Name="trend-down" Size="16" /> Uscita
+                </button>
+                <button type="button" class="@KindTabClass(OperationFormKind.Income)" aria-pressed="@AriaPressed(_kind == OperationFormKind.Income)" @onclick="() => SelectKind(OperationFormKind.Income)">
+                    <MfIcon Name="trend" Size="16" /> Entrata
                 </button>
             </div>
 
@@ -120,7 +120,7 @@
     private bool _wasOpen;
     private bool _saving;
     private string? _error;
-    private OperationFormKind _kind = OperationFormKind.Income;
+    private OperationFormKind _kind = OperationFormKind.Expense;
     private string _categoryId = "";
     private string _categoryName = "";
     private bool _filterByCategory;
@@ -161,7 +161,7 @@
         _wasOpen = true;
         _saving = false;
         _error = null;
-        _kind = OperationFormKind.Income;
+        _kind = OperationFormKind.Expense;
         _categoryId = "";
         _categoryName = "";
         _filterByCategory = false;

@@ -1,0 +1,96 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.DataManagement
+
+@if (Open && Plan is { } plan)
+{
+    <div class="modal-backdrop" @onclick="Cancel">
+        <div class="modal-card data-confirm-modal" role="dialog" aria-modal="true"
+             aria-labelledby="delete-data-confirm-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="delete-data-confirm-title"><MfIcon Name="trash" Size="18" /> Elimina dati</h2>
+                    <p class="section-sub">Operazione irreversibile.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" @onclick="Cancel">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            <p class="alert alert-warning" role="alert">
+                Verranno eliminati definitivamente i dati selezionati e tutte le dipendenze indicate.
+            </p>
+
+            <ul class="data-plan-list">
+                @foreach (var dataset in DataDeletionPlanner.DatasetsOf(plan.Effective))
+                {
+                    <li>@Label(dataset) <strong>@Count(plan.Counts, dataset)</strong></li>
+                }
+            </ul>
+
+            @foreach (var warning in plan.Warnings)
+            {
+                <p class="alert alert-warning" role="alert">@warning</p>
+            }
+
+            <label class="data-confirm-field">
+                <span>Digita <strong>@DataDeletionRequest.ConfirmationPhrase</strong> per confermare</span>
+                <input type="text" autocomplete="off" @bind="_confirmation" @bind:event="oninput" />
+            </label>
+
+            <div class="form-actions">
+                <button type="button" class="danger-button" disabled="@(!CanConfirm)" @onclick="Confirm">
+                    <MfIcon Name="trash" Size="16" /> Elimina definitivamente
+                </button>
+                <button type="button" class="secondary-button" @onclick="Cancel">Annulla</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _confirmation = "";
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public DataDeletionPlan? Plan { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private bool CanConfirm =>
+        string.Equals(_confirmation, DataDeletionRequest.ConfirmationPhrase, StringComparison.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _confirmation = "";
+        }
+
+        _wasOpen = Open;
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task Confirm() => CanConfirm ? OnConfirm.InvokeAsync() : Task.CompletedTask;
+
+    private static string Label(DataDataset dataset) => dataset switch
+    {
+        DataDataset.Movements => "Movimenti",
+        DataDataset.Instruments => "Strumenti finanziari",
+        DataDataset.Accounts => "Conti",
+        DataDataset.Categories => "Categorie",
+        _ => dataset.ToString(),
+    };
+
+    private static int Count(DataCounts counts, DataDataset dataset) => dataset switch
+    {
+        DataDataset.Movements => counts.FinancialOperations,
+        DataDataset.Instruments => counts.Instruments,
+        DataDataset.Accounts => counts.Accounts,
+        DataDataset.Categories => counts.Categories,
+        _ => 0,
+    };
+}

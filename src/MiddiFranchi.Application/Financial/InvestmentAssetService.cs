@@ -182,6 +182,82 @@ public sealed class InvestmentAssetService
         return operation;
     }
 
+    /// <summary>
+    /// Importa operazioni storiche (acquisti e vendite) mantenendo gli identificativi forniti.
+    /// È pensato per la migrazione da altre applicazioni: accetta strumenti archiviati e conti
+    /// chiusi, valida l'intera catena una sola volta e inserisce le operazioni in blocco.
+    /// </summary>
+    public async Task<IReadOnlyList<InvestmentOperation>> ImportOperationsAsync(
+        IReadOnlyList<ImportInvestmentOperationRequest> requests,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+
+        if (requests.Count == 0)
+        {
+            return [];
+        }
+
+        var operations = new List<InvestmentOperation>(requests.Count);
+        foreach (var item in requests)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+
+            if (item.Operation.Kind is not (
+                    InvestmentOperationKind.Buy or
+                    InvestmentOperationKind.Sell))
+            {
+                throw new ArgumentException(
+                    "L'importazione supporta solo acquisti e vendite.",
+                    nameof(requests));
+            }
+
+            var instrument = await RequireInstrumentAsync(
+                    item.Operation.InstrumentId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var account = await _accounts
+                .GetByIdAsync(item.Operation.SettlementAccountId, cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new InvalidOperationException(
+                    $"Il conto di regolamento {item.Operation.SettlementAccountId} non esiste.");
+
+            if (account.Currency != instrument.QuoteCurrency)
+            {
+                throw new InvalidOperationException(
+                    $"La valuta del conto «{account.Name}» non coincide con quella dello strumento.");
+            }
+
+            operations.Add(BuildOperation(
+                item.OperationId,
+                instrument,
+                account,
+                item.Operation.Kind,
+                item.Operation.OperationDate,
+                item.RecordedAt,
+                item.Operation.Quantity,
+                item.Operation.Price,
+                item.Operation.FeeAmount,
+                item.Operation.Amount,
+                item.Operation.Description));
+        }
+
+        var chain = (await _operations.ListAsync(cancellationToken).ConfigureAwait(false))
+            .OfType<InvestmentOperation>()
+            .ToList();
+        chain.AddRange(operations);
+
+        InvestmentPositionCalculator.Positions(chain, DateOnly.MaxValue);
+        InvestmentCostBasisCalculator.Calculate(chain, DateOnly.MaxValue);
+
+        foreach (var operation in operations)
+        {
+            await _operations.AddAsync(operation, cancellationToken).ConfigureAwait(false);
+        }
+
+        return operations;
+    }
+
     public async Task<InvestmentOperation> UpdateOperationAsync(
         UpdateInvestmentOperationRequest request,
         CancellationToken cancellationToken = default)

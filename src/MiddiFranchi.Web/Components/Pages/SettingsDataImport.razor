@@ -1,0 +1,537 @@
+@page "/settings/data/import"
+@rendermode InteractiveServer
+@implements IDisposable
+@using System.IO.Compression
+@using MiddiFranchi.Application.DataImport
+@inject DataImportService Import
+@inject IJSRuntime JS
+
+<PageTitle>Importa dati</PageTitle>
+
+<a class="section-link settings-back" href="/settings/data">
+    <MfIcon Name="arrow-left" Size="16" /> Dati e backup
+</a>
+
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar sidebar-tone" aria-hidden="true">
+                <MfIcon Name="upload" Size="18" />
+            </span>
+            Importa dati
+        </h1>
+    </div>
+</div>
+
+@if (_message is not null)
+{
+    <p class="alert alert-success" role="status">@_message</p>
+}
+@if (_error is not null)
+{
+    <p class="alert alert-error" role="alert">@_error</p>
+}
+@if (_result is { } result)
+{
+    <section class="card data-panel" aria-labelledby="import-result-title">
+        <div class="section-head">
+            <div>
+                <h2 id="import-result-title"><MfIcon Name="check" Size="18" /> Importazione completata</h2>
+                <p class="section-sub">Riepilogo delle righe elaborate.</p>
+            </div>
+        </div>
+        <dl class="data-confirm-summary">
+            <div><dt>Conti</dt><dd>@result.AccountsCreated creati · @result.AccountsUpdated aggiornati</dd></div>
+            <div><dt>Saldi conti</dt><dd>@result.BalancesCreated creati · @result.BalancesUpdated aggiornati</dd></div>
+            <div><dt>Strumenti</dt><dd>@result.InstrumentsCreated creati · @result.InstrumentsUpdated aggiornati</dd></div>
+            <div><dt>Quotazioni</dt><dd>@result.PricesCreated create · @result.PricesUpdated aggiornate</dd></div>
+            <div><dt>Operazioni</dt><dd>@result.OperationsImported importate · @result.OperationsSkipped già presenti</dd></div>
+        </dl>
+        <div class="form-actions">
+            <a class="secondary-button" href="/settings/data">Vai a Dati e backup</a>
+        </div>
+    </section>
+}
+
+<section class="card data-panel" aria-labelledby="import-file-title">
+    <div class="section-head">
+        <div>
+            <h2 id="import-file-title"><MfIcon Name="upload" Size="18" /> Archivio di importazione</h2>
+            <p class="section-sub">
+                Carica l'archivio ZIP oppure i file CSV singolarmente e verifica il contenuto prima
+                di importare.
+            </p>
+        </div>
+        <button type="button" class="secondary-button" disabled="@_templateBusy" @onclick="DownloadTemplateAsync">
+            <MfIcon Name="download" Size="16" />
+            @(_templateBusy ? "Preparazione…" : "Scarica modello")
+        </button>
+    </div>
+
+    <div class="form-grid data-form">
+        <label class="data-file-field">
+            <span>File di importazione (ZIP oppure CSV, anche più file)</span>
+            <InputFile OnChange="OnFileSelected" Multiple="true"
+                       accept=".mfimport,.zip,.csv,application/zip,text/csv" />
+        </label>
+        <p class="table-hint data-file-selected">
+            Puoi caricare l'archivio oppure selezionare più CSV: accounts.csv,
+            account_balances.csv, instruments.csv, instrument_prices.csv, operations.csv.
+        </p>
+        @if (_fileName is not null)
+        {
+            <p class="table-hint data-file-selected">@_fileName · @FormatSize(_fileSize)</p>
+        }
+    </div>
+
+    <div class="form-actions import-file-actions">
+        <button type="button" class="secondary-button"
+                disabled="@(_working || _filePath is null)"
+                @onclick="AnalyzeAsync">
+            <MfIcon Name="search" Size="16" /> Analizza archivio
+        </button>
+    </div>
+
+    @if (_preview is { } preview)
+    {
+        <div class="data-summary-grid">
+            <StatTile Label="Conti" Value="@preview.Accounts.ToString()" />
+            <StatTile Label="Saldi conti" Value="@preview.AccountBalances.ToString()" />
+            <StatTile Label="Strumenti" Value="@preview.Instruments.ToString()" />
+            <StatTile Label="Quotazioni" Value="@preview.InstrumentPrices.ToString()" />
+            <StatTile Label="Operazioni" Value="@preview.Operations.ToString()" />
+        </div>
+
+        @foreach (var warning in preview.Warnings)
+        {
+            <p class="alert alert-warning" role="status">@warning</p>
+        }
+
+        @if (preview.HasErrors)
+        {
+            <div class="alert alert-error" role="alert">
+                <strong>Il file contiene errori: correggili e rianalizza.</strong>
+                <ul class="import-error-list">
+                    @foreach (var error in preview.Errors)
+                    {
+                        <li>@error</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (!preview.HasErrors && preview.TotalRows > 0)
+        {
+            <p class="alert alert-info" role="status">
+                Il file è valido. L'importazione inserisce o aggiorna i dati per <code>external_id</code>;
+                non elimina dati esistenti. Le operazioni già importate vengono saltate.
+            </p>
+        }
+
+        <div class="form-actions">
+            <button type="button" class="primary-button"
+                    disabled="@(_working || preview.HasErrors || preview.TotalRows == 0)"
+                    @onclick="OpenImportDialog">
+                <MfIcon Name="upload" Size="16" /> Importa…
+            </button>
+        </div>
+    }
+</section>
+
+<section class="card data-panel" aria-labelledby="import-syntax-title">
+    <div class="section-head">
+        <div>
+            <h2 id="import-syntax-title"><MfIcon Name="doc" Size="18" /> Formato dei file</h2>
+            <p class="section-sub">
+                CSV UTF-8, separatore virgola, prima riga di intestazione. Date
+                <code>yyyy-MM-dd</code>, decimali con il punto, valuta <code>EUR</code>.
+            </p>
+        </div>
+    </div>
+
+    <div class="import-syntax-grid">
+        <section class="import-syntax-card">
+            <h3><code>accounts.csv</code></h3>
+            <p class="import-columns">external_id, name, type, status, color_hex, icon</p>
+            <p class="import-notes">
+                <strong>type</strong>: Checking, Card, Cash, Liability, Loans ·
+                <strong>status</strong>: Active, Closed ·
+                <strong>icon</strong>: wallet, icon:wallet o data URL.
+            </p>
+        </section>
+        <section class="import-syntax-card">
+            <h3><code>account_balances.csv</code></h3>
+            <p class="import-columns">external_id, account_external_id, date, amount</p>
+            <p class="import-notes">
+                Una riga per ogni saldo storico. La data non può essere nel futuro.
+            </p>
+        </section>
+        <section class="import-syntax-card">
+            <h3><code>instruments.csv</code></h3>
+            <p class="import-columns">
+                external_id, name, asset_class, status, symbol, isin, quote_currency,
+                price_unit, notional_value, notional_currency, reference_url, notes,
+                maturity_date, coupon_rate
+            </p>
+            <p class="import-notes">
+                <strong>asset_class</strong>: Equity, Bond, MoneyMarket, RealEstate, Commodity,
+                Crypto, Mixed, Pension, Other ·
+                <strong>price_unit</strong>: PerUnit, PercentOfNominal ·
+                <strong>status</strong>: Active, Archived.
+            </p>
+        </section>
+        <section class="import-syntax-card">
+            <h3><code>instrument_prices.csv</code></h3>
+            <p class="import-columns">
+                external_id, instrument_external_id, date, price, currency, source
+            </p>
+            <p class="import-notes">
+                <strong>currency</strong> EUR per PerUnit, vuota per PercentOfNominal.
+            </p>
+        </section>
+        <section class="import-syntax-card import-syntax-wide">
+            <h3><code>operations.csv</code></h3>
+            <p class="import-columns">
+                external_id, kind, date, instrument_external_id,
+                settlement_account_external_id, quantity, price, fee, description
+            </p>
+            <p class="import-notes">
+                <strong>kind</strong>: Buy, Sell. Le operazioni vengono importate in ordine di data;
+                la catena acquisti/vendite deve essere coerente.
+            </p>
+        </section>
+    </div>
+
+    <p class="table-hint">
+        Gli <code>external_id</code> sono stabili e univoci: reimportando lo stesso valore la riga
+        viene aggiornata. Scarica il modello per un archivio di esempio già pronto.
+    </p>
+</section>
+
+<ImportDataDialog Open="_dialogOpen"
+                  Preview="_preview"
+                  OnCancel="CloseImportDialog"
+                  OnConfirm="ConfirmImportAsync" />
+
+@code {
+    private const long MaxImportBytes = 128L * 1024 * 1024;
+
+    private string? _filePath;
+    private string? _fileName;
+    private long _fileSize;
+    private ImportPreview? _preview;
+    private ImportResult? _result;
+    private bool _working;
+    private bool _templateBusy;
+    private bool _dialogOpen;
+    private string? _message;
+    private string? _error;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs args)
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _message = null;
+        _error = null;
+        _preview = null;
+        _result = null;
+        DeleteFile();
+
+        IReadOnlyList<IBrowserFile> files;
+        try
+        {
+            files = args.GetMultipleFiles(maximumFileCount: 20);
+        }
+        catch (InvalidOperationException)
+        {
+            _error = "Seleziona al massimo 20 file.";
+            return;
+        }
+
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        var totalSize = files.Sum(file => file.Size);
+        if (totalSize > MaxImportBytes)
+        {
+            _error = "I file superano il limite di 128 MB.";
+            return;
+        }
+
+        var zipFile = files.FirstOrDefault(file => IsZip(file.Name));
+        if (zipFile is not null)
+        {
+            if (files.Count > 1)
+            {
+                _error = "Carica un solo archivio ZIP oppure i file CSV, non entrambi.";
+                return;
+            }
+
+            await CopyZipAsync(zipFile);
+            return;
+        }
+
+        if (!files.All(file => IsCsv(file.Name)))
+        {
+            _error = "Formato non supportato: carica un archivio .mfimport/.zip oppure file .csv.";
+            return;
+        }
+
+        var names = files.Select(file => Path.GetFileName(file.Name)).ToArray();
+        var unknown = names
+            .Where(name => !ImportFileNames.All.Contains(name, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        if (unknown.Length > 0)
+        {
+            _error =
+                $"Nomi file non riconosciuti: {string.Join(", ", unknown)}. " +
+                $"Attesi: {string.Join(", ", ImportFileNames.All)}.";
+            return;
+        }
+
+        var duplicates = names
+            .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
+        if (duplicates.Length > 0)
+        {
+            _error = $"File duplicati: {string.Join(", ", duplicates)}.";
+            return;
+        }
+
+        await CreateZipFromCsvAsync(files);
+    }
+
+    private async Task CopyZipAsync(IBrowserFile file)
+    {
+        var path = NewTempPath();
+
+        try
+        {
+            await using var input = file.OpenReadStream(MaxImportBytes);
+            await using var output = new FileStream(
+                path,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                81920,
+                useAsync: true);
+            await input.CopyToAsync(output);
+
+            _filePath = path;
+            _fileName = Path.GetFileName(file.Name);
+            _fileSize = file.Size;
+        }
+        catch (Exception)
+        {
+            DeleteFile();
+            TryDelete(path);
+            _error = "Impossibile leggere l'archivio selezionato.";
+        }
+    }
+
+    private async Task CreateZipFromCsvAsync(IReadOnlyList<IBrowserFile> files)
+    {
+        var path = NewTempPath();
+
+        try
+        {
+            await using (var output = new FileStream(
+                             path,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             81920,
+                             useAsync: true))
+            {
+                using var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true);
+                foreach (var file in files)
+                {
+                    var entry = archive.CreateEntry(
+                        Path.GetFileName(file.Name),
+                        CompressionLevel.Optimal);
+                    await using var entryStream = entry.Open();
+                    await using var input = file.OpenReadStream(MaxImportBytes);
+                    await input.CopyToAsync(entryStream);
+                }
+            }
+
+            _filePath = path;
+            _fileName = string.Join(", ", files.Select(file => Path.GetFileName(file.Name)));
+            _fileSize = files.Sum(file => file.Size);
+        }
+        catch (Exception)
+        {
+            DeleteFile();
+            TryDelete(path);
+            _error = "Impossibile leggere i file CSV selezionati.";
+        }
+    }
+
+    private static string NewTempPath()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "MiddiFranchi", "imports");
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, Guid.NewGuid().ToString("N") + ".mfimport");
+    }
+
+    private static bool IsZip(string name) =>
+        name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+        name.EndsWith(".mfimport", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCsv(string name) =>
+        name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
+
+    private async Task AnalyzeAsync()
+    {
+        if (_working || _filePath is null)
+        {
+            return;
+        }
+
+        _message = null;
+        _error = null;
+        _preview = null;
+        _result = null;
+        _working = true;
+
+        try
+        {
+            await using var stream = File.OpenRead(_filePath);
+            _preview = await Import.InspectAsync(stream);
+        }
+        catch (ImportValidationException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Impossibile analizzare l'archivio. Verificare il formato dei file.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private void OpenImportDialog()
+    {
+        if (_preview is not { HasErrors: false, TotalRows: > 0 })
+        {
+            return;
+        }
+
+        _dialogOpen = true;
+    }
+
+    private void CloseImportDialog() => _dialogOpen = false;
+
+    private async Task ConfirmImportAsync()
+    {
+        if (_working || _filePath is null || _preview is null)
+        {
+            return;
+        }
+
+        _dialogOpen = false;
+        _message = null;
+        _error = null;
+        _working = true;
+
+        try
+        {
+            await using var stream = File.OpenRead(_filePath);
+            _result = await Import.ImportAsync(stream, ImportContract.ConfirmationPhrase);
+            _message = "Importazione completata.";
+            _preview = null;
+            DeleteFile();
+        }
+        catch (ImportValidationException exception)
+        {
+            _error = string.Join(" ", exception.Errors);
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Importazione non riuscita. Nessun dato è stato modificato.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private async Task DownloadTemplateAsync()
+    {
+        if (_templateBusy)
+        {
+            return;
+        }
+
+        _templateBusy = true;
+        _error = null;
+
+        try
+        {
+            var template = await Import.CreateTemplateAsync();
+            await using var stream = new MemoryStream(template.Content);
+            await JS.InvokeVoidAsync(
+                "mfDownloadFile",
+                template.FileName,
+                new DotNetStreamReference(stream));
+        }
+        catch (Exception)
+        {
+            _error = "Impossibile generare il modello di importazione.";
+        }
+        finally
+        {
+            _templateBusy = false;
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024.0):0.##} MB",
+    };
+
+    private void DeleteFile()
+    {
+        if (_filePath is null)
+        {
+            return;
+        }
+
+        TryDelete(_filePath);
+        _filePath = null;
+        _fileName = null;
+        _fileSize = 0;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    public void Dispose() => DeleteFile();
+}

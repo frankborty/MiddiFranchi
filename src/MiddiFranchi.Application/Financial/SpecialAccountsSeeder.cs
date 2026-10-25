@@ -10,27 +10,39 @@ namespace MiddiFranchi.Application.Financial;
 /// </summary>
 public sealed class SpecialAccountsSeeder
 {
+    public const string SeedKey = "seed.specialAccounts.v1";
+
     public static readonly Guid CashAccountId = Guid.Parse("c0c0c0c0-1111-4111-8111-111111111111");
     public static readonly Guid LoansAccountId = Guid.Parse("c0c0c0c0-2222-4222-8222-222222222222");
 
     private readonly IAccountRepository _accounts;
     private readonly IManualBalanceRepository _manualBalances;
+    private readonly IAppMetadataRepository _metadata;
     private readonly Func<DateOnly> _currentUtcDate;
 
     public SpecialAccountsSeeder(
         IAccountRepository accounts,
         IManualBalanceRepository manualBalances,
+        IAppMetadataRepository metadata,
         Func<DateOnly>? currentUtcDateProvider = null)
     {
         _accounts = accounts;
         _manualBalances = manualBalances;
+        _metadata = metadata;
         _currentUtcDate = currentUtcDateProvider ?? (() => DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
     public async Task EnsureAsync(CancellationToken cancellationToken = default)
     {
+        if (await _metadata.IsSeedCompletedAsync(SeedKey, cancellationToken))
+        {
+            return;
+        }
+
         await EnsureAccountAsync(CashAccountId, "Cash", AccountType.Cash, cancellationToken);
         await EnsureAccountAsync(LoansAccountId, "Prestiti", AccountType.Loans, cancellationToken);
+
+        await _metadata.SetAsync(SeedKey, "done", cancellationToken);
     }
 
     private async Task EnsureAccountAsync(

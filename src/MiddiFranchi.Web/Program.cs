@@ -1,3 +1,5 @@
+using MiddiFranchi.Application.DataImport;
+using MiddiFranchi.Application.DataManagement;
 using MiddiFranchi.Application.Financial;
 using MiddiFranchi.Infrastructure.Persistence;
 using MiddiFranchi.Web.Components;
@@ -32,6 +34,9 @@ builder.Services.AddScoped<DashboardOverviewService>();
 builder.Services.AddScoped<SpecialAccountsSeeder>();
 builder.Services.AddScoped<DefaultCategoriesSeeder>();
 builder.Services.AddScoped<PriceUpdateService>();
+builder.Services.AddSingleton<DataMaintenanceGate>();
+builder.Services.AddScoped<DataManagementService>();
+builder.Services.AddScoped<DataImportService>();
 builder.Services.AddHostedService<PriceUpdateBackgroundService>();
 
 var app = builder.Build();

@@ -1,0 +1,105 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.DataManagement.Backup
+@using MiddiFranchi.Web.Services
+
+@if (Open && Inspection is { } inspection)
+{
+    <div class="modal-backdrop" @onclick="Cancel">
+        <div class="modal-card data-confirm-modal" role="dialog" aria-modal="true"
+             aria-labelledby="restore-confirm-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="restore-confirm-title"><MfIcon Name="upload" Size="18" /> Ripristina backup</h2>
+                    <p class="section-sub">Verifica le sezioni e conferma.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" @onclick="Cancel">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (inspection.IsFullRestore)
+            {
+                <p class="alert alert-warning" role="alert">
+                    Ripristino completo: tutti i dati attuali verranno eliminati e sostituiti con quelli
+                    del backup. I dati presenti nel database che non sono nel backup andranno persi.
+                </p>
+            }
+            else
+            {
+                <p class="alert alert-warning" role="alert">
+                    Ripristino parziale: conti, categorie e strumenti vengono aggiornati o inseriti;
+                    movimenti e storico selezionati vengono sostituiti. I dati esistenti non presenti
+                    nel backup restano invariati, tranne nelle sezioni sostituite.
+                </p>
+            }
+
+            <dl class="data-confirm-summary">
+                <div>
+                    <dt>Creato</dt>
+                    <dd>@inspection.Manifest.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</dd>
+                </div>
+                <div>
+                    <dt>Sezioni</dt>
+                    <dd>@DataSectionLabels.DescribeInline(inspection.Sections)</dd>
+                </div>
+                <div>
+                    <dt>Modalità</dt>
+                    <dd>@(inspection.IsFullRestore ? "Sostituzione completa" : "Parziale")</dd>
+                </div>
+                <div>
+                    <dt>Record</dt>
+                    <dd>@inspection.Manifest.Counts.Total</dd>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(inspection.Manifest.Note))
+                {
+                    <div>
+                        <dt>Nota</dt>
+                        <dd>@inspection.Manifest.Note</dd>
+                    </div>
+                }
+            </dl>
+
+            <label class="data-confirm-field">
+                <span>Digita <strong>@RestoreResult.ConfirmationPhrase</strong> per confermare</span>
+                <input type="text" autocomplete="off" @bind="_confirmation" @bind:event="oninput" />
+            </label>
+
+            <div class="form-actions">
+                <button type="button" class="danger-button" disabled="@(!CanConfirm)" @onclick="Confirm">
+                    <MfIcon Name="upload" Size="16" /> Ripristina
+                </button>
+                <button type="button" class="secondary-button" @onclick="Cancel">Annulla</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _confirmation = "";
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public BackupInspection? Inspection { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private bool CanConfirm =>
+        string.Equals(_confirmation, RestoreResult.ConfirmationPhrase, StringComparison.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _confirmation = "";
+        }
+
+        _wasOpen = Open;
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task Confirm() => CanConfirm ? OnConfirm.InvokeAsync() : Task.CompletedTask;
+}

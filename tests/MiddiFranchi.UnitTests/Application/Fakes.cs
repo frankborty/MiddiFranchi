@@ -606,4 +606,78 @@ public sealed class FakePriceObservationRepository : IPriceObservationRepository
         _observations.Add(observation);
         return Task.CompletedTask;
     }
+
+    public Task UpdateAsync(PriceObservation observation, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        var index = _observations.FindIndex(candidate => candidate.Id == observation.Id);
+        if (index >= 0)
+        {
+            _observations[index] = observation;
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class FakeAppMetadataRepository : IAppMetadataRepository
+{
+    public Dictionary<string, string> Values { get; } = new(StringComparer.Ordinal);
+
+    public List<CancellationToken> ReceivedTokens { get; } = [];
+
+    public Task<IReadOnlyList<AppMetadataEntry>> ListAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        IReadOnlyList<AppMetadataEntry> entries = Values
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => new AppMetadataEntry(pair.Key, pair.Value, DateTimeOffset.UtcNow))
+            .ToArray();
+        return Task.FromResult(entries);
+    }
+
+    public Task<string?> GetValueAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        return Task.FromResult(Values.TryGetValue(key, out var value) ? value : null);
+    }
+
+    public Task<bool> IsSeedCompletedAsync(
+        string key,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        return Task.FromResult(Values.TryGetValue(key, out var value) && value == "done");
+    }
+
+    public Task SetAsync(
+        string key,
+        string value,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        Values[key] = value;
+        return Task.CompletedTask;
+    }
+
+    public Task SetManyAsync(
+        IReadOnlyDictionary<string, string> values,
+        CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        foreach (var (key, value) in values)
+        {
+            Values[key] = value;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(cancellationToken);
+        Values.Remove(key);
+        return Task.CompletedTask;
+    }
 }

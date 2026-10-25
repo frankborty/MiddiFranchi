@@ -87,4 +87,24 @@ public sealed class PriceObservationRepository : IPriceObservationRepository
         _context.PriceObservations.Add(PersistenceMapper.ToRecord(observation));
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task UpdateAsync(
+        PriceObservation observation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+
+        var record = await _context.PriceObservations
+            .SingleOrDefaultAsync(candidate => candidate.Id == observation.Id, cancellationToken)
+            ?? throw new InvalidOperationException($"La quotazione {observation.Id} non esiste.");
+
+        record.Unit = observation.Unit;
+        record.Price = observation.Price;
+        record.PriceCurrencyCode = observation.PriceCurrency?.Code;
+        record.ValidAt = observation.ValidAt;
+        record.ObservedAt = observation.ObservedAt;
+        record.Source = observation.Source;
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

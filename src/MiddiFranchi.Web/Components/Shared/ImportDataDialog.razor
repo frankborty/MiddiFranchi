@@ -1,0 +1,75 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@using MiddiFranchi.Application.DataImport
+
+@if (Open && Preview is { } preview)
+{
+    <div class="modal-backdrop" @onclick="Cancel">
+        <div class="modal-card data-confirm-modal" role="dialog" aria-modal="true"
+             aria-labelledby="import-confirm-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="import-confirm-title"><MfIcon Name="upload" Size="18" /> Importa dati</h2>
+                    <p class="section-sub">Conferma l'importazione del file.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" @onclick="Cancel">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            <p class="alert alert-info" role="status">
+                L'importazione inserisce o aggiorna i dati per <code>external_id</code> e non elimina
+                i dati esistenti. Le operazioni già presenti vengono saltate.
+            </p>
+
+            <dl class="data-confirm-summary">
+                <div><dt>Conti</dt><dd>@preview.Accounts</dd></div>
+                <div><dt>Saldi conti</dt><dd>@preview.AccountBalances</dd></div>
+                <div><dt>Strumenti</dt><dd>@preview.Instruments</dd></div>
+                <div><dt>Quotazioni</dt><dd>@preview.InstrumentPrices</dd></div>
+                <div><dt>Operazioni</dt><dd>@preview.Operations</dd></div>
+            </dl>
+
+            <label class="data-confirm-field">
+                <span>Digita <strong>@ImportContract.ConfirmationPhrase</strong> per confermare</span>
+                <input type="text" autocomplete="off" @bind="_confirmation" @bind:event="oninput" />
+            </label>
+
+            <div class="form-actions">
+                <button type="button" class="primary-button" disabled="@(!CanConfirm)" @onclick="Confirm">
+                    <MfIcon Name="upload" Size="16" /> Importa
+                </button>
+                <button type="button" class="secondary-button" @onclick="Cancel">Annulla</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _confirmation = "";
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public ImportPreview? Preview { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private bool CanConfirm =>
+        string.Equals(_confirmation, ImportContract.ConfirmationPhrase, StringComparison.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _confirmation = "";
+        }
+
+        _wasOpen = Open;
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task Confirm() => CanConfirm ? OnConfirm.InvokeAsync() : Task.CompletedTask;
+}

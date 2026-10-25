@@ -1,3 +1,4 @@
+using MiddiFranchi.Application.DataManagement;
 using MiddiFranchi.Application.Financial;
 
 namespace MiddiFranchi.Web.Services;
@@ -9,15 +10,18 @@ public sealed class PriceUpdateBackgroundService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IPriceUpdateStore _store;
+    private readonly DataMaintenanceGate _gate;
     private readonly ILogger<PriceUpdateBackgroundService> _logger;
 
     public PriceUpdateBackgroundService(
         IServiceScopeFactory scopeFactory,
         IPriceUpdateStore store,
+        DataMaintenanceGate gate,
         ILogger<PriceUpdateBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
         _store = store;
+        _gate = gate;
         _logger = logger;
     }
 
@@ -54,6 +58,11 @@ public sealed class PriceUpdateBackgroundService : BackgroundService
 
     private async Task CheckAsync(CancellationToken cancellationToken)
     {
+        if (_gate.IsBusy)
+        {
+            return;
+        }
+
         var settings = _store.GetSettings();
         if (!settings.Enabled)
         {

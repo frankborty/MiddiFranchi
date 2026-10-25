@@ -245,3 +245,12 @@ public sealed class LoanReadingRecord
     public DateTimeOffset RecordedAt { get; set; }
 }
 
+public sealed class AppMetadataRecord
+{
+    public string Key { get; set; } = null!;
+
+    public string Value { get; set; } = null!;
+
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+

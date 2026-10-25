@@ -1,10 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MiddiFranchi.Application.DataManagement;
 using MiddiFranchi.Application.Financial;
 
 namespace MiddiFranchi.Infrastructure.PriceUpdates;
 
-public sealed class JsonPriceUpdateStore : IPriceUpdateStore
+public sealed class JsonPriceUpdateStore : IPriceUpdateStore, IPriceUpdateBackupParticipant
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -50,6 +51,33 @@ public sealed class JsonPriceUpdateStore : IPriceUpdateStore
         lock (_sync)
         {
             return _document.Status ?? PriceUpdateStatus.Empty;
+        }
+    }
+
+    public string ExportDocument()
+    {
+        lock (_sync)
+        {
+            return JsonSerializer.Serialize(_document, JsonOptions);
+        }
+    }
+
+    public void ImportDocument(string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+
+        var document = JsonSerializer.Deserialize<Document>(json, JsonOptions) ?? new Document();
+
+        lock (_sync)
+        {
+            _document = new Document
+            {
+                Settings = document.Settings,
+                Status = document.Status is { } status
+                    ? status with { IsRunning = false }
+                    : null,
+            };
+            Save();
         }
     }
 

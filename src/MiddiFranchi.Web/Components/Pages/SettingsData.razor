@@ -1,0 +1,943 @@
+@page "/settings/data"
+@rendermode InteractiveServer
+@implements IDisposable
+@using MiddiFranchi.Application.DataManagement
+@using MiddiFranchi.Application.DataManagement.Backup
+@using MiddiFranchi.Web.Services
+@inject DataManagementService Data
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Dati e backup</PageTitle>
+
+<a class="section-link settings-back" href="/settings">
+    <MfIcon Name="arrow-left" Size="16" /> Configurazione
+</a>
+
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar sidebar-tone" aria-hidden="true">
+                <MfIcon Name="package" Size="18" />
+            </span>
+            Dati e backup
+        </h1>
+    </div>
+    @if (!_loading && _error is null && _overview is { } headerOverview)
+    {
+        <div class="dashboard-header-meta">
+            <StatusBadge Tone="brand">@headerOverview.Counts.Total record</StatusBadge>
+        </div>
+    }
+</div>
+
+@if (_loading)
+{
+    <p class="page-status" role="status">Caricamento dei dati…</p>
+}
+else if (_error is not null)
+{
+    <p class="alert alert-error" role="alert">@_error</p>
+}
+else if (_overview is { } overview)
+{
+    @if (_message is not null)
+    {
+        <p class="alert alert-success" role="status">@_message</p>
+    }
+    @if (_actionError is not null)
+    {
+        <p class="alert alert-error" role="alert">@_actionError</p>
+    }
+
+    @if (!overview.Schema.IsUpToDate)
+    {
+        <p class="alert alert-warning" role="alert">
+            Il database non è allineato alle migration dell'applicazione. Applica le migration
+            prima di creare o ripristinare un backup.
+        </p>
+    }
+
+    <div class="data-summary-grid">
+        <StatTile Label="Conti" Value="@overview.Counts.Accounts.ToString()" />
+        <StatTile Label="Categorie" Value="@overview.Counts.Categories.ToString()" />
+        <StatTile Label="Strumenti" Value="@overview.Counts.Instruments.ToString()" />
+        <StatTile Label="Movimenti" Value="@overview.Counts.FinancialOperations.ToString()" />
+        <StatTile Label="Quotazioni" Value="@overview.Counts.PriceObservations.ToString()" />
+        <StatTile Label="Saldi manuali" Value="@overview.Counts.ManualBalances.ToString()" />
+        <StatTile Label="Prestiti" Value="@overview.Counts.Loans.ToString()" />
+        <StatTile Label="Letture prestiti" Value="@overview.Counts.LoanReadings.ToString()" />
+    </div>
+
+    <section class="card data-panel" aria-labelledby="data-import-title">
+        <div class="section-head">
+            <div>
+                <h2 id="data-import-title"><MfIcon Name="upload" Size="18" /> Importa da vecchia applicazione</h2>
+                <p class="section-sub">
+                    Carica un archivio ZIP con CSV per conti, saldi, strumenti, quotazioni e operazioni.
+                </p>
+            </div>
+            <a class="secondary-button" href="/settings/data/import">
+                <MfIcon Name="upload" Size="16" /> Apri importazione
+            </a>
+        </div>
+    </section>
+
+    <section class="card data-panel" aria-labelledby="data-backup-title">
+        <div class="section-head">
+            <div>
+                <h2 id="data-backup-title"><MfIcon Name="download" Size="18" /> Backup</h2>
+                <p class="section-sub">
+                    Scegli le sezioni da esportare. Il file contiene solo quelle selezionate.
+                </p>
+            </div>
+        </div>
+
+        <fieldset class="data-section-fieldset" disabled="@_working">
+            <div class="data-section-grid">
+            <label class="data-section-option">
+                <input type="checkbox" checked="@_backupAccounts"
+                       @onchange="args => SetBackupSection(DataSections.Accounts, args)" />
+                <span class="data-section-copy">
+                    <strong>Conti</strong>
+                    <span>Anagrafica, stato, colore e icona.</span>
+                </span>
+                <span class="data-section-count">@overview.Counts.Accounts</span>
+            </label>
+            <label class="data-section-option">
+                <input type="checkbox" checked="@_backupCategories"
+                       @onchange="args => SetBackupSection(DataSections.Categories, args)" />
+                <span class="data-section-copy">
+                    <strong>Categorie</strong>
+                    <span>Categorie e sottocategorie.</span>
+                </span>
+                <span class="data-section-count">@overview.Counts.Categories</span>
+            </label>
+            <label class="data-section-option">
+                <input type="checkbox" checked="@_backupInstruments"
+                       @onchange="args => SetBackupSection(DataSections.Instruments, args)" />
+                <span class="data-section-copy">
+                    <strong>Strumenti finanziari</strong>
+                    <span>Anagrafica degli strumenti.</span>
+                </span>
+                <span class="data-section-count">@overview.Counts.Instruments</span>
+            </label>
+            <label class="data-section-option">
+                <input type="checkbox" checked="@_backupMovements"
+                       @onchange="args => SetBackupSection(DataSections.Movements, args)" />
+                <span class="data-section-copy">
+                    <strong>Movimenti</strong>
+                    <span>Operazioni, posting e commissioni.</span>
+                </span>
+                <span class="data-section-count">@overview.Counts.FinancialOperations</span>
+            </label>
+            <label class="data-section-option">
+                <input type="checkbox" checked="@_backupAccountHistory"
+                       @onchange="args => SetBackupSection(DataSections.AccountHistory, args)" />
+                <span class="data-section-copy">
+                    <strong>Storico valore conti</strong>
+                    <span>Saldi manuali, prestiti e letture.</span>
+                </span>
+                <span class="data-section-count">@overview.Counts.ManualBalances</span>
+            </label>
+            <label class="data-section-option">
+                <input type="checkbox" checked="@_backupPriceHistory"
+                       @onchange="args => SetBackupSection(DataSections.PriceHistory, args)" />
+                <span class="data-section-copy">
+                    <strong>Storico valore strumenti</strong>
+                    <span>Quotazioni registrate.</span>
+                </span>
+                <span class="data-section-count">@overview.Counts.PriceObservations</span>
+            </label>
+            <label class="data-section-option">
+                <input type="checkbox" checked="@_backupPriceSettings"
+                       @onchange="args => SetBackupSection(DataSections.PriceSettings, args)" />
+                <span class="data-section-copy">
+                    <strong>Impostazioni prezzi</strong>
+                    <span>Orario e frequenza del servizio automatico.</span>
+                </span>
+                <span class="data-section-count">—</span>
+            </label>
+            </div>
+        </fieldset>
+
+        <div class="form-grid data-form">
+            <label class="data-note-field">
+                <span>Nota (opzionale)</span>
+                <input type="text" maxlength="200" disabled="@_working" @bind="_backupNote" />
+            </label>
+        </div>
+
+        <p class="table-hint">
+            Sezioni incluse: <strong>@DataSectionLabels.DescribeInline(CurrentBackupSections())</strong>.
+        </p>
+
+        <div class="form-actions">
+            <button type="button" class="secondary-button" disabled="@_working"
+                    @onclick="SelectAllBackupSections">
+                Seleziona tutto
+            </button>
+            <button type="button" class="secondary-button" disabled="@_working"
+                    @onclick="ClearBackupSections">
+                Deseleziona tutto
+            </button>
+            <button type="button" class="primary-button"
+                    disabled="@(_working || CurrentBackupSections() == DataSections.None)"
+                    @onclick="DownloadBackupAsync">
+                <MfIcon Name="download" Size="16" />
+                @(_working ? "Preparazione…" : "Scarica backup")
+            </button>
+        </div>
+    </section>
+
+    <section class="card data-panel" aria-labelledby="data-restore-title">
+        <div class="section-head">
+            <div>
+                <h2 id="data-restore-title"><MfIcon Name="upload" Size="18" /> Ripristino</h2>
+                <p class="section-sub">
+                    Carica un file <code>.mfbackup</code> e verifica il contenuto prima di applicarlo.
+                </p>
+            </div>
+        </div>
+
+        <div class="form-grid data-form">
+            <label class="data-file-field">
+                <span>File di backup</span>
+                <InputFile OnChange="OnRestoreFileSelected" accept=".mfbackup,.zip,application/zip" />
+            </label>
+            @if (_restoreFileName is not null)
+            {
+                <p class="table-hint data-file-selected">
+                    @_restoreFileName · @FormatSize(_restoreFileSize)
+                </p>
+            }
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="secondary-button"
+                    disabled="@(_working || _restoreFilePath is null)"
+                    @onclick="InspectBackupAsync">
+                <MfIcon Name="search" Size="16" /> Analizza backup
+            </button>
+        </div>
+
+        @if (_restoreInspection is { } inspection)
+        {
+            <dl class="data-restore-preview">
+                <div><dt>Creato</dt><dd>@inspection.Manifest.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</dd></div>
+                <div><dt>Sezioni</dt><dd>@DataSectionLabels.DescribeInline(inspection.Sections)</dd></div>
+                <div><dt>Modalità</dt><dd>@(inspection.IsFullRestore ? "Sostituzione completa" : "Parziale")</dd></div>
+                <div><dt>Schema</dt><dd>@FormatSchema(inspection.Manifest.SchemaVersion)</dd></div>
+                <div><dt>Record</dt><dd>@inspection.Manifest.Counts.Total</dd></div>
+                @if (!string.IsNullOrWhiteSpace(inspection.Manifest.Note))
+                {
+                    <div><dt>Nota</dt><dd>@inspection.Manifest.Note</dd></div>
+                }
+            </dl>
+
+            @if (inspection.IsFullRestore)
+            {
+                <p class="alert alert-warning" role="alert">
+                    Ripristino completo: tutti i dati attuali verranno eliminati e sostituiti con quelli
+                    del backup. I dati presenti nel database che non sono nel backup andranno persi.
+                </p>
+            }
+            else
+            {
+                <p class="alert alert-info" role="status">
+                    Ripristino parziale: conti, categorie e strumenti vengono aggiornati o inseriti;
+                    movimenti e storico selezionati vengono sostituiti. I dati esistenti non presenti
+                    nel backup restano invariati, tranne nelle sezioni sostituite.
+                </p>
+            }
+
+            @foreach (var warning in inspection.Warnings)
+            {
+                <p class="alert alert-warning" role="alert">@warning</p>
+            }
+
+            <div class="form-actions">
+                <button type="button" class="danger-button"
+                        disabled="@(!inspection.IsCompatible || _working)"
+                        @onclick="OpenRestoreDialog">
+                    <MfIcon Name="upload" Size="16" /> Ripristina…
+                </button>
+            </div>
+        }
+    </section>
+
+    <section class="card data-panel settings-danger-zone" aria-labelledby="data-delete-title">
+        <div class="section-head">
+            <div>
+                <h2 id="data-delete-title"><MfIcon Name="trash" Size="18" /> Eliminazione dati</h2>
+                <p class="section-sub">
+                    Scegli quali insiemi eliminare. Le dipendenze vengono incluse automaticamente.
+                </p>
+            </div>
+        </div>
+
+        <div class="data-delete-grid">
+            <label class="data-delete-option">
+                <input type="checkbox" checked="@_deleteMovements"
+                       @onchange="args => SetDeleteSelectionAsync(DataDataset.Movements, args)" />
+                <span class="data-delete-copy">
+                    <strong>Movimenti</strong>
+                    <span>Operazioni, posting e commissioni.</span>
+                </span>
+                <span class="data-delete-count">@overview.Counts.FinancialOperations</span>
+            </label>
+            <label class="data-delete-option">
+                <input type="checkbox" checked="@_deleteInstruments"
+                       @onchange="args => SetDeleteSelectionAsync(DataDataset.Instruments, args)" />
+                <span class="data-delete-copy">
+                    <strong>Strumenti finanziari</strong>
+                    <span>Strumenti e storico delle quotazioni.</span>
+                </span>
+                <span class="data-delete-count">@overview.Counts.Instruments</span>
+            </label>
+            <label class="data-delete-option">
+                <input type="checkbox" checked="@_deleteAccounts"
+                       @onchange="args => SetDeleteSelectionAsync(DataDataset.Accounts, args)" />
+                <span class="data-delete-copy">
+                    <strong>Conti</strong>
+                    <span>Conti, saldi manuali, prestiti e letture.</span>
+                </span>
+                <span class="data-delete-count">@overview.Counts.Accounts</span>
+            </label>
+            <label class="data-delete-option">
+                <input type="checkbox" checked="@_deleteCategories"
+                       @onchange="args => SetDeleteSelectionAsync(DataDataset.Categories, args)" />
+                <span class="data-delete-copy">
+                    <strong>Categorie</strong>
+                    <span>Categorie e sottocategorie.</span>
+                </span>
+                <span class="data-delete-count">@overview.Counts.Categories</span>
+            </label>
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="secondary-button" disabled="@_working"
+                    @onclick="SelectEverythingAsync">
+                Seleziona tutto
+            </button>
+            <button type="button" class="danger-button"
+                    disabled="@(_working || _deletePlan is null || _deletePlan.IsEmpty)"
+                    @onclick="OpenDeleteDialog">
+                <MfIcon Name="trash" Size="16" /> Elimina dati selezionati…
+            </button>
+        </div>
+
+        @if (_deletePlan is { } plan && !plan.IsEmpty)
+        {
+            @foreach (var warning in plan.Warnings)
+            {
+                <p class="alert alert-warning" role="alert">@warning</p>
+            }
+
+            <p class="table-hint">
+                Verranno eliminati: <strong>@DescribeDatasets(plan.Effective)</strong>.
+                L'operazione è irreversibile.
+            </p>
+        }
+
+        <div class="settings-danger-zone data-reset-defaults">
+            <p class="table-hint">
+                Dopo un'eliminazione i valori predefiniti non vengono ricreati automaticamente.
+                Puoi ripristinare i soli conti Cash/Prestiti e le categorie di base.
+            </p>
+            <div class="form-actions">
+                <button type="button" class="secondary-button"
+                        disabled="@_working"
+                        @onclick="ResetDefaultsAsync">
+                    <MfIcon Name="refresh" Size="16" />
+                    @(_working ? "Operazione…" : "Ripristina valori predefiniti")
+                </button>
+            </div>
+        </div>
+    </section>
+}
+
+<RestoreBackupDialog Open="_restoreDialogOpen"
+                     Inspection="_restoreInspection"
+                     OnCancel="CloseRestoreDialog"
+                     OnConfirm="ConfirmRestoreAsync" />
+
+<DeleteDataDialog Open="_deleteDialogOpen"
+                  Plan="_deletePlan"
+                  OnCancel="CloseDeleteDialog"
+                  OnConfirm="ConfirmDeleteAsync" />
+
+@code {
+    private const long MaxBackupBytes = 256L * 1024 * 1024;
+
+    private DataOverview? _overview;
+    private bool _loading = true;
+    private string? _error;
+    private string? _message;
+    private string? _actionError;
+    private bool _working;
+
+    private bool _backupAccounts = true;
+    private bool _backupCategories = true;
+    private bool _backupInstruments = true;
+    private bool _backupMovements = true;
+    private bool _backupAccountHistory = true;
+    private bool _backupPriceHistory = true;
+    private bool _backupPriceSettings = true;
+    private string? _backupNote;
+
+    private string? _restoreFilePath;
+    private string? _restoreFileName;
+    private long _restoreFileSize;
+    private BackupInspection? _restoreInspection;
+    private bool _restoreDialogOpen;
+
+    private bool _deleteMovements;
+    private bool _deleteInstruments;
+    private bool _deleteAccounts;
+    private bool _deleteCategories;
+    private DataDeletionPlan? _deletePlan;
+    private bool _deleteDialogOpen;
+
+    [SupplyParameterFromQuery(Name = "restored")]
+    public string? Restored { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Restored))
+        {
+            _message = $"Ripristino completato: {Restored} record.";
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _overview = await Data.GetOverviewAsync();
+        }
+        catch (InvalidOperationException exception)
+            when (exception.Message.Contains("connection string", StringComparison.OrdinalIgnoreCase))
+        {
+            _error = "Il database non è configurato. Impostare la connection string 'ConnectionStrings:DefaultConnection' nelle variabili d'ambiente o nei user secrets.";
+        }
+        catch (Exception)
+        {
+            _error = "Impossibile leggere i dati. Verificare che PostgreSQL sia raggiungibile e che le migration siano applicate.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SetBackupSection(DataSections section, ChangeEventArgs args)
+    {
+        var selected = args.Value is bool value && value;
+
+        switch (section)
+        {
+            case DataSections.Accounts:
+                _backupAccounts = selected;
+                break;
+            case DataSections.Categories:
+                _backupCategories = selected;
+                break;
+            case DataSections.Instruments:
+                _backupInstruments = selected;
+                break;
+            case DataSections.Movements:
+                _backupMovements = selected;
+                break;
+            case DataSections.AccountHistory:
+                _backupAccountHistory = selected;
+                break;
+            case DataSections.PriceHistory:
+                _backupPriceHistory = selected;
+                break;
+            case DataSections.PriceSettings:
+                _backupPriceSettings = selected;
+                break;
+        }
+    }
+
+    private void SelectAllBackupSections()
+    {
+        _backupAccounts = true;
+        _backupCategories = true;
+        _backupInstruments = true;
+        _backupMovements = true;
+        _backupAccountHistory = true;
+        _backupPriceHistory = true;
+        _backupPriceSettings = true;
+    }
+
+    private void ClearBackupSections()
+    {
+        _backupAccounts = false;
+        _backupCategories = false;
+        _backupInstruments = false;
+        _backupMovements = false;
+        _backupAccountHistory = false;
+        _backupPriceHistory = false;
+        _backupPriceSettings = false;
+    }
+
+    private DataSections CurrentBackupSections()
+    {
+        var sections = DataSections.None;
+        if (_backupAccounts)
+        {
+            sections |= DataSections.Accounts;
+        }
+
+        if (_backupCategories)
+        {
+            sections |= DataSections.Categories;
+        }
+
+        if (_backupInstruments)
+        {
+            sections |= DataSections.Instruments;
+        }
+
+        if (_backupMovements)
+        {
+            sections |= DataSections.Movements;
+        }
+
+        if (_backupAccountHistory)
+        {
+            sections |= DataSections.AccountHistory;
+        }
+
+        if (_backupPriceHistory)
+        {
+            sections |= DataSections.PriceHistory;
+        }
+
+        if (_backupPriceSettings)
+        {
+            sections |= DataSections.PriceSettings;
+        }
+
+        return sections;
+    }
+
+    private async Task DownloadBackupAsync()
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _message = null;
+        _actionError = null;
+
+        var sections = CurrentBackupSections();
+        if (sections == DataSections.None)
+        {
+            _actionError = "Seleziona almeno una sezione da includere nel backup.";
+            return;
+        }
+
+        _working = true;
+        try
+        {
+            var options = new BackupOptions(sections, _backupNote);
+            await using var artifact = await Data.CreateBackupAsync(options);
+            await JS.InvokeVoidAsync(
+                "mfDownloadFile",
+                artifact.FileName,
+                new DotNetStreamReference(artifact.Content));
+
+            _message = "Backup generato e scaricato.";
+        }
+        catch (BackupValidationException exception)
+        {
+            _actionError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _actionError = "Impossibile generare il backup. Verificare la connessione al database.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private async Task OnRestoreFileSelected(InputFileChangeEventArgs args)
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _message = null;
+        _actionError = null;
+        _restoreInspection = null;
+        DeleteRestoreFile();
+
+        var file = args.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxBackupBytes)
+        {
+            _actionError = "Il file supera il limite di 256 MB.";
+            return;
+        }
+
+        var directory = Path.Combine(Path.GetTempPath(), "MiddiFranchi", "uploads");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".mfbackup");
+
+        try
+        {
+            await using var input = file.OpenReadStream(MaxBackupBytes);
+            await using var output = new FileStream(
+                path,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                81920,
+                useAsync: true);
+            await input.CopyToAsync(output);
+
+            _restoreFilePath = path;
+            _restoreFileName = file.Name;
+            _restoreFileSize = file.Size;
+        }
+        catch (Exception)
+        {
+            DeleteRestoreFile();
+            TryDelete(path);
+            _actionError = "Impossibile leggere il file selezionato.";
+        }
+    }
+
+    private async Task InspectBackupAsync()
+    {
+        if (_working || _restoreFilePath is null)
+        {
+            return;
+        }
+
+        _message = null;
+        _actionError = null;
+        _restoreInspection = null;
+        _working = true;
+
+        try
+        {
+            await using var stream = File.OpenRead(_restoreFilePath);
+            _restoreInspection = await Data.InspectBackupAsync(stream);
+        }
+        catch (BackupValidationException exception)
+        {
+            _actionError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _actionError = "Impossibile analizzare il backup. Il file potrebbe essere corrotto.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private void OpenRestoreDialog()
+    {
+        if (_restoreInspection is not { IsCompatible: true })
+        {
+            return;
+        }
+
+        _restoreDialogOpen = true;
+    }
+
+    private void CloseRestoreDialog() => _restoreDialogOpen = false;
+
+    private async Task ConfirmRestoreAsync()
+    {
+        if (_working || _restoreFilePath is null || _restoreInspection is null)
+        {
+            return;
+        }
+
+        _restoreDialogOpen = false;
+        _message = null;
+        _actionError = null;
+        _working = true;
+
+        try
+        {
+            await using var stream = File.OpenRead(_restoreFilePath);
+            var result = await Data.RestoreAsync(stream, RestoreResult.ConfirmationPhrase);
+
+            DeleteRestoreFile();
+            _restoreInspection = null;
+            Navigation.NavigateTo(
+                $"/settings/data?restored={result.Manifest.Counts.Total}",
+                forceLoad: true);
+        }
+        catch (BackupValidationException exception)
+        {
+            _actionError = exception.Message;
+        }
+        catch (ArgumentException exception)
+        {
+            _actionError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _actionError = "Ripristino non riuscito. I dati precedenti sono rimasti invariati.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private async Task SetDeleteSelectionAsync(DataDataset dataset, ChangeEventArgs args)
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        var selected = args.Value is bool value && value;
+
+        switch (dataset)
+        {
+            case DataDataset.Movements:
+                _deleteMovements = selected;
+                break;
+            case DataDataset.Instruments:
+                _deleteInstruments = selected;
+                break;
+            case DataDataset.Accounts:
+                _deleteAccounts = selected;
+                break;
+            case DataDataset.Categories:
+                _deleteCategories = selected;
+                break;
+        }
+
+        await RefreshDeletePlanAsync();
+    }
+
+    private async Task SelectEverythingAsync()
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _deleteMovements = true;
+        _deleteInstruments = true;
+        _deleteAccounts = true;
+        _deleteCategories = true;
+        await RefreshDeletePlanAsync();
+    }
+
+    private async Task RefreshDeletePlanAsync()
+    {
+        try
+        {
+            var selection = CurrentDeleteSelection();
+            _deletePlan = selection == DataDataset.None
+                ? null
+                : await Data.GetDeletionPlanAsync(selection);
+        }
+        catch (Exception)
+        {
+            _deletePlan = null;
+            _actionError = "Impossibile calcolare l'impatto dell'eliminazione. Riprova.";
+        }
+    }
+
+    private DataDataset CurrentDeleteSelection()
+    {
+        var selection = DataDataset.None;
+        if (_deleteMovements)
+        {
+            selection |= DataDataset.Movements;
+        }
+
+        if (_deleteInstruments)
+        {
+            selection |= DataDataset.Instruments;
+        }
+
+        if (_deleteAccounts)
+        {
+            selection |= DataDataset.Accounts;
+        }
+
+        if (_deleteCategories)
+        {
+            selection |= DataDataset.Categories;
+        }
+
+        return selection;
+    }
+
+    private void OpenDeleteDialog()
+    {
+        if (_deletePlan is not { IsEmpty: false })
+        {
+            return;
+        }
+
+        _deleteDialogOpen = true;
+    }
+
+    private void CloseDeleteDialog() => _deleteDialogOpen = false;
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_working || _deletePlan is null)
+        {
+            return;
+        }
+
+        _deleteDialogOpen = false;
+        _message = null;
+        _actionError = null;
+        _working = true;
+
+        try
+        {
+            var request = new DataDeletionRequest(
+                _deletePlan.Effective,
+                DataDeletionRequest.ConfirmationPhrase);
+            var result = await Data.DeleteAsync(request);
+
+            _message = result.PriceStatusReset
+                ? "Eliminazione completata. Anche lo stato del servizio prezzi è stato azzerato."
+                : "Eliminazione completata.";
+
+            _deleteMovements = false;
+            _deleteInstruments = false;
+            _deleteAccounts = false;
+            _deleteCategories = false;
+            _deletePlan = null;
+
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _actionError = exception.Message;
+        }
+        catch (Exception)
+        {
+            _actionError = "Eliminazione non riuscita. I dati sono rimasti invariati.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private async Task ResetDefaultsAsync()
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _message = null;
+        _actionError = null;
+        _working = true;
+
+        try
+        {
+            await Data.ResetDefaultsAsync();
+            _message = "Conti speciali e categorie predefinite ripristinati.";
+            await LoadAsync();
+        }
+        catch (Exception)
+        {
+            _actionError = "Impossibile ripristinare i valori predefiniti.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private static string FormatSchema(string version) =>
+        string.IsNullOrWhiteSpace(version) ? "Nessuna migration applicata" : version;
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024.0):0.##} MB",
+    };
+
+    private static string DescribeDatasets(DataDataset datasets)
+    {
+        var labels = new List<string>(4);
+        if (datasets.Includes(DataDataset.Movements))
+        {
+            labels.Add("movimenti");
+        }
+
+        if (datasets.Includes(DataDataset.Instruments))
+        {
+            labels.Add("strumenti finanziari");
+        }
+
+        if (datasets.Includes(DataDataset.Accounts))
+        {
+            labels.Add("conti");
+        }
+
+        if (datasets.Includes(DataDataset.Categories))
+        {
+            labels.Add("categorie");
+        }
+
+        return string.Join(", ", labels);
+    }
+
+    private void DeleteRestoreFile()
+    {
+        if (_restoreFilePath is null)
+        {
+            return;
+        }
+
+        TryDelete(_restoreFilePath);
+        _restoreFilePath = null;
+        _restoreFileName = null;
+        _restoreFileSize = 0;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    public void Dispose() => DeleteRestoreFile();
+}
