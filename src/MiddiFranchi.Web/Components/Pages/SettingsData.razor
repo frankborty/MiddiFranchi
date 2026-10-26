@@ -7,6 +7,7 @@
 @inject DataManagementService Data
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject NotificationService Notifications
 
 <PageTitle>Dati e backup</PageTitle>
 
@@ -41,15 +42,6 @@ else if (_error is not null)
 }
 else if (_overview is { } overview)
 {
-    @if (_message is not null)
-    {
-        <p class="alert alert-success" role="status">@_message</p>
-    }
-    @if (_actionError is not null)
-    {
-        <p class="alert alert-error" role="alert">@_actionError</p>
-    }
-
     @if (!overview.Schema.IsUpToDate)
     {
         <p class="alert alert-warning" role="alert">
@@ -72,9 +64,9 @@ else if (_overview is { } overview)
     <section class="card data-panel" aria-labelledby="data-import-title">
         <div class="section-head">
             <div>
-                <h2 id="data-import-title"><MfIcon Name="upload" Size="18" /> Importa da vecchia applicazione</h2>
+                <h2 id="data-import-title"><MfIcon Name="upload" Size="18" /> Importa Dati</h2>
                 <p class="section-sub">
-                    Carica un archivio ZIP con CSV per conti, saldi, strumenti, quotazioni e operazioni.
+                    Carica un archivio ZIP oppure i file CSV per conti, saldi, strumenti, quotazioni e operazioni.
                 </p>
             </div>
             <a class="secondary-button" href="/settings/data/import">
@@ -373,8 +365,6 @@ else if (_overview is { } overview)
     private DataOverview? _overview;
     private bool _loading = true;
     private string? _error;
-    private string? _message;
-    private string? _actionError;
     private bool _working;
 
     private bool _backupAccounts = true;
@@ -402,14 +392,14 @@ else if (_overview is { } overview)
     [SupplyParameterFromQuery(Name = "restored")]
     public string? Restored { get; set; }
 
-    protected override async Task OnInitializedAsync()
-    {
-        if (!string.IsNullOrWhiteSpace(Restored))
-        {
-            _message = $"Ripristino completato: {Restored} record.";
-        }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
-        await LoadAsync();
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrWhiteSpace(Restored))
+        {
+            await Notifications.Success($"Ripristino completato: {Restored} record.");
+        }
     }
 
     private async Task LoadAsync()
@@ -536,13 +526,10 @@ else if (_overview is { } overview)
             return;
         }
 
-        _message = null;
-        _actionError = null;
-
         var sections = CurrentBackupSections();
         if (sections == DataSections.None)
         {
-            _actionError = "Seleziona almeno una sezione da includere nel backup.";
+            await Notifications.Error("Seleziona almeno una sezione da includere nel backup.");
             return;
         }
 
@@ -556,15 +543,15 @@ else if (_overview is { } overview)
                 artifact.FileName,
                 new DotNetStreamReference(artifact.Content));
 
-            _message = "Backup generato e scaricato.";
+            await Notifications.Success("Backup generato e scaricato.");
         }
         catch (BackupValidationException exception)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _actionError = "Impossibile generare il backup. Verificare la connessione al database.";
+            await Notifications.Error("Impossibile generare il backup. Verificare la connessione al database.");
         }
         finally
         {
@@ -579,8 +566,6 @@ else if (_overview is { } overview)
             return;
         }
 
-        _message = null;
-        _actionError = null;
         _restoreInspection = null;
         DeleteRestoreFile();
 
@@ -592,7 +577,7 @@ else if (_overview is { } overview)
 
         if (file.Size > MaxBackupBytes)
         {
-            _actionError = "Il file supera il limite di 256 MB.";
+            await Notifications.Error("Il file supera il limite di 256 MB.");
             return;
         }
 
@@ -620,7 +605,7 @@ else if (_overview is { } overview)
         {
             DeleteRestoreFile();
             TryDelete(path);
-            _actionError = "Impossibile leggere il file selezionato.";
+            await Notifications.Error("Impossibile leggere il file selezionato.");
         }
     }
 
@@ -631,8 +616,6 @@ else if (_overview is { } overview)
             return;
         }
 
-        _message = null;
-        _actionError = null;
         _restoreInspection = null;
         _working = true;
 
@@ -643,11 +626,11 @@ else if (_overview is { } overview)
         }
         catch (BackupValidationException exception)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _actionError = "Impossibile analizzare il backup. Il file potrebbe essere corrotto.";
+            await Notifications.Error("Impossibile analizzare il backup. Il file potrebbe essere corrotto.");
         }
         finally
         {
@@ -675,8 +658,6 @@ else if (_overview is { } overview)
         }
 
         _restoreDialogOpen = false;
-        _message = null;
-        _actionError = null;
         _working = true;
 
         try
@@ -692,15 +673,15 @@ else if (_overview is { } overview)
         }
         catch (BackupValidationException exception)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (ArgumentException exception)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _actionError = "Ripristino non riuscito. I dati precedenti sono rimasti invariati.";
+            await Notifications.Error("Ripristino non riuscito. I dati precedenti sono rimasti invariati.");
         }
         finally
         {
@@ -762,7 +743,7 @@ else if (_overview is { } overview)
         catch (Exception)
         {
             _deletePlan = null;
-            _actionError = "Impossibile calcolare l'impatto dell'eliminazione. Riprova.";
+            await Notifications.Error("Impossibile calcolare l'impatto dell'eliminazione. Riprova.");
         }
     }
 
@@ -812,8 +793,6 @@ else if (_overview is { } overview)
         }
 
         _deleteDialogOpen = false;
-        _message = null;
-        _actionError = null;
         _working = true;
 
         try
@@ -823,9 +802,9 @@ else if (_overview is { } overview)
                 DataDeletionRequest.ConfirmationPhrase);
             var result = await Data.DeleteAsync(request);
 
-            _message = result.PriceStatusReset
+            await Notifications.Success(result.PriceStatusReset
                 ? "Eliminazione completata. Anche lo stato del servizio prezzi è stato azzerato."
-                : "Eliminazione completata.";
+                : "Eliminazione completata.");
 
             _deleteMovements = false;
             _deleteInstruments = false;
@@ -837,11 +816,11 @@ else if (_overview is { } overview)
         }
         catch (ArgumentException exception)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _actionError = "Eliminazione non riuscita. I dati sono rimasti invariati.";
+            await Notifications.Error("Eliminazione non riuscita. I dati sono rimasti invariati.");
         }
         finally
         {
@@ -856,19 +835,17 @@ else if (_overview is { } overview)
             return;
         }
 
-        _message = null;
-        _actionError = null;
         _working = true;
 
         try
         {
             await Data.ResetDefaultsAsync();
-            _message = "Conti speciali e categorie predefinite ripristinati.";
+            await Notifications.Success("Conti speciali e categorie predefinite ripristinati.");
             await LoadAsync();
         }
         catch (Exception)
         {
-            _actionError = "Impossibile ripristinare i valori predefiniti.";
+            await Notifications.Error("Impossibile ripristinare i valori predefiniti.");
         }
         finally
         {

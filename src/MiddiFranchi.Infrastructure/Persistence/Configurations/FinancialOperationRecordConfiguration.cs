@@ -82,7 +82,7 @@ internal sealed class FinancialOperationRecordConfiguration : IEntityTypeConfigu
             table.HasCheckConstraint(
                 "CK_FinancialOperations_NonInvestmentFields",
                 "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND " +
-                "(\"InstrumentId\" IS NULL OR \"Kind\" = 'Income') AND " +
+                "(\"InstrumentId\" IS NULL OR \"Kind\" IN ('Income', 'Expense')) AND " +
                 "\"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND " +
                 "\"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND " +
                 "\"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");

@@ -9,13 +9,17 @@
 @inject InvestmentWorkspaceService Investments
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject NotificationService Notifications
+@inject ChartPreferences Preferences
+@inject FilterPreferences Filters
+@inject SectionAppearanceService Appearance
 
 <PageTitle>Movimenti</PageTitle>
 
 <div class="dashboard-header">
     <div>
         <h1 class="account-detail-title">
-            <span class="account-avatar amber" aria-hidden="true"><MfIcon Name="receipt" Size="18" /></span>
+            <span class="account-avatar amber" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Operations).Icon" Size="18" /></span>
             Movimenti
         </h1>
     </div>
@@ -110,11 +114,6 @@ else
         </div>
     </div>
 
-    @if (_savedMessage is not null)
-    {
-        <p class="alert alert-success" role="status">@_savedMessage</p>
-    }
-
     @if (_periodMode != PeriodMode.Month)
     {
         <div class="bento">
@@ -194,24 +193,34 @@ else
         </div>
 
         <div class="pie-panel">
-            <section class="card operations-pie-card" aria-labelledby="pie-title">
+            <section class="@PieCardClass" aria-labelledby="pie-title">
                 <div class="section-head">
                     <div>
-                        <h2 id="pie-title"><MfIcon Name="pie" Size="18" /> Uscite per categoria</h2>
+                        <h2 id="pie-title"><MfIcon Name="pie" Size="18" /> @PieTitle</h2>
                         <p class="section-sub">@PeriodLabel</p>
+                    </div>
+                    <div class="trend-toggle" role="group" aria-label="Tipo di ripartizione">
+                        <button type="button" class="@PieToggleClass(PieKind.Income)"
+                                aria-pressed="@(_pieKind == PieKind.Income)" @onclick="() => SelectPie(PieKind.Income)">
+                            Entrate
+                        </button>
+                        <button type="button" class="@PieToggleClass(PieKind.Expense)"
+                                aria-pressed="@(_pieKind == PieKind.Expense)" @onclick="() => SelectPie(PieKind.Expense)">
+                            Uscite
+                        </button>
                     </div>
                 </div>
 
-                @if (ExpenseSlices.Count > 0)
+                @if (PieSlices.Count > 0)
                 {
                     <div class="alternative-pie-layout">
                         <figure class="alternative-pie-figure">
                             <div class="allocation-donut alternative-pie-donut">
                                 <svg viewBox="0 0 42 42" aria-hidden="true" focusable="false" @onmouseleave="ClearAlternativeHover">
                                     <circle class="allocation-track" cx="21" cy="21" r="15.9155" pathLength="100" />
-                                    @foreach (var slice in ExpenseSlices)
+                                    @foreach (var slice in PieSlices)
                                     {
-                                        <circle class="expense-pie-segment alternative-pie-segment @(_altHoverSlice?.Label == slice.Label ? "hovered" : "")"
+                                        <circle class="@PieSliceClass(slice)"
                                                 cx="21" cy="21" r="15.9155"
                                                 pathLength="100" transform="rotate(-90 21 21)"
                                                 stroke="@slice.Color"
@@ -233,20 +242,18 @@ else
                                     else
                                     {
                                         <span class="allocation-center-label">Totale</span>
-                                        <strong class="allocation-center-value">@Format.Money(ExpenseTotal.GetValueOrDefault())</strong>
-                                        <span class="allocation-center-sub">@ExpenseSlices.Count categorie</span>
+                                        <strong class="allocation-center-value">@Format.Money(PieTotal.GetValueOrDefault())</strong>
+                                        <span class="allocation-center-sub">@PieSlices.Count categorie</span>
                                     }
                                 </div>
                             </div>
-                            <figcaption class="visually-hidden">@ExpensePieDescription</figcaption>
+                            <figcaption class="visually-hidden">@PieDescription</figcaption>
                         </figure>
                     </div>
                 }
                 else
                 {
-                    <EmptyState Title="Nessuna uscita nel periodo"
-                                Hint="Le uscite registrate e categorizzate compaiono qui."
-                                Icon="pie" />
+                    <EmptyState Title="@PieEmptyTitle" Hint="@PieEmptyHint" Icon="pie" />
                 }
             </section>
         </div>
@@ -455,6 +462,24 @@ else
                     </div>
                 </div>
 
+                @if (HasActiveFilters && FilteredHistory.Count > 0)
+                {
+                    <div class="movement-filter-summary" role="status">
+                        <span class="movement-summary-count">
+                            <strong>@FilteredHistory.Count</strong> movimenti filtrati
+                        </span>
+                        <span class="movement-summary-item income">
+                            Entrate <strong>@Format.Money(FilteredIncomeTotal)</strong>
+                        </span>
+                        <span class="movement-summary-item expense">
+                            Uscite <strong>@Format.Money(FilteredExpenseTotal)</strong>
+                        </span>
+                        <span class="movement-summary-item net @Tone(FilteredNetTotal)">
+                            Saldo <strong>@Format.MoneySigned(FilteredNetTotal)</strong>
+                        </span>
+                    </div>
+                }
+
                 @if (_historyError is not null)
                 {
                     <p class="alert alert-error" role="alert">@_historyError</p>
@@ -484,11 +509,11 @@ else
                             </colgroup>
                             <thead>
                                 <tr>
-                                    <th scope="col">Data</th>
-                                    <th scope="col">Categoria</th>
-                                    <th scope="col">Sottocategoria</th>
-                                    <th scope="col">Descrizione</th>
-                                    <th scope="col" class="num">Importo</th>
+                                    <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="date" Label="Data" />
+                                    <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="category" Label="Categoria" />
+                                    <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="subcategory" Label="Sottocategoria" />
+                                    <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="description" Label="Descrizione" />
+                                    <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="amount" Label="Importo" Numeric="true" />
                                 </tr>
                             </thead>
                             <tbody>
@@ -589,6 +614,8 @@ else
     <OperationEditDialog Open="_editDialogOpen"
                          Operation="_editingRow"
                          Categories="_categories"
+                         Instruments="_instrumentOptions"
+                         ShowTax="true"
                          OnClose="CloseEdit"
                          OnSaved="OnOperationSaved" />
 
@@ -636,6 +663,31 @@ else
         Expense,
     }
 
+    private enum PieKind
+    {
+        Income,
+        Expense,
+    }
+
+    private sealed class FilterState
+    {
+        public string HistoryFilter { get; set; } = FilterAll;
+        public string PeriodMode { get; set; } = "Month";
+        public int PeriodYear { get; set; }
+        public int PeriodMonth { get; set; }
+        public string? FilterFrom { get; set; }
+        public string? FilterTo { get; set; }
+        public string[] Categories { get; set; } = [];
+        public string[] Subcategories { get; set; } = [];
+        public string Search { get; set; } = "";
+        public string DatePreset { get; set; } = "none";
+        public string AmountMin { get; set; } = "";
+        public string AmountMax { get; set; } = "";
+        public string SortColumn { get; set; } = "date";
+        public bool SortDescending { get; set; }
+        public int PageSize { get; set; } = 20;
+    }
+
     private IReadOnlyList<Category> _categories = [];
     private IReadOnlyList<InvestmentOption> _instrumentOptions = [];
     private InvestmentWorkspace? _workspace;
@@ -650,7 +702,7 @@ else
     private OperationHistoryRow? _editingRow;
     private string? _loadError;
     private string? _historyError;
-    private string? _savedMessage;
+    private TableSort _historySort = new("date");
     private string _historyFilter = FilterAll;
     private PeriodMode _periodMode = PeriodMode.Month;
     private int _periodYear = DateTime.UtcNow.Year;
@@ -672,6 +724,8 @@ else
     private CategoryBreakdownItem? _altHoverSlice;
     private ElementReference _periodMonthsRef;
     private TrendKind _trendKind = TrendKind.Income;
+    private PieKind _pieKind = PieKind.Expense;
+    private bool _preferencesLoaded;
 
     private Money? _periodIncome;
     private Money? _periodExpense;
@@ -838,9 +892,33 @@ else
                 rows = rows.Where(row => Math.Abs(row.Amount.GetValueOrDefault().Amount) <= maxAmount);
             }
 
-            return rows.ToArray();
+            return SortHistory(rows).ToArray();
         }
     }
+
+    private IEnumerable<OperationHistoryRow> SortHistory(IEnumerable<OperationHistoryRow> rows) =>
+        _historySort.Column switch
+        {
+            "category" => _historySort.Apply(rows, row => row.CategoryName ?? "", StringComparer.CurrentCultureIgnoreCase),
+            "subcategory" => _historySort.Apply(rows, row => row.Subcategory ?? "", StringComparer.CurrentCultureIgnoreCase),
+            "description" => _historySort.Apply(rows, row => row.Description ?? "", StringComparer.CurrentCultureIgnoreCase),
+            "amount" => _historySort.Apply(rows, row => row.Amount?.Amount ?? decimal.MinValue),
+            _ => _historySort.Apply(rows, row => row.OperationDate),
+        };
+
+    private Money FilteredIncomeTotal => new(
+        FilteredHistory
+            .Where(row => row.Kind == OperationKind.Income)
+            .Sum(row => Math.Abs(row.Amount?.Amount ?? 0m)),
+        Currency.Euro);
+
+    private Money FilteredExpenseTotal => new(
+        FilteredHistory
+            .Where(row => row.Kind == OperationKind.Expense)
+            .Sum(row => Math.Abs(row.Amount?.Amount ?? 0m)),
+        Currency.Euro);
+
+    private Money FilteredNetTotal => FilteredIncomeTotal - FilteredExpenseTotal;
 
     private IReadOnlyList<OperationHistoryRow> PagedHistory
     {
@@ -997,12 +1075,14 @@ else
         _openFilterMenu = null;
         _page = 1;
         ComputePeriodSummary();
+        _ = PersistFiltersAsync();
     }
 
     private void OnCustomDateChanged()
     {
         _datePreset = "custom";
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void SetTypeFilter(string filter)
@@ -1010,6 +1090,7 @@ else
         _historyFilter = filter;
         _openFilterMenu = null;
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void ToggleCategoryFilter(string category, ChangeEventArgs args)
@@ -1025,6 +1106,7 @@ else
 
         PruneSubcategoryFilters();
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void ToggleSubcategoryFilter(string subcategory, ChangeEventArgs args)
@@ -1039,18 +1121,21 @@ else
         }
 
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void ClearCategoryFilters()
     {
         _filterCategories.Clear();
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void ClearSubcategoryFilters()
     {
         _filterSubcategories.Clear();
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void PruneSubcategoryFilters()
@@ -1063,21 +1148,28 @@ else
     {
         _filterSearch = args.Value?.ToString() ?? "";
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void OnAmountMinInput(ChangeEventArgs args)
     {
         _filterAmountMin = args.Value?.ToString() ?? "";
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
     private void OnAmountMaxInput(ChangeEventArgs args)
     {
         _filterAmountMax = args.Value?.ToString() ?? "";
         _page = 1;
+        _ = PersistFiltersAsync();
     }
 
-    private void OnPageSizeChanged() => _page = 1;
+    private void OnPageSizeChanged()
+    {
+        _page = 1;
+        _ = PersistFiltersAsync();
+    }
 
     private void PreviousPage() => _page = Math.Max(1, CurrentPage - 1);
 
@@ -1100,6 +1192,7 @@ else
         _openFilterMenu = null;
         _page = 1;
         ComputePeriodSummary();
+        _ = PersistFiltersAsync();
     }
 
     private string EmptyFilterTitle => _historyFilter switch
@@ -1117,7 +1210,52 @@ else
     private string TrendToggleClass(TrendKind kind) =>
         _trendKind == kind ? "trend-toggle-button active" : "trend-toggle-button";
 
-    private void SelectTrend(TrendKind kind) => _trendKind = kind;
+    private async Task SelectTrend(TrendKind kind)
+    {
+        _trendKind = kind;
+        await Preferences.SetAsync("mf.chart.operations.trend", kind.ToString());
+    }
+
+    private string PieTitle => _pieKind == PieKind.Income ? "Entrate per categoria" : "Uscite per categoria";
+
+    private string PieCardClass => _pieKind == PieKind.Income
+        ? "card operations-pie-card income"
+        : "card operations-pie-card expense";
+
+    private string PieToggleClass(PieKind kind) =>
+        _pieKind == kind ? "trend-toggle-button active" : "trend-toggle-button";
+
+    private string PieSliceClass(CategoryBreakdownItem slice)
+    {
+        var classes = "expense-pie-segment alternative-pie-segment";
+        if (_altHoverSlice?.Label == slice.Label)
+        {
+            classes += " hovered";
+        }
+
+        if (_pieKind == PieKind.Expense)
+        {
+            classes += " clickable";
+        }
+
+        return classes;
+    }
+
+    private OperationKind PieOperationKind => _pieKind == PieKind.Income
+        ? OperationKind.Income
+        : OperationKind.Expense;
+
+    private async Task SelectPie(PieKind kind)
+    {
+        if (_pieKind == kind)
+        {
+            return;
+        }
+
+        _pieKind = kind;
+        _altHoverSlice = null;
+        await Preferences.SetAsync("mf.chart.operations.pie", kind.ToString());
+    }
 
     private IReadOnlyList<TrendPoint> TrendPoints => _periodMode switch
     {
@@ -1228,16 +1366,17 @@ else
         }
     }
 
-    private IReadOnlyList<CategoryBreakdownItem> ExpenseSlices
+    private IReadOnlyList<CategoryBreakdownItem> PieSlices
     {
         get
         {
             var start = PeriodStart;
             var end = PeriodEnd;
+            var isIncome = _pieKind == PieKind.Income;
             var rows = _visibleHistory
-                .Where(row => row.Kind == OperationKind.Expense &&
+                .Where(row => row.Kind == PieOperationKind &&
                               row.OperationDate >= start && row.OperationDate <= end &&
-                              row.Amount is { Amount: < 0m })
+                              (isIncome ? row.Amount is { Amount: > 0m } : row.Amount is { Amount: < 0m }))
                 .ToArray();
             if (rows.Length == 0)
             {
@@ -1249,7 +1388,7 @@ else
                 .Select(group => new
                 {
                     Label = group.Key,
-                    Amount = group.Sum(row => -row.Amount.GetValueOrDefault().Amount),
+                    Amount = group.Sum(row => Math.Abs(row.Amount.GetValueOrDefault().Amount)),
                     Color = CategoryAppearance.ColorFor(
                         group.Select(row => row.CategoryColor).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color))),
                 })
@@ -1291,10 +1430,11 @@ else
 
             var start = PeriodStart;
             var end = PeriodEnd;
+            var isIncome = _pieKind == PieKind.Income;
             var rows = _visibleHistory
-                .Where(row => row.Kind == OperationKind.Expense &&
+                .Where(row => row.Kind == PieOperationKind &&
                               row.OperationDate >= start && row.OperationDate <= end &&
-                              row.Amount is { Amount: < 0m })
+                              (isIncome ? row.Amount is { Amount: > 0m } : row.Amount is { Amount: < 0m }))
                 .Where(row => string.Equals(
                     string.IsNullOrWhiteSpace(row.CategoryName) ? "Senza categoria" : row.CategoryName,
                     _selectedCategory,
@@ -1310,7 +1450,7 @@ else
                 .Select(group => new
                 {
                     Label = group.Key,
-                    Amount = group.Sum(row => -row.Amount.GetValueOrDefault().Amount),
+                    Amount = group.Sum(row => Math.Abs(row.Amount.GetValueOrDefault().Amount)),
                 })
                 .OrderByDescending(item => item.Amount)
                 .ToArray();
@@ -1344,21 +1484,121 @@ else
         ? null
         : new Money(SelectedCategorySlices.Sum(item => item.Amount.Amount), Currency.Euro);
 
-    private Money? ExpenseTotal => ExpenseSlices.Count == 0
+    private Money? PieTotal => PieSlices.Count == 0
         ? null
-        : new Money(ExpenseSlices.Sum(slice => slice.Amount.Amount), Currency.Euro);
+        : new Money(PieSlices.Sum(slice => slice.Amount.Amount), Currency.Euro);
 
-    private string ExpensePieDescription => ExpenseSlices.Count == 0
+    private string PieDescription => PieSlices.Count == 0
         ? string.Empty
-        : $"Uscite per categoria: {string.Join(", ", ExpenseSlices.Select(slice => $"{slice.Label} {Format.Money(slice.Amount)} ({Format.Percent(slice.Share)})"))}.";
+        : $"{(_pieKind == PieKind.Income ? "Entrate" : "Uscite")} per categoria: {string.Join(", ", PieSlices.Select(slice => $"{slice.Label} {Format.Money(slice.Amount)} ({Format.Percent(slice.Share)})"))}.";
+
+    private string PieEmptyTitle => _pieKind == PieKind.Income
+        ? "Nessuna entrata nel periodo"
+        : "Nessuna uscita nel periodo";
+
+    private string PieEmptyHint => _pieKind == PieKind.Income
+        ? "Le entrate registrate e categorizzate compaiono qui."
+        : "Le uscite registrate e categorizzate compaiono qui.";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
+
+        if (firstRender && !_preferencesLoaded)
+        {
+            _preferencesLoaded = true;
+
+            var state = await Filters.GetAsync<FilterState>("mf.filters.operations");
+            if (state is not null)
+            {
+                _historyFilter = state.HistoryFilter;
+                if (Enum.TryParse<PeriodMode>(state.PeriodMode, ignoreCase: true, out var periodMode))
+                {
+                    _periodMode = periodMode;
+                }
+
+                if (state.PeriodYear > 0)
+                {
+                    _periodYear = state.PeriodYear;
+                }
+
+                if (state.PeriodMonth is >= 1 and <= 12)
+                {
+                    _periodMonth = state.PeriodMonth;
+                }
+
+                _filterFrom = DateOnly.TryParse(state.FilterFrom, out var from) ? from : null;
+                _filterTo = DateOnly.TryParse(state.FilterTo, out var to) ? to : null;
+                _filterCategories.Clear();
+                foreach (var category in state.Categories)
+                {
+                    _filterCategories.Add(category);
+                }
+
+                _filterSubcategories.Clear();
+                foreach (var subcategory in state.Subcategories)
+                {
+                    _filterSubcategories.Add(subcategory);
+                }
+
+                _filterSearch = state.Search ?? "";
+                _datePreset = string.IsNullOrWhiteSpace(state.DatePreset) ? "none" : state.DatePreset;
+                _filterAmountMin = state.AmountMin ?? "";
+                _filterAmountMax = state.AmountMax ?? "";
+                _historySort = new TableSort(
+                    string.IsNullOrWhiteSpace(state.SortColumn) ? "date" : state.SortColumn,
+                    state.SortDescending);
+                _pageSize = state.PageSize > 0 ? state.PageSize : 20;
+                _page = 1;
+                ComputePeriodSummary();
+            }
+
+            var storedTrend = await Preferences.GetAsync("mf.chart.operations.trend");
+            if (Enum.TryParse<TrendKind>(storedTrend, out var trend))
+            {
+                _trendKind = trend;
+            }
+
+            var storedPie = await Preferences.GetAsync("mf.chart.operations.pie");
+            if (Enum.TryParse<PieKind>(storedPie, out var pie))
+            {
+                _pieKind = pie;
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+
         if (!_loading && _loadError is null)
         {
             await JS.InvokeVoidAsync("mfScrollActiveMonth", _periodMonthsRef);
         }
+    }
+
+    private Task PersistFiltersAsync() => Filters.SetAsync(
+        "mf.filters.operations",
+        new FilterState
+        {
+            HistoryFilter = _historyFilter,
+            PeriodMode = _periodMode.ToString(),
+            PeriodYear = _periodYear,
+            PeriodMonth = _periodMonth,
+            FilterFrom = _filterFrom?.ToString("yyyy-MM-dd"),
+            FilterTo = _filterTo?.ToString("yyyy-MM-dd"),
+            Categories = _filterCategories.ToArray(),
+            Subcategories = _filterSubcategories.ToArray(),
+            Search = _filterSearch,
+            DatePreset = _datePreset,
+            AmountMin = _filterAmountMin,
+            AmountMax = _filterAmountMax,
+            SortColumn = _historySort.Column,
+            SortDescending = _historySort.Descending,
+            PageSize = _pageSize,
+        });
+
+    private async Task OnHistorySortChangedAsync()
+    {
+        await PersistFiltersAsync();
+        StateHasChanged();
     }
 
     protected override async Task OnInitializedAsync()
@@ -1521,6 +1761,7 @@ else
         _openFilterMenu = null;
         _page = 1;
         ComputePeriodSummary();
+        _ = PersistFiltersAsync();
     }
 
     private string MonthShortName(int month) =>
@@ -1565,17 +1806,13 @@ else
             : $"{MonthFullName(month)} {_periodYear} · {Format.Money(new Money(net.Value, Currency.Euro))}";
     }
 
-    private void OpenDialog()
-    {
-        _savedMessage = null;
-        _dialogOpen = true;
-    }
+    private void OpenDialog() => _dialogOpen = true;
 
     private void CloseDialog() => _dialogOpen = false;
 
     private async Task OnOperationSaved(string message)
     {
-        _savedMessage = message;
+        await Notifications.Success(message);
         await LoadHistoryAsync();
     }
 
@@ -1587,7 +1824,6 @@ else
             return;
         }
 
-        _savedMessage = null;
         _editingRow = row;
         _editDialogOpen = true;
     }
@@ -1601,11 +1837,10 @@ else
         var operation = asset?.Operations.FirstOrDefault(candidate => candidate.Id == row.Id);
         if (asset is null || operation is null)
         {
-            _savedMessage = "Cedola non trovata.";
+            await Notifications.Error("Cedola non trovata.");
             return;
         }
 
-        _savedMessage = null;
         _investmentAsset = asset;
         _investmentOperation = operation;
         _investmentDialogOpen = true;
@@ -1615,14 +1850,14 @@ else
 
     private async Task OnInvestmentSaved()
     {
-        _savedMessage = "Operazione salvata.";
+        await Notifications.Success("Operazione salvata.");
         _investmentDialogOpen = false;
         await LoadAsync();
     }
 
     private async Task OnInvestmentDeleted()
     {
-        _savedMessage = "Operazione eliminata.";
+        await Notifications.Success("Operazione eliminata.");
         _investmentDialogOpen = false;
         await LoadAsync();
     }
@@ -1635,6 +1870,11 @@ else
 
     private void OpenCategoryBreakdown(CategoryBreakdownItem slice)
     {
+        if (_pieKind == PieKind.Income)
+        {
+            return;
+        }
+
         _selectedCategory = slice.Label;
         _selectedCategoryColor = slice.Color;
         _categoryDialogOpen = true;

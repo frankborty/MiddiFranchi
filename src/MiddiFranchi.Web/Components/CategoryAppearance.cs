@@ -27,6 +27,7 @@ public static class CategoryAppearance
         new("bank", "Banca"),
         new("transfer", "Trasferimenti"),
         new("chart", "Investimenti"),
+        new("pie", "Ripartizione"),
         new("coin", "Risparmi"),
         new("loan", "Prestiti"),
         new("doc", "Documenti"),

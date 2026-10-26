@@ -184,7 +184,6 @@ public sealed class FakeLoanReadingRepository : ILoanReadingRepository
         ReceivedTokens.Add(cancellationToken);
         IReadOnlyList<LoanReading> result = Readings
             .OrderBy(reading => reading.ValidAt)
-            .ThenBy(reading => reading.RecordedAt)
             .ThenBy(reading => reading.Id)
             .ToArray();
         return Task.FromResult(result);
@@ -198,7 +197,6 @@ public sealed class FakeLoanReadingRepository : ILoanReadingRepository
         IReadOnlyList<LoanReading> result = Readings
             .Where(reading => reading.LoanId == loanId)
             .OrderBy(reading => reading.ValidAt)
-            .ThenBy(reading => reading.RecordedAt)
             .ThenBy(reading => reading.Id)
             .ToArray();
         return Task.FromResult(result);

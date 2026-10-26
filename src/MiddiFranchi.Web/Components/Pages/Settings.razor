@@ -1,12 +1,13 @@
 @page "/settings"
 @rendermode InteractiveServer
+@inject SectionAppearanceService Appearance
 
 <PageTitle>Configurazione</PageTitle>
 
 <div class="dashboard-header">
     <div>
         <h1 class="account-detail-title">
-            <span class="account-avatar sidebar-tone" aria-hidden="true"><MfIcon Name="settings" Size="18" /></span>
+            <span class="account-avatar sidebar-tone" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Settings).Icon" Size="18" /></span>
             Configurazione
         </h1>
     </div>
@@ -14,7 +15,7 @@
 
 <div class="settings-hub-grid">
     <a class="settings-hub-card accounts" href="/settings/accounts">
-        <span class="settings-hub-icon accounts" aria-hidden="true"><MfIcon Name="wallet" Size="24" /></span>
+        <span class="settings-hub-icon accounts" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="24" /></span>
         <span class="settings-hub-copy">
             <strong>Conti</strong>
             <span>Anagrafica, stato, colore, icona e conti speciali.</span>
@@ -32,7 +33,7 @@
     </a>
 
     <a class="settings-hub-card instruments" href="/settings/instruments">
-        <span class="settings-hub-icon instruments" aria-hidden="true"><MfIcon Name="pie" Size="24" /></span>
+        <span class="settings-hub-icon instruments" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="24" /></span>
         <span class="settings-hub-copy">
             <strong>Strumenti finanziari</strong>
             <span>Azioni, obbligazioni, monetario e altro: anagrafica, link e stato.</span>
@@ -54,6 +55,15 @@
         <span class="settings-hub-copy">
             <strong>Dati e backup</strong>
             <span>Eliminazione selettiva, esportazione e ripristino completo dei dati.</span>
+        </span>
+        <span class="settings-hub-arrow" aria-hidden="true"><MfIcon Name="arrow-right" Size="16" /></span>
+    </a>
+
+    <a class="settings-hub-card appearance" href="/settings/appearance">
+        <span class="settings-hub-icon appearance" aria-hidden="true"><MfIcon Name="palette" Size="24" /></span>
+        <span class="settings-hub-copy">
+            <strong>Aspetto sezioni</strong>
+            <span>Icona e colore di Dashboard, Conti, Investimenti, Movimenti e Configurazione.</span>
         </span>
         <span class="settings-hub-arrow" aria-hidden="true"><MfIcon Name="arrow-right" Size="16" /></span>
     </a>

@@ -4,6 +4,7 @@
 @using MiddiFranchi.Domain.Financial
 @using MiddiFranchi.Domain.Shared
 @inject InvestmentWorkspaceService Workspace
+@inject ChartPreferences Preferences
 
 <PageTitle>Statistiche avanzate — MiddiFranchi</PageTitle>
 
@@ -149,12 +150,29 @@ else if (_workspace is { } workspace)
     private bool _loading = true;
     private string? _loadError;
     private int? _monthlyYear;
+    private bool _preferencesLoaded;
 
     private IReadOnlyList<MonthSnapshot> _monthlySnapshots = [];
     private IReadOnlyList<MonthlyReturn> _monthlyReturns = [];
     private IReadOnlyList<AnnualReturn> _annualReturns = [];
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preferencesLoaded)
+        {
+            return;
+        }
+
+        _preferencesLoaded = true;
+        var storedYear = await Preferences.GetAsync("mf.chart.statistics.monthlyYear");
+        if (int.TryParse(storedYear, out var year))
+        {
+            _monthlyYear = year;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
     private async Task LoadAsync()
     {
@@ -311,8 +329,13 @@ else if (_workspace is { } workspace)
             Kind: TimeSeriesSeriesKind.Bar),
     ];
 
-    private void OnMonthlyYearChanged(ChangeEventArgs args) =>
+    private async Task OnMonthlyYearChanged(ChangeEventArgs args)
+    {
         _monthlyYear = int.TryParse(args.Value?.ToString(), out var year) ? year : null;
+        await Preferences.SetAsync(
+            "mf.chart.statistics.monthlyYear",
+            _monthlyYear?.ToString() ?? "");
+    }
 
     private IReadOnlyList<MonthlyReturn> ValidMonthlyReturns =>
         _monthlyReturns.Where(item => item.Return is not null).ToArray();

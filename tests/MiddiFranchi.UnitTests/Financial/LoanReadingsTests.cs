@@ -48,6 +48,5 @@ public class LoanReadingsTests
             Guid.NewGuid(),
             loan,
             new Money(amount, Euro),
-            validAt,
-            DateTimeOffset.UtcNow);
+            validAt);
 }

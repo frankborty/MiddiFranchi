@@ -13,6 +13,7 @@ public sealed record InvestmentWorkspace(
     IReadOnlyList<InvestmentAssetRow> Assets,
     IReadOnlyList<InvestmentClassAllocation> Allocation,
     Money TotalIncome,
+    Money NetIncome,
     int ArchivedCount,
     int CatalogCount);
 

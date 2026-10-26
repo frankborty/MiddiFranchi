@@ -23,13 +23,13 @@
                 <table class="data-table outdated-quotes-table">
                     <thead>
                         <tr>
-                            <th scope="col">Strumento</th>
-                            <th scope="col">Classe</th>
-                            <th scope="col">Ultima quotazione</th>
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="name" Label="Strumento" />
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="class" Label="Classe" />
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="date" Label="Ultima quotazione" />
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var item in Items)
+                        @foreach (var item in SortedItems)
                         {
                             <tr>
                                 <td>
@@ -79,6 +79,18 @@
     [Parameter] public DateOnly ValuationDate { get; set; }
 
     [Parameter] public EventCallback OnClose { get; set; }
+
+    private readonly TableSort _sort = new("name");
+
+    private IReadOnlyList<InvestmentAssetRow> SortedItems => _sort.Column switch
+    {
+        "class" => _sort.Apply(
+            Items,
+            item => Format.AssetClassLabel(item.AssetClass),
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        "date" => _sort.Apply(Items, item => item.PriceDate ?? DateOnly.MinValue).ToArray(),
+        _ => _sort.Apply(Items, item => item.Name, StringComparer.CurrentCultureIgnoreCase).ToArray(),
+    };
 
     private string Summary => Items.Count == 1
         ? $"1 strumento non ha una quotazione aggiornata al {Format.Date(ValuationDate)}."

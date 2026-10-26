@@ -229,7 +229,6 @@ internal static class BackupRowMapper
         record.AmountAmount,
         record.AmountCurrencyCode,
         record.ValidAt,
-        record.RecordedAt,
         record.Note);
 
     public static LoanReadingRecord ToRecord(LoanReadingBackup backup) => new()
@@ -239,7 +238,6 @@ internal static class BackupRowMapper
         AmountAmount = backup.AmountAmount,
         AmountCurrencyCode = backup.AmountCurrencyCode,
         ValidAt = backup.ValidAt,
-        RecordedAt = backup.RecordedAt,
         Note = backup.Note,
     };
 }

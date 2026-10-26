@@ -1,0 +1,190 @@
+@page "/settings/appearance"
+@rendermode InteractiveServer
+@inject SectionAppearanceService Appearance
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+
+<PageTitle>Aspetto sezioni — MiddiFranchi</PageTitle>
+
+<a class="section-link settings-back" href="/settings">
+    <MfIcon Name="arrow-left" Size="16" /> Configurazione
+</a>
+
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar sidebar-tone" aria-hidden="true">
+                <MfIcon Name="@Appearance.Get(AppSection.Settings).Icon" Size="18" />
+            </span>
+            Aspetto sezioni
+        </h1>
+    </div>
+</div>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2><MfIcon Name="palette" Size="18" /> Icone e colori</h2>
+        </div>
+    </div>
+
+    <p class="table-hint">
+        Le impostazioni si applicano alla navigazione e a tutte le pagine che usano
+        l’icona e il colore della sezione.
+    </p>
+
+    <div class="section-appearance-grid">
+        @foreach (var row in _rows)
+        {
+            <article class="section-appearance-card" style="@row.CardStyle">
+                <header class="section-appearance-head">
+                    <span class="section-appearance-preview" aria-hidden="true">
+                        <MfIcon Name="@row.Icon" Size="22" />
+                    </span>
+                    <div class="section-appearance-copy">
+                        <strong>@row.Label</strong>
+                        <span>@row.Hint</span>
+                    </div>
+                    <button type="button" class="icon-button section-appearance-reset"
+                            title="Ripristina @row.Label" aria-label="Ripristina @row.Label"
+                            disabled="@_saving" @onclick="() => ResetRowAsync(row)">
+                        <MfIcon Name="refresh" Size="16" />
+                    </button>
+                </header>
+
+                <div class="icon-picker-field">
+                    <span>Icona</span>
+                    <IconPicker @bind-Value="row.Icon" Label="@($"Icona {row.Label}")" />
+                </div>
+                <div class="color-picker-field">
+                    <span>Colore</span>
+                    <ColorPicker @bind-Value="row.Color" Label="@($"Colore {row.Label}")" />
+                </div>
+            </article>
+        }
+    </div>
+
+    <div class="form-actions">
+        <button type="button" class="primary-button" disabled="@_saving" @onclick="SaveAsync">
+            Salva aspetto
+        </button>
+        <button type="button" class="secondary-button" disabled="@_saving" @onclick="ResetAsync">
+            Ripristina tutti
+        </button>
+    </div>
+</section>
+
+@code {
+    private sealed class EditorRow
+    {
+        public AppSection Section { get; init; }
+        public string Label { get; init; } = "";
+        public string Hint { get; init; } = "";
+        public string Icon { get; set; } = "";
+        public string Color { get; set; } = "";
+
+        public string CardStyle => $"--section-color: {Color};";
+    }
+
+    private readonly List<EditorRow> _rows = [];
+    private bool _saving;
+    private bool _loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Appearance.EnsureLoadedAsync();
+        if (!_loaded)
+        {
+            _loaded = true;
+            foreach (var section in Enum.GetValues<AppSection>())
+            {
+                var appearance = Appearance.Get(section);
+                _rows.Add(new EditorRow
+                {
+                    Section = section,
+                    Label = LabelFor(section),
+                    Hint = HintFor(section),
+                    Icon = appearance.Icon,
+                    Color = appearance.Color,
+                });
+            }
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        await SaveRowsAsync(_rows);
+    }
+
+    private async Task ResetAsync()
+    {
+        foreach (var row in _rows)
+        {
+            ApplyDefaults(row);
+        }
+
+        await SaveRowsAsync(_rows);
+    }
+
+    private async Task ResetRowAsync(EditorRow row)
+    {
+        ApplyDefaults(row);
+        await SaveRowsAsync([row]);
+    }
+
+    private async Task SaveRowsAsync(IEnumerable<EditorRow> rows)
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await Appearance.SaveAsync(rows.ToDictionary(
+                row => row.Section,
+                row => new SectionAppearance(row.Icon, row.Color)));
+            await Notifications.Success("Aspetto delle sezioni aggiornato.");
+            Navigation.NavigateTo("/settings/appearance", forceLoad: true);
+        }
+        catch (Exception)
+        {
+            await Notifications.Error("Salvataggio non riuscito. Riprova.");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static void ApplyDefaults(EditorRow row)
+    {
+        var defaults = SectionAppearanceService.DefaultFor(row.Section);
+        row.Icon = defaults.Icon;
+        row.Color = defaults.Color;
+    }
+
+    private static string LabelFor(AppSection section) => section switch
+    {
+        AppSection.Dashboard => "Dashboard",
+        AppSection.Accounts => "Conti",
+        AppSection.Investments => "Investimenti",
+        AppSection.Operations => "Movimenti",
+        _ => "Configurazione",
+    };
+
+    private static string HintFor(AppSection section) => section switch
+    {
+        AppSection.Dashboard => "Home e riepilogo generale",
+        AppSection.Accounts => "Conti, saldi e prestiti",
+        AppSection.Investments => "Strumenti, cedole e statistiche",
+        AppSection.Operations => "Movimenti e nuova operazione",
+        _ => "Configurazione e pagine di servizio",
+    };
+}

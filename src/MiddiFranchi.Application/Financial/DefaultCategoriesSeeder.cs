@@ -18,11 +18,17 @@ public sealed class DefaultCategoriesSeeder
 {
     public const string SeedKey = "seed.categories.v1";
     public const string InvestmentIncomeSeedKey = "seed.categories.investmentIncome.v1";
+    public const string InvestmentFeeSeedKey = "seed.categories.investmentFee.v1";
 
     public static readonly IReadOnlyList<DefaultCategory> InvestmentIncomeDefaults =
     [
         new("Cedole", null, CategoryType.Income, "percent", "#0ea5e9"),
-        new("Fees", "Tasse Plusvalenze", CategoryType.Expense, "percent", "#b4232c"),
+        new("Fees", "Tasse Investimenti", CategoryType.Expense, "receipt", "#64748b"),
+    ];
+
+    public static readonly IReadOnlyList<DefaultCategory> InvestmentFeeDefaults =
+    [
+        new("Fees", "Conto Titoli", CategoryType.Expense, "receipt", "#64748b"),
     ];
 
     public static readonly IReadOnlyList<DefaultCategory> Defaults =
@@ -35,6 +41,7 @@ public sealed class DefaultCategoriesSeeder
         new("Concorrenza", null, CategoryType.Income, "briefcase", "#8b5cf6"),
         new("Premio Produzione", null, CategoryType.Income, "trophy", "#f59e0b"),
         new("Rimborsi", null, CategoryType.Income, "receipt", "#64748b"),
+        new("Interessi Conto Corrente", null, CategoryType.Income, "bank", "#0d9488"),
         new("Cedole", null, CategoryType.Income, "percent", "#0ea5e9"),
         new("AltroIncome", null, CategoryType.Income, "tag", "#94a3b8"),
 
@@ -66,7 +73,7 @@ public sealed class DefaultCategoriesSeeder
         new("Fees", "Postepay", CategoryType.Expense, "receipt", "#64748b"),
         new("Fees", "Conto Titoli", CategoryType.Expense, "receipt", "#64748b"),
         new("Fees", "Conto Corrente", CategoryType.Expense, "receipt", "#64748b"),
-        new("Fees", "Tasse Plusvalenze", CategoryType.Expense, "percent", "#b4232c"),
+        new("Fees", "Tasse Investimenti", CategoryType.Expense, "receipt", "#64748b"),
         new("Fees", "AltroFees", CategoryType.Expense, "receipt", "#64748b"),
 
         new("Fun & Shopping", "Vestiti", CategoryType.Expense, "shopping-bag", "#ec4899"),
@@ -124,6 +131,12 @@ public sealed class DefaultCategoriesSeeder
         {
             added += await SeedAsync(InvestmentIncomeDefaults, cancellationToken);
             await _metadata.SetAsync(InvestmentIncomeSeedKey, "done", cancellationToken);
+        }
+
+        if (!await _metadata.IsSeedCompletedAsync(InvestmentFeeSeedKey, cancellationToken))
+        {
+            added += await SeedAsync(InvestmentFeeDefaults, cancellationToken);
+            await _metadata.SetAsync(InvestmentFeeSeedKey, "done", cancellationToken);
         }
 
         return added;

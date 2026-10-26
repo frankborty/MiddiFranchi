@@ -1,26 +1,28 @@
 @namespace MiddiFranchi.Web.Components.Shared
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Shared
+@inject ChartPreferences Preferences
+@inject SectionAppearanceService Appearance
 
 <section class="card dashboard-overview" aria-labelledby="overview-title">
     <div class="overview-top">
         <div>
-            <h2 id="overview-title"><MfIcon Name="chart" Size="18" /> Panoramica</h2>
+            <h2 id="overview-title"><MfIcon Name="@Appearance.Get(AppSection.Dashboard).Icon" Size="18" /> Panoramica</h2>
         </div>
     </div>
 
     <div class="overview-toolbar">
         <div class="overview-tabs" role="group" aria-label="Categorie della panoramica">
             <button type="button" class="@TabClass(_showInvestments, "investments")" aria-pressed="@AriaPressed(_showInvestments)" @onclick="ToggleInvestments">
-                <span class="tab-icon" aria-hidden="true"><MfIcon Name="pie" Size="14" /></span>
+                <span class="tab-icon" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="14" /></span>
                 Investimenti
             </button>
             <button type="button" class="@TabClass(_showAccounts, "accounts")" aria-pressed="@AriaPressed(_showAccounts)" @onclick="ToggleAccounts">
-                <span class="tab-icon" aria-hidden="true"><MfIcon Name="wallet" Size="14" /></span>
+                <span class="tab-icon" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="14" /></span>
                 Conti
             </button>
             <button type="button" class="@TabClass(_showTotal, "total")" aria-pressed="@AriaPressed(_showTotal)" @onclick="ToggleTotal">
-                <span class="tab-icon" aria-hidden="true"><MfIcon Name="chart" Size="14" /></span>
+                <span class="tab-icon" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Dashboard).Icon" Size="14" /></span>
                 Totale
             </button>
         </div>
@@ -162,13 +164,41 @@
         (DashboardOverviewRange.Max, "Max"),
     ];
 
+    private const string InvestmentsKey = "mf.chart.overview.investments";
+    private const string AccountsKey = "mf.chart.overview.accounts";
+    private const string TotalKey = "mf.chart.overview.total";
+    private const string RangeKey = "mf.chart.overview.range";
+
     private bool _showInvestments = true;
     private bool _showAccounts = true;
     private bool _showTotal = true;
     private DashboardOverviewRange _range = DashboardOverviewRange.Max;
+    private bool _preferencesLoaded;
 
     [Parameter, EditorRequired]
     public DashboardOverview Data { get; set; } = null!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preferencesLoaded)
+        {
+            return;
+        }
+
+        _preferencesLoaded = true;
+        _showInvestments = await Preferences.GetBoolAsync(InvestmentsKey) ?? _showInvestments;
+        _showAccounts = await Preferences.GetBoolAsync(AccountsKey) ?? _showAccounts;
+        _showTotal = await Preferences.GetBoolAsync(TotalKey) ?? _showTotal;
+
+        var storedRange = await Preferences.GetAsync(RangeKey);
+        if (Enum.TryParse<DashboardOverviewRange>(storedRange, out var range))
+        {
+            _range = range;
+        }
+
+        EnsureAnySeriesVisible();
+        await InvokeAsync(StateHasChanged);
+    }
 
     private IReadOnlyList<DashboardOverviewCategory> SelectedCategories
     {
@@ -219,9 +249,46 @@
         category.Window(_range, Data.ValuationDate);
 
     /// <summary>Una serie è visibile se una categoria è attiva, o se il totale è visibile (entrambe o nessuna attiva).</summary>
-    private bool ChartHasData => _showInvestments || _showAccounts || TotalVisible;
+    private bool ChartHasData => VisibleCategories().Any(category =>
+        category.Points.Any(point => point.Value is not null));
+
+    private IEnumerable<DashboardOverviewCategory> VisibleCategories()
+    {
+        IEnumerable<DashboardOverviewCategory> categories = SelectedCategories;
+        if (TotalVisible)
+        {
+            // Il totale si costruisce dai punti di entrambe le categorie: se nessuna ha valori,
+            // anche la serie Totale resterebbe vuota (nessuna stima).
+            categories = categories.Concat([Data.Investments, Data.Accounts]).Distinct();
+        }
+
+        return categories;
+    }
 
     private bool TotalVisible => _showTotal && _showInvestments == _showAccounts;
+
+    /// <summary>
+    /// Su intervalli pari o superiori all'anno il grafico mostra un solo valore al mese:
+    /// l'ultimo disponibile nel mese, così i movimenti intra-mese non creano salti visivi.
+    /// </summary>
+    private bool UseMonthlyPoints =>
+        _range is DashboardOverviewRange.YearToDate
+            or DashboardOverviewRange.OneYear
+            or DashboardOverviewRange.ThreeYears
+            or DashboardOverviewRange.Max;
+
+    private IReadOnlyList<TimeSeriesPoint> ChartPoints(IReadOnlyList<TimeSeriesPoint> points) =>
+        UseMonthlyPoints ? LastPointPerMonth(points) : points;
+
+    private static IReadOnlyList<TimeSeriesPoint> LastPointPerMonth(
+        IReadOnlyList<TimeSeriesPoint> points) =>
+        points
+            .Where(point => point.Value is not null)
+            .GroupBy(point => (point.Date.Year, point.Date.Month))
+            .OrderBy(group => group.Key.Year)
+            .ThenBy(group => group.Key.Month)
+            .Select(group => group.OrderBy(point => point.Date).Last())
+            .ToArray();
 
     private string RangeLabelMode => _range switch
     {
@@ -266,24 +333,38 @@
             ? new DateTime(first.Year, 1, 1)
             : null;
 
-    private void ToggleInvestments()
+    private async Task ToggleInvestments()
     {
         _showInvestments = !_showInvestments;
         EnsureAnySeriesVisible();
+        await PersistVisibilityAsync();
     }
 
-    private void ToggleAccounts()
+    private async Task ToggleAccounts()
     {
         _showAccounts = !_showAccounts;
         EnsureAnySeriesVisible();
+        await PersistVisibilityAsync();
     }
 
-    private void SetRange(DashboardOverviewRange range) => _range = range;
+    private async Task SetRange(DashboardOverviewRange range)
+    {
+        _range = range;
+        await Preferences.SetAsync(RangeKey, range.ToString());
+    }
 
-    private void ToggleTotal()
+    private async Task ToggleTotal()
     {
         _showTotal = !_showTotal;
         EnsureAnySeriesVisible();
+        await PersistVisibilityAsync();
+    }
+
+    private async Task PersistVisibilityAsync()
+    {
+        await Preferences.SetBoolAsync(InvestmentsKey, _showInvestments);
+        await Preferences.SetBoolAsync(AccountsKey, _showAccounts);
+        await Preferences.SetBoolAsync(TotalKey, _showTotal);
     }
 
     /// <summary>Se nessuna serie resta visibile (categorie o totale), il totale si riattiva da solo.</summary>
@@ -401,23 +482,23 @@
         [
             new TimeSeriesSeries(
                 Data.Investments.ValueLabel,
-                _showInvestments ? SeriesValues(investmentsCarried) : [],
+                _showInvestments ? ChartPoints(SeriesValues(investmentsCarried)) : [],
                 Color: "#8b5cf6"),
 
             new TimeSeriesSeries(
                 Data.Accounts.ValueLabel,
-                _showAccounts ? SeriesValues(accountsCarried) : [],
+                _showAccounts ? ChartPoints(SeriesValues(accountsCarried)) : [],
                 Color: "#00b2ff"),
 
             new TimeSeriesSeries(
                 TotalLabel,
-                TotalVisible ? SeriesValues(totalByDate) : [],
+                TotalVisible ? ChartPoints(SeriesValues(totalByDate)) : [],
                 Color: "#e2e8f0"),
 
             new TimeSeriesSeries(
                 Data.Investments.ReferenceLabel,
                 _showInvestments && !bothSelected && !noneSelected
-                    ? SeriesValues(referenceCarried)
+                    ? ChartPoints(SeriesValues(referenceCarried))
                     : [],
                 Color: "#94a3b8"),
         ];

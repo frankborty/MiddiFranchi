@@ -282,6 +282,24 @@ public sealed class DataManagementService
         await _snapshots.DeleteAsync(plan.Effective, deletedAt, cancellationToken)
             .ConfigureAwait(false);
 
+        // Le categorie e i conti speciali sono dati di configurazione necessari all'app:
+        // quando vengono eliminati vanno ricreati subito, altrimenti i marker di seed
+        // (impostati a "done" dalla cancellazione) impedirebbero il ripristino.
+        if (plan.Effective.Includes(DataDataset.Accounts))
+        {
+            await _metadata.RemoveAsync(AppMetadataKeys.SeedSpecialAccounts, cancellationToken)
+                .ConfigureAwait(false);
+            await _specialAccounts.EnsureAsync(cancellationToken).ConfigureAwait(false);
+            await _loans.RebuildAllAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (plan.Effective.Includes(DataDataset.Categories))
+        {
+            await _metadata.RemoveAsync(AppMetadataKeys.SeedCategories, cancellationToken)
+                .ConfigureAwait(false);
+            await _defaultCategories.EnsureAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var priceStatusReset = false;
         if (plan.Effective.Includes(DataDataset.Instruments))
         {

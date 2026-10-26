@@ -18,8 +18,8 @@ selezioni, raggruppamenti e chiavi esterne senza un beneficio concreto.
   posizioni; il dialogo operazioni non ha più il selettore di portafoglio.
 - Il risultato mostrato è il risultato totale: plusvalenze realizzate + risultato non realizzato +
   dividendi e cedole − commissioni autonome. Il dettaglio per strumento espone le componenti.
-- Gli ETF esistenti classificati come «Altro» vengono riclassificati in azionario, tranne XEON che
-  passa a monetario.
+- Gli ETF esistenti classificati come «Altro» vengono riclassificati in azionario; eventuali
+  eccezioni (ad esempio strumenti monetari) vanno gestite sui dati dell'ambiente.
 
 ## Conseguenze
 

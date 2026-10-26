@@ -184,6 +184,12 @@ public sealed class InvestmentAssetService
         {
             await _operations.AddAsync(operation, token);
             await SaveTaxExpenseAsync(operation, request.TaxAmount, token);
+            await SaveFeeExpenseAsync(operation, request.FeeAmount, token);
+            if (operation.InvestmentKind == InvestmentOperationKind.Sell)
+            {
+                await ArchiveIfFullySoldAsync(instrument.Id, token);
+            }
+
             return operation;
         }, cancellationToken);
     }
@@ -250,7 +256,42 @@ public sealed class InvestmentAssetService
             await _operations.AddAsync(operation, cancellationToken).ConfigureAwait(false);
         }
 
+        foreach (var operation in operations.Where(operation =>
+                     operation.InvestmentKind is
+                         InvestmentOperationKind.Buy or
+                         InvestmentOperationKind.Sell))
+        {
+            var fee = operation.Fees
+                .Where(f => f.Kind is FeeKind.BuyFee or FeeKind.SellFee)
+                .Sum(f => f.Amount.Value.Amount);
+            await SaveFeeExpenseAsync(operation, fee > 0m ? fee : null, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        await ArchiveSoldOutAsync(
+                operations
+                    .Where(operation => operation.InvestmentKind == InvestmentOperationKind.Sell)
+                    .Select(operation => operation.Instrument!.Id),
+                cancellationToken)
+            .ConfigureAwait(false);
+
         return operations;
+    }
+
+    /// <summary>
+    /// Archivia gli strumenti indicati che non hanno più quote detenute. È usato anche
+    /// dalle reimportazioni, dove le operazioni possono essere già presenti e quindi saltate.
+    /// </summary>
+    public async Task ArchiveSoldOutAsync(
+        IEnumerable<Guid> instrumentIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instrumentIds);
+
+        foreach (var instrumentId in instrumentIds.Distinct())
+        {
+            await ArchiveIfFullySoldAsync(instrumentId, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task<InvestmentOperation> UpdateOperationAsync(
@@ -290,6 +331,12 @@ public sealed class InvestmentAssetService
         {
             await _operations.UpdateInvestmentAsync(updated, token);
             await SaveTaxExpenseAsync(updated, request.TaxAmount, token);
+            await SaveFeeExpenseAsync(updated, request.FeeAmount, token);
+            if (updated.InvestmentKind == InvestmentOperationKind.Sell)
+            {
+                await ArchiveIfFullySoldAsync(instrument.Id, token);
+            }
+
             return updated;
         }, cancellationToken);
     }
@@ -312,13 +359,13 @@ public sealed class InvestmentAssetService
 
         await _transactions.RunAsync(async token =>
         {
-            await DeleteTaxExpenseAsync(existing, token);
+            await DeleteLinkedExpensesAsync(existing, token);
             await _operations.DeleteAsync(operationId, token);
             return true;
         }, cancellationToken);
     }
 
-    private async Task SaveTaxExpenseAsync(
+    private Task SaveTaxExpenseAsync(
         InvestmentOperation operation,
         decimal? taxAmount,
         CancellationToken cancellationToken)
@@ -328,11 +375,90 @@ public sealed class InvestmentAssetService
             InvestmentOperationKind.Dividend or
             InvestmentOperationKind.Coupon))
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        var existing = await FindTaxExpenseAsync(operation, cancellationToken);
-        if (taxAmount is null or <= 0m)
+        var description = operation.InvestmentKind == InvestmentOperationKind.Sell
+            ? "Tasse su plusvalenze"
+            : "Tasse su cedola";
+
+        return SaveLinkedExpenseAsync(
+            InvestmentExpenses.TaxIdForOperation(operation.Id),
+            operation.OperationDate,
+            operation.RecordedAt,
+            taxAmount,
+            "Tasse Investimenti",
+            description,
+            operation.Instrument,
+            cancellationToken);
+    }
+
+    private Task SaveFeeExpenseAsync(
+        InvestmentOperation operation,
+        decimal? feeAmount,
+        CancellationToken cancellationToken)
+    {
+        if (operation.InvestmentKind is not (
+            InvestmentOperationKind.Buy or
+            InvestmentOperationKind.Sell))
+        {
+            return Task.CompletedTask;
+        }
+
+        var description = operation.InvestmentKind == InvestmentOperationKind.Buy
+            ? "Commissioni su acquisto"
+            : "Commissioni su vendita";
+
+        return SaveLinkedExpenseAsync(
+            InvestmentExpenses.FeeIdForOperation(operation.Id),
+            operation.OperationDate,
+            operation.RecordedAt,
+            feeAmount,
+            "Conto Titoli",
+            description,
+            operation.Instrument,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Imposta o rimuove la ritenuta collegata a una cedola registrata come entrata.
+    /// </summary>
+    public async Task SaveIncomeTaxAsync(
+        Guid incomeId,
+        decimal? taxAmount,
+        CancellationToken cancellationToken = default)
+    {
+        var operation = await _operations.GetByIdAsync(incomeId, cancellationToken)
+            ?? throw new InvalidOperationException("Operazione non trovata.");
+        if (operation is not Income income)
+        {
+            throw new InvalidOperationException("L'operazione non è un'entrata.");
+        }
+
+        await SaveLinkedExpenseAsync(
+                InvestmentExpenses.TaxIdForOperation(income.Id),
+                income.OperationDate,
+                income.RecordedAt,
+                taxAmount,
+                "Tasse Investimenti",
+                "Tasse su cedola",
+                income.Instrument,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task SaveLinkedExpenseAsync(
+        Guid expenseId,
+        DateOnly operationDate,
+        DateTimeOffset recordedAt,
+        decimal? amount,
+        string subcategory,
+        string description,
+        Instrument? instrument,
+        CancellationToken cancellationToken)
+    {
+        var existing = await _operations.GetByIdAsync(expenseId, cancellationToken) as Expense;
+        if (amount is null or <= 0m)
         {
             if (existing is not null)
             {
@@ -342,18 +468,8 @@ public sealed class InvestmentAssetService
             return;
         }
 
-        var categories = await _categories.ListAsync(cancellationToken);
-        var category = categories.FirstOrDefault(candidate =>
-            candidate.Type == CategoryType.Expense &&
-            string.Equals(candidate.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
-            string.Equals(candidate.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase))
-            ?? throw new InvalidOperationException(
-                "La categoria Fees · Tasse Plusvalenze non esiste.");
-
-        var amount = new PositiveMoney(new Money(taxAmount.Value, Euro));
-        var description = operation.InvestmentKind == InvestmentOperationKind.Sell
-            ? "Tasse su plusvalenze"
-            : "Tasse su cedola";
+        var category = await RequireExpenseCategoryAsync(subcategory, cancellationToken);
+        var money = new PositiveMoney(new Money(amount.Value, Euro));
 
         if (existing is not null)
         {
@@ -361,50 +477,63 @@ public sealed class InvestmentAssetService
                 existing.Id,
                 account: null,
                 category,
-                amount,
-                operation.OperationDate,
-                operation.RecordedAt,
+                money,
+                operationDate,
+                recordedAt,
                 description,
-                notes: null);
+                notes: null,
+                instrument: instrument);
             await _operations.UpdateAsync(updated, cancellationToken);
         }
         else
         {
             var expense = new Expense(
-                Guid.NewGuid(),
+                expenseId,
                 account: null,
                 category,
-                amount,
-                operation.OperationDate,
-                operation.RecordedAt,
+                money,
+                operationDate,
+                recordedAt,
                 description,
-                notes: null);
+                notes: null,
+                instrument: instrument);
             await _operations.AddAsync(expense, cancellationToken);
         }
     }
 
-    private async Task DeleteTaxExpenseAsync(
-        InvestmentOperation operation,
+    private async Task<Category> RequireExpenseCategoryAsync(
+        string subcategory,
         CancellationToken cancellationToken)
     {
-        var existing = await FindTaxExpenseAsync(operation, cancellationToken);
-        if (existing is not null)
-        {
-            await _operations.DeleteAsync(existing.Id, cancellationToken);
-        }
+        var categories = await _categories.ListAsync(cancellationToken);
+        return categories.FirstOrDefault(candidate =>
+            candidate.Type == CategoryType.Expense &&
+            string.Equals(candidate.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
+            string.Equals(candidate.Subcategory, subcategory, StringComparison.CurrentCultureIgnoreCase))
+            ?? throw new InvalidOperationException(
+                $"La categoria Fees · {subcategory} non esiste.");
     }
 
-    private async Task<Expense?> FindTaxExpenseAsync(
+    private async Task DeleteLinkedExpensesAsync(
         InvestmentOperation operation,
         CancellationToken cancellationToken)
     {
-        var operations = await _operations.ListAsync(cancellationToken);
-        return operations
-            .OfType<Expense>()
-            .FirstOrDefault(expense =>
-                expense.RecordedAt == operation.RecordedAt &&
-                string.Equals(expense.Category.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
-                string.Equals(expense.Category.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase));
+        await DeleteExpenseIfExistsAsync(
+            InvestmentExpenses.TaxIdForOperation(operation.Id),
+            cancellationToken);
+        await DeleteExpenseIfExistsAsync(
+            InvestmentExpenses.FeeIdForOperation(operation.Id),
+            cancellationToken);
+    }
+
+    private async Task DeleteExpenseIfExistsAsync(
+        Guid expenseId,
+        CancellationToken cancellationToken)
+    {
+        if (await _operations.GetByIdAsync(expenseId, cancellationToken) is not null)
+        {
+            await _operations.DeleteAsync(expenseId, cancellationToken);
+        }
     }
 
     public async Task<PriceObservation> RecordPriceAsync(
@@ -629,6 +758,29 @@ public sealed class InvestmentAssetService
 
         InvestmentPositionCalculator.Positions(chain, DateOnly.MaxValue);
         InvestmentCostBasisCalculator.Calculate(chain, DateOnly.MaxValue);
+    }
+
+    /// <summary>
+    /// Archivia lo strumento quando non restano quote detenute dopo una vendita.
+    /// </summary>
+    private async Task ArchiveIfFullySoldAsync(
+        Guid instrumentId,
+        CancellationToken cancellationToken)
+    {
+        var instrument = await _instruments.GetByIdAsync(instrumentId, cancellationToken);
+        if (instrument is null || instrument.IsArchived)
+        {
+            return;
+        }
+
+        if (await HeldQuantityAsync(instrumentId, cancellationToken) > 0m)
+        {
+            return;
+        }
+
+        await _instruments.UpdateAsync(
+            instrument.WithStatus(InstrumentStatus.Archived),
+            cancellationToken);
     }
 
     private async Task<decimal> HeldQuantityAsync(

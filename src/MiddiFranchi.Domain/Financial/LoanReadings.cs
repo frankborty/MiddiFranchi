@@ -16,7 +16,7 @@ public static class LoanReadings
 
         return readings
             .Where(reading => reading.LoanId == loanId)
-            .OrderByDescending(reading => reading.RecordedAt)
+            .OrderByDescending(reading => reading.ValidAt)
             .ThenByDescending(reading => reading.Id)
             .FirstOrDefault();
     }
@@ -34,7 +34,6 @@ public static class LoanReadings
         return readings
             .Where(reading => reading.LoanId == loanId && reading.ValidAt <= asOfDate)
             .OrderByDescending(reading => reading.ValidAt)
-            .ThenByDescending(reading => reading.RecordedAt)
             .ThenByDescending(reading => reading.Id)
             .FirstOrDefault();
     }

@@ -9,10 +9,10 @@ public class CsvDocumentTests
     public void Parse_ShouldHandleQuotedCommasAndEscapedQuotes()
     {
         var document = CsvDocument.Parse(
-            "external_id,name,note\r\n1,\"Rossi, Mario\",\"Lui disse \"\"ciao\"\"\"\r\n",
+            "code,name,note\r\n1,\"Rossi, Mario\",\"Lui disse \"\"ciao\"\"\"\r\n",
             "test.csv");
 
-        document.Headers.ShouldBe(["external_id", "name", "note"]);
+        document.Headers.ShouldBe(["code", "name", "note"]);
         document.Rows.Count.ShouldBe(1);
         document.Rows[0].Get("name").ShouldBe("Rossi, Mario");
         document.Rows[0].Get("note").ShouldBe("Lui disse \"ciao\"");
@@ -22,7 +22,7 @@ public class CsvDocumentTests
     public void Parse_ShouldHandleNewLinesInsideQuotes()
     {
         var document = CsvDocument.Parse(
-            "external_id,note\n1,\"prima\nseconda\"\n2,ok\n",
+            "code,note\n1,\"prima\nseconda\"\n2,ok\n",
             "test.csv");
 
         document.Rows.Count.ShouldBe(2);
@@ -34,7 +34,7 @@ public class CsvDocumentTests
     public void Parse_ShouldIgnoreBomAndEmptyLines()
     {
         var document = CsvDocument.Parse(
-            "\uFEFFexternal_id,name\n\n1,Test\n\n",
+            "\uFEFFcode,name\n\n1,Test\n\n",
             "test.csv");
 
         document.Rows.Count.ShouldBe(1);
@@ -44,10 +44,10 @@ public class CsvDocumentTests
     [Fact]
     public void EnsureColumns_ShouldReportMissingHeaders()
     {
-        var document = CsvDocument.Parse("external_id,name\n1,Test\n", "test.csv");
+        var document = CsvDocument.Parse("code,name\n1,Test\n", "test.csv");
 
         var exception = Should.Throw<ImportValidationException>(() =>
-            document.EnsureColumns("external_id", "missing"));
+            document.EnsureColumns("code", "missing"));
 
         exception.Message.ShouldContain("missing");
     }
@@ -56,14 +56,14 @@ public class CsvDocumentTests
     public void Parse_ShouldRejectUnclosedQuote()
     {
         Should.Throw<ImportValidationException>(() =>
-            CsvDocument.Parse("external_id,name\n1,\"abc\n", "test.csv"));
+            CsvDocument.Parse("code,name\n1,\"abc\n", "test.csv"));
     }
 
     [Fact]
     public void Write_ShouldEscapeValuesAndRoundTrip()
     {
         var content = CsvDocument.Write(
-            ["external_id", "name"],
+            ["code", "name"],
             [new string?[] { "1", "Rossi, \"Mario\"" }]);
 
         var document = CsvDocument.Parse(content, "test.csv");

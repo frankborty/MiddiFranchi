@@ -7,4 +7,6 @@ public sealed record UpdateOperationRequest(
     Guid CategoryId,
     PositiveMoney Amount,
     DateOnly OperationDate,
-    string? Description = null);
+    string? Description = null,
+    Guid? InstrumentId = null,
+    bool UpdateInstrument = false);

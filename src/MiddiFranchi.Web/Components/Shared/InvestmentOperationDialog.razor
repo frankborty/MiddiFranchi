@@ -481,12 +481,12 @@
         var taxCategory = categories.FirstOrDefault(category =>
             category.Type == CategoryType.Expense &&
             string.Equals(category.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
-            string.Equals(category.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase));
+            string.Equals(category.Subcategory, "Tasse Investimenti", StringComparison.CurrentCultureIgnoreCase));
 
         if (incomeCategory is null || taxCategory is null)
         {
             throw new InvalidOperationException(
-                "Mancano le categorie Cedole e Fees/Tasse Plusvalenze.");
+                "Mancano le categorie Cedole e Fees/Tasse Investimenti.");
         }
 
         PositiveMoney? taxMoney = tax is > 0m

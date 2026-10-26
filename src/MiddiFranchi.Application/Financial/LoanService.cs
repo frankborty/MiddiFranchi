@@ -45,7 +45,6 @@ public sealed class LoanService
             .GroupBy(reading => reading.LoanId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<LoanReading>)group
                 .OrderBy(reading => reading.ValidAt)
-                .ThenBy(reading => reading.RecordedAt)
                 .ThenBy(reading => reading.Id)
                 .ToArray());
 
@@ -108,8 +107,7 @@ public sealed class LoanService
                 Guid.NewGuid(),
                 loan,
                 amount,
-                request.InitialDate!.Value,
-                now);
+                request.InitialDate!.Value);
             await _readings.AddAsync(reading, cancellationToken);
         }
 
@@ -188,7 +186,6 @@ public sealed class LoanService
             loan,
             new Money(remaining, loan.Account.Currency),
             validAt,
-            DateTimeOffset.UtcNow,
             note);
 
         await _readings.AddAsync(reading, cancellationToken);
@@ -205,7 +202,7 @@ public sealed class LoanService
         EnsureNotFuture(validAt, nameof(validAt));
         var loan = await RequireLoanAsync(loanId, cancellationToken);
 
-        var reading = new LoanReading(Guid.NewGuid(), loan, amount, validAt, DateTimeOffset.UtcNow);
+        var reading = new LoanReading(Guid.NewGuid(), loan, amount, validAt);
         await _readings.AddAsync(reading, cancellationToken);
         await RebuildAccountBalanceAsync(loan.AccountId, cancellationToken);
         return reading;
@@ -227,7 +224,6 @@ public sealed class LoanService
             reading.Loan,
             amount,
             validAt,
-            reading.RecordedAt,
             note);
         await _readings.UpdateAsync(updated, cancellationToken);
         await RebuildAccountBalanceAsync(reading.Loan.AccountId, cancellationToken);

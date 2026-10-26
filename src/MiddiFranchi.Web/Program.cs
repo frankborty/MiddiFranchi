@@ -38,6 +38,11 @@ builder.Services.AddScoped<PriceUpdateService>();
 builder.Services.AddSingleton<DataMaintenanceGate>();
 builder.Services.AddScoped<DataManagementService>();
 builder.Services.AddScoped<DataImportService>();
+builder.Services.AddScoped<AccountsImportService>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<ChartPreferences>();
+builder.Services.AddScoped<FilterPreferences>();
+builder.Services.AddScoped<SectionAppearanceService>();
 builder.Services.AddHostedService<PriceUpdateBackgroundService>();
 
 var app = builder.Build();

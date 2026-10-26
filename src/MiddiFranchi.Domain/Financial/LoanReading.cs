@@ -12,7 +12,6 @@ public sealed class LoanReading
         Loan loan,
         Money amount,
         DateOnly validAt,
-        DateTimeOffset recordedAt,
         string? note = null)
     {
         if (id == Guid.Empty)
@@ -36,7 +35,6 @@ public sealed class LoanReading
         Loan = loan;
         Amount = amount;
         ValidAt = validAt;
-        RecordedAt = recordedAt;
         Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
     }
 
@@ -53,6 +51,4 @@ public sealed class LoanReading
     public string? Note { get; }
 
     public DateOnly ValidAt { get; }
-
-    public DateTimeOffset RecordedAt { get; }
 }

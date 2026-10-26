@@ -109,7 +109,7 @@
     private string? _appliedAxisKey;
 
     private string AxisKey =>
-        $"{_theme}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|{PercentageValues}|" +
+        $"{_theme}|{Stacked}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|{PercentageValues}|" +
         $"{ColorPointsBySign}|{TooltipDateMode}|" +
         $"{string.Join(",", RangeSeries.Select(range => $"{range.Color}:{range.FillOpacity}:{range.Points.Count}"))}|" +
         $"{string.Join(",", Series.Select(series => $"{series.Color}:{series.FillColor}:{series.FillOpacity}"))}";

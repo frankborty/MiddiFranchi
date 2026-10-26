@@ -45,12 +45,9 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                 sql: "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND \"InstrumentId\" IS NULL AND \"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND \"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");
 
             // I vecchi ETF erano classificati come «Altro» dalla migrazione precedente.
-            // Ora sono riclassificati in azionario, tranne XEON che è monetario.
+            // Vengono riclassificati in azionario; le eventuali eccezioni vanno gestite dai dati.
             migrationBuilder.Sql(
                 """
-                UPDATE "Instruments" SET "AssetClass" = 'MoneyMarket'
-                WHERE "AssetClass" = 'Other' AND UPPER(COALESCE("Symbol", '')) = 'XEON';
-
                 UPDATE "Instruments" SET "AssetClass" = 'Equity'
                 WHERE "AssetClass" = 'Other' AND "Name" ILIKE '%ETF%';
                 """);
@@ -63,9 +60,6 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                 """
                 UPDATE "Instruments" SET "AssetClass" = 'Other'
                 WHERE "AssetClass" = 'Equity' AND "Name" ILIKE '%ETF%';
-
-                UPDATE "Instruments" SET "AssetClass" = 'Other'
-                WHERE "AssetClass" = 'MoneyMarket' AND UPPER(COALESCE("Symbol", '')) = 'XEON';
                 """);
 
             migrationBuilder.DropCheckConstraint(

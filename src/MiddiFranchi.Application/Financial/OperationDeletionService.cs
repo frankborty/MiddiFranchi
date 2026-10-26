@@ -26,6 +26,16 @@ public sealed class OperationDeletionService
             throw new InvalidOperationException("Solo le entrate e le uscite possono essere eliminate da questa pagina.");
         }
 
+        // Una cedola registrata come entrata ha la ritenuta in una spesa separata.
+        if (operation is Income)
+        {
+            var taxExpenseId = InvestmentExpenses.TaxIdForOperation(operation.Id);
+            if (await _operations.GetByIdAsync(taxExpenseId, cancellationToken) is not null)
+            {
+                await _operations.DeleteAsync(taxExpenseId, cancellationToken);
+            }
+        }
+
         await _operations.DeleteAsync(operationId, cancellationToken);
     }
 }

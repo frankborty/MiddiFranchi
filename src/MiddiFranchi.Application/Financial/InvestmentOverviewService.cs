@@ -32,9 +32,20 @@ public sealed class InvestmentOverviewService
     public async Task<InvestmentOverview> LoadAsync(CancellationToken cancellationToken = default)
     {
         var valuationDate = _currentUtcDate();
-        var investmentOperations = (await _operations.ListAsync(cancellationToken))
+        var allOperations = await _operations.ListAsync(cancellationToken);
+        var investmentOperations = allOperations
             .OfType<InvestmentOperation>()
             .ToArray();
+        var ordinaryIncomeByInstrument = allOperations
+            .OfType<Income>()
+            .Where(income =>
+                income.Status == OperationStatus.Registered &&
+                income.Instrument is not null)
+            .GroupBy(income => income.Instrument!.Id)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(income => income.Amount.Value.Amount));
+        var ordinaryIncome = new Money(ordinaryIncomeByInstrument.Values.Sum(), Euro);
         var prices = await _prices.ListAsync(cancellationToken);
 
         var valuation = InvestmentValuationCalculator.Valuate(
@@ -78,7 +89,8 @@ public sealed class InvestmentOverviewService
                 current,
                 unrealized,
                 result?.RealizedResult ?? new Money(0m, instrument.QuoteCurrency),
-                result?.Income ?? new Money(0m, instrument.QuoteCurrency),
+                (result?.Income ?? new Money(0m, instrument.QuoteCurrency)) +
+                new Money(ordinaryIncomeByInstrument.GetValueOrDefault(instrument.Id), Euro),
                 result?.OtherFees ?? new Money(0m, instrument.QuoteCurrency),
                 total,
                 totalPercent,
@@ -88,13 +100,14 @@ public sealed class InvestmentOverviewService
 
         var history = BuildHistory(valuationDate, investmentOperations, prices);
 
-        return BuildOverview(valuationDate, assets, results, history);
+        return BuildOverview(valuationDate, assets, results, ordinaryIncome, history);
     }
 
     private static InvestmentOverview BuildOverview(
         DateOnly valuationDate,
         IReadOnlyList<InvestmentAssetOverview> assets,
         InvestmentResultSet results,
+        Money ordinaryIncome,
         InvestmentHistory history)
     {
         var complete = results.IsComplete && assets.All(asset => asset.IsComplete);
@@ -132,7 +145,7 @@ public sealed class InvestmentOverviewService
             performance,
             performancePercent,
             results.RealizedResult,
-            results.Income,
+            results.Income + ordinaryIncome,
             results.OtherFees,
             total,
             totalPercent,

@@ -4,7 +4,9 @@
 @using MiddiFranchi.Domain.Portfolio
 @inject InvestmentWorkspaceService Workspace
 @inject InvestmentAssetService AssetService
-@inject PriceUpdateService PriceUpdates
+@inject NotificationService Notifications
+@inject FilterPreferences Filters
+@inject SectionAppearanceService Appearance
 
 <PageTitle>Strumenti finanziari</PageTitle>
 
@@ -15,7 +17,7 @@
 <div class="dashboard-header">
     <div>
         <h1 class="account-detail-title">
-            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="pie" Size="18" /></span>
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="18" /></span>
             Strumenti finanziari
         </h1>
     </div>
@@ -37,15 +39,6 @@ else if (_loadError is not null)
 }
 else
 {
-    @if (_message is not null)
-    {
-        <p class="alert alert-success" role="status">@_message</p>
-    }
-    @if (_actionError is not null)
-    {
-        <p class="alert alert-error" role="alert">@_actionError</p>
-    }
-
     <div class="bento">
         <div class="sp-7">
             <section class="card settings-instruments-card" aria-labelledby="settings-instruments-title">
@@ -54,9 +47,6 @@ else
                         <h2 id="settings-instruments-title"><MfIcon Name="pie" Size="18" /> Catalogo strumenti</h2>
                         <StatusBadge Tone="accounts">@FilteredAssets.Count</StatusBadge>
                     </div>
-                    <a class="secondary-button" href="/settings/price-updates">
-                        <MfIcon Name="refresh" Size="16" /> Aggiornamento prezzi
-                    </a>
                 </div>
 
                 <div class="category-search settings-instrument-search">
@@ -65,7 +55,8 @@ else
                            aria-label="Cerca strumenti finanziari"
                            placeholder="Cerca per nome, simbolo o ISIN…"
                            @bind="_search"
-                           @bind:event="oninput" />
+                           @bind:event="oninput"
+                           @bind:after="PersistFiltersAsync" />
                     @if (!string.IsNullOrWhiteSpace(_search))
                     {
                         <button type="button" class="category-search-clear" aria-label="Azzera ricerca" @onclick="ClearSearch">
@@ -119,14 +110,13 @@ else
                         <table class="data-table settings-instruments-table">
                             <thead>
                                 <tr>
-                                    <th scope="col">Strumento</th>
-                                    <th scope="col" class="num">Quotazione</th>
-                                    <th scope="col">Stato</th>
+                                    <SortableTh OnSort="OnSortChangedAsync" Sort="_sort" Column="name" Label="Strumento" />
+                                    <SortableTh OnSort="OnSortChangedAsync" Sort="_sort" Column="status" Label="Stato" />
                                     <th scope="col"><span class="visually-hidden">Azioni</span></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var asset in FilteredAssets)
+                                @foreach (var asset in SortedAssets)
                                 {
                                     <tr class="investment-row @(asset.IsArchived ? "archived" : "")">
                                         <td>
@@ -153,33 +143,12 @@ else
                                                 }
                                             </button>
                                         </td>
-                                        <td class="num">
-                                            @if (asset.CurrentUnitPrice is { } price)
-                                            {
-                                                <span class="investment-strong">@Format.Money(price)</span>
-                                                @if (asset.PriceDate is { } priceDate)
-                                                {
-                                                    <span class="investment-subvalue">@Format.Date(priceDate)</span>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="investment-muted">—</span>
-                                            }
-                                        </td>
                                         <td>
                                             <StatusBadge Tone="@(asset.IsArchived ? "neutral" : "income")">
                                                 @(asset.IsArchived ? "Archiviato" : "Attivo")
                                             </StatusBadge>
                                         </td>
                                         <td class="num settings-instrument-actions">
-                                            <button type="button" class="category-icon-action"
-                                                    title="@(string.IsNullOrWhiteSpace(asset.Isin) ? "ISIN non impostato" : "Aggiorna da Borsa")"
-                                                    aria-label="@(string.IsNullOrWhiteSpace(asset.Isin) ? "ISIN non impostato" : "Aggiorna da Borsa")"
-                                                    disabled="@(_updatingInstrumentId == asset.InstrumentId || string.IsNullOrWhiteSpace(asset.Isin))"
-                                                    @onclick="() => UpdateInstrumentAsync(asset)">
-                                                <MfIcon Name="refresh" Size="15" />
-                                            </button>
                                             <button type="button" class="category-icon-action"
                                                     title="Modifica strumento"
                                                     aria-label="Modifica strumento"
@@ -199,7 +168,7 @@ else
                                                         : "Archiviazione non disponibile: quote ancora detenute")"
                                                     disabled="@(_working || !canArchive)"
                                                     @onclick="() => ToggleArchiveAsync(asset)">
-                                                <MfIcon Name="@(asset.IsArchived ? "refresh" : "archive")" Size="15" />
+                                                <MfIcon Name="@(asset.IsArchived ? "power" : "archive")" Size="15" />
                                             </button>
                                         </td>
                                     </tr>
@@ -258,15 +227,14 @@ else
     private InvestmentWorkspace? _workspace;
     private bool _loading = true;
     private string? _loadError;
-    private string? _message;
-    private string? _actionError;
+    private TableSort _sort = new("name");
     private string _search = "";
     private readonly HashSet<AssetClass> _classFilters = [];
     private bool _showArchived;
+    private bool _filtersLoaded;
     private bool _working;
     private bool _dialogOpen;
     private InvestmentAssetRow? _assetBeingEdited;
-    private Guid? _updatingInstrumentId;
 
     private IReadOnlyList<InvestmentAssetRow> AllAssets =>
         _workspace?.Assets ?? [];
@@ -303,6 +271,15 @@ else
         }
     }
 
+    private IReadOnlyList<InvestmentAssetRow> SortedAssets => _sort.Column switch
+    {
+        "status" => _sort.Apply(FilteredAssets, asset => asset.IsArchived).ToArray(),
+        _ => _sort.Apply(
+            FilteredAssets,
+            asset => asset.Name,
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+    };
+
     private IReadOnlyList<AssetClass> ClassesPresent => AllAssets
         .Select(asset => asset.AssetClass)
         .Distinct()
@@ -320,7 +297,64 @@ else
         }
     }
 
+    private sealed class FilterState
+    {
+        public string Search { get; set; } = "";
+        public string[] Classes { get; set; } = [];
+        public bool ShowArchived { get; set; }
+        public string SortColumn { get; set; } = "name";
+        public bool SortDescending { get; set; }
+    }
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _filtersLoaded)
+        {
+            return;
+        }
+
+        _filtersLoaded = true;
+        var state = await Filters.GetAsync<FilterState>("mf.filters.settings.instruments");
+        if (state is null)
+        {
+            return;
+        }
+
+        _search = state.Search ?? "";
+        _classFilters.Clear();
+        foreach (var name in state.Classes)
+        {
+            if (Enum.TryParse<AssetClass>(name, ignoreCase: true, out var assetClass))
+            {
+                _classFilters.Add(assetClass);
+            }
+        }
+
+        _showArchived = state.ShowArchived;
+        _sort = new TableSort(
+            string.IsNullOrWhiteSpace(state.SortColumn) ? "name" : state.SortColumn,
+            state.SortDescending);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task PersistFiltersAsync() => Filters.SetAsync(
+        "mf.filters.settings.instruments",
+        new FilterState
+        {
+            Search = _search,
+            Classes = _classFilters.Select(assetClass => assetClass.ToString()).ToArray(),
+            ShowArchived = _showArchived,
+            SortColumn = _sort.Column,
+            SortDescending = _sort.Descending,
+        });
+
+    private async Task OnSortChangedAsync()
+    {
+        await PersistFiltersAsync();
+        StateHasChanged();
+    }
 
     private async Task LoadAsync()
     {
@@ -356,7 +390,7 @@ else
         }
         catch (Exception)
         {
-            _actionError = "Impossibile aggiornare gli strumenti finanziari. Verificare la connessione al database e riprovare.";
+            await Notifications.Error("Impossibile aggiornare gli strumenti finanziari. Verificare la connessione al database e riprovare.");
         }
     }
 
@@ -372,15 +406,24 @@ else
         return $"--pill-color: {color}; --pill-tint: {color}22";
     }
 
-    private void ClearSearch() => _search = "";
+    private void ClearSearch()
+    {
+        _search = "";
+        _ = PersistFiltersAsync();
+    }
 
-    private void ToggleShowArchived() => _showArchived = !_showArchived;
+    private void ToggleShowArchived()
+    {
+        _showArchived = !_showArchived;
+        _ = PersistFiltersAsync();
+    }
 
     private void SetClassFilter(AssetClass? assetClass)
     {
         if (assetClass is null)
         {
             _classFilters.Clear();
+            _ = PersistFiltersAsync();
             return;
         }
 
@@ -388,20 +431,18 @@ else
         {
             _classFilters.Remove(assetClass.Value);
         }
+
+        _ = PersistFiltersAsync();
     }
 
     private void OpenCreate()
     {
-        _message = null;
-        _actionError = null;
         _assetBeingEdited = null;
         _dialogOpen = true;
     }
 
     private void OpenEdit(InvestmentAssetRow asset)
     {
-        _message = null;
-        _actionError = null;
         _assetBeingEdited = asset;
         _dialogOpen = true;
     }
@@ -410,15 +451,13 @@ else
 
     private async Task OnAssetSaved()
     {
-        _message = "Strumento salvato.";
-        _actionError = null;
+        await Notifications.Success("Strumento salvato.");
         await ReloadAsync();
     }
 
     private async Task OnAssetDeleted()
     {
-        _message = "Strumento eliminato.";
-        _actionError = null;
+        await Notifications.Success("Strumento eliminato.");
         await ReloadAsync();
     }
 
@@ -430,63 +469,32 @@ else
         }
 
         _working = true;
-        _message = null;
-        _actionError = null;
         try
         {
             if (asset.IsArchived)
             {
                 await AssetService.ReactivateAsync(asset.InstrumentId);
-                _message = $"«{asset.Name}» riattivato.";
+                await Notifications.Success($"«{asset.Name}» riattivato.");
             }
             else
             {
                 await AssetService.ArchiveAsync(asset.InstrumentId);
-                _message = $"«{asset.Name}» archiviato.";
+                await Notifications.Success($"«{asset.Name}» archiviato.");
             }
 
             await ReloadAsync();
         }
         catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _actionError = "Operazione non riuscita: verificare la connessione al database e riprovare.";
+            await Notifications.Error("Operazione non riuscita: verificare la connessione al database e riprovare.");
         }
         finally
         {
             _working = false;
-        }
-    }
-
-    private async Task UpdateInstrumentAsync(InvestmentAssetRow asset)
-    {
-        if (_updatingInstrumentId is not null)
-        {
-            return;
-        }
-
-        _updatingInstrumentId = asset.InstrumentId;
-        _message = null;
-        _actionError = null;
-        try
-        {
-            var result = await PriceUpdates.UpdateInstrumentAsync(asset.InstrumentId);
-            if (result.Success)
-            {
-                _message = $"«{asset.Name}» aggiornato da Borsa Italiana.";
-                await ReloadAsync();
-            }
-            else
-            {
-                _actionError = $"{asset.Name}: {result.Error}";
-            }
-        }
-        finally
-        {
-            _updatingInstrumentId = null;
         }
     }
 

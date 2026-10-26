@@ -117,6 +117,32 @@ public class DataManagementServiceTests : PostgresTestBase
             await service.DeleteAsync(new DataDeletionRequest(DataDataset.Movements, "NO")));
     }
 
+    [PostgresFact]
+    public async Task DeleteEverything_ShouldRestoreCategoriesAndSpecialAccounts()
+    {
+        await DataManagementScenario.SeedAsync(Context);
+        var repository = new SqlDataSnapshotRepository(Context);
+        var service = BuildService(repository, new FakePriceStore());
+
+        await service.DeleteAsync(new DataDeletionRequest(
+            DataDataset.Everything,
+            DataDeletionRequest.ConfirmationPhrase));
+        ClearTracker();
+
+        var counts = await repository.CountAsync();
+        counts.FinancialOperations.ShouldBe(0);
+        counts.Instruments.ShouldBe(0);
+        counts.Categories.ShouldBeGreaterThan(0);
+
+        var categories = await new CategoryRepository(Context).ListAsync();
+        categories.ShouldContain(category =>
+            category.Name == "Fees" && category.Subcategory == "Conto Titoli");
+
+        var accounts = await new AccountRepository(Context).ListAsync();
+        accounts.ShouldContain(account => account.Name == "Cash");
+        accounts.ShouldContain(account => account.Name == "Prestiti");
+    }
+
     private DataManagementService BuildService(
         SqlDataSnapshotRepository repository,
         FakePriceStore priceStore)

@@ -173,7 +173,6 @@ public sealed class LoanReadingRepository : ILoanReadingRepository
         var records = await _context.LoanReadings
             .AsNoTracking()
             .OrderBy(reading => reading.ValidAt)
-            .ThenBy(reading => reading.RecordedAt)
             .ThenBy(reading => reading.Id)
             .ToListAsync(cancellationToken);
 
@@ -188,7 +187,6 @@ public sealed class LoanReadingRepository : ILoanReadingRepository
             .AsNoTracking()
             .Where(reading => reading.LoanId == loanId)
             .OrderBy(reading => reading.ValidAt)
-            .ThenBy(reading => reading.RecordedAt)
             .ThenBy(reading => reading.Id)
             .ToListAsync(cancellationToken);
 

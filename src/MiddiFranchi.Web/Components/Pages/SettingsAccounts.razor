@@ -4,6 +4,9 @@
 @using MiddiFranchi.Domain.Financial
 @inject AccountOverviewService Overview
 @inject AccountService AccountsService
+@inject NotificationService Notifications
+@inject FilterPreferences Filters
+@inject SectionAppearanceService Appearance
 
 <PageTitle>Conti</PageTitle>
 <a class="section-link settings-back" href="/settings">
@@ -12,7 +15,7 @@
 <div class="dashboard-header">
     <div>
         <h1 class="account-detail-title">
-            <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="wallet" Size="18" /></span>
+            <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="18" /></span>
             Conti
         </h1>
     </div>
@@ -38,10 +41,6 @@ else
                     </div>
                 </div>
 
-                @if (_createdMessage is not null)
-                {
-                    <p class="alert alert-success" role="status">@_createdMessage</p>
-                }
                 @if (_rows.Count == 0)
                 {
                     <EmptyState Title="Nessun conto registrato"
@@ -54,12 +53,12 @@ else
                         <table class="data-table settings-accounts-table">
                             <thead>
                                 <tr>
-                                    <th scope="col">Conto</th>
-                                    <th scope="col">Stato</th>
+                                    <SortableTh OnSort="OnSortChangedAsync" Sort="_sort" Column="name" Label="Conto" />
+                                    <SortableTh OnSort="OnSortChangedAsync" Sort="_sort" Column="status" Label="Stato" />
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in _rows)
+                                @foreach (var row in SortedRows)
                                 {
                                     <tr>
                                         <td>
@@ -203,12 +202,13 @@ else
     private IReadOnlyList<AccountOverviewRow> _rows = [];
     private bool _loading = true;
     private string? _loadError;
+    private TableSort _sort = new("name");
+    private bool _filtersLoaded;
     private string _name = "";
     private string? _selectedPreset;
     private bool _customAccount;
     private bool _creating;
     private string? _createError;
-    private string? _createdMessage;
     private string? _duplicateSuggestion;
     private AccountOverviewRow? _settingsRow;
     private bool _settingsOpen;
@@ -216,14 +216,57 @@ else
     private string AccountCountLabel =>
         _rows.Count == 1 ? "1 conto" : $"{_rows.Count} conti";
 
+    private IReadOnlyList<AccountOverviewRow> SortedRows => _sort.Column switch
+    {
+        "status" => _sort.Apply(
+            _rows,
+            row => Format.AccountStatusLabel(row.Status),
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        _ => _sort.Apply(_rows, row => row.Name, StringComparer.CurrentCultureIgnoreCase).ToArray(),
+    };
+
     private static bool IsSpecialAccount(Guid accountId) =>
         accountId == SpecialAccountsSeeder.CashAccountId ||
         accountId == SpecialAccountsSeeder.LoansAccountId;
+
+    private sealed class FilterState
+    {
+        public string SortColumn { get; set; } = "name";
+        public bool SortDescending { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAccountsAsync();
         _loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _filtersLoaded)
+        {
+            return;
+        }
+
+        _filtersLoaded = true;
+        var state = await Filters.GetAsync<FilterState>("mf.filters.settings.accounts");
+        if (state is null)
+        {
+            return;
+        }
+
+        _sort = new TableSort(
+            string.IsNullOrWhiteSpace(state.SortColumn) ? "name" : state.SortColumn,
+            state.SortDescending);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnSortChangedAsync()
+    {
+        await Filters.SetAsync(
+            "mf.filters.settings.accounts",
+            new FilterState { SortColumn = _sort.Column, SortDescending = _sort.Descending });
+        StateHasChanged();
     }
 
     private async Task LoadAccountsAsync()
@@ -279,7 +322,6 @@ else
         }
 
         _createError = null;
-        _createdMessage = null;
 
         var requestedName = (confirmedName ?? _name).Trim();
         if (requestedName.Length == 0)
@@ -301,7 +343,7 @@ else
         {
             var created = await AccountsService.CreateAsync(
                 new NewAccount(requestedName, AccountType.Checking));
-            _createdMessage = $"Conto «{created.Name}» registrato.";
+            await Notifications.Success($"Conto «{created.Name}» registrato.");
             _name = "";
             _selectedPreset = null;
             _customAccount = false;
@@ -327,7 +369,7 @@ else
 
     private async Task OnAccountDeleted()
     {
-        _createdMessage = "Conto eliminato.";
+        await Notifications.Success("Conto eliminato.");
         await LoadAccountsAsync();
     }
 
@@ -345,7 +387,7 @@ else
 
     private async Task OnAccountSettingsSaved(Account account)
     {
-        _createdMessage = "Impostazioni conto aggiornate.";
+        await Notifications.Success("Impostazioni conto aggiornate.");
         await LoadAccountsAsync();
     }
 }

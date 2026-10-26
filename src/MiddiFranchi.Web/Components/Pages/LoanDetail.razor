@@ -6,6 +6,8 @@
 @inject LoanService LoansService
 @inject AccountService AccountsService
 @inject NavigationManager Navigation
+@inject NotificationService Notifications
+@inject ChartPreferences Preferences
 
 <PageTitle>@(_loan?.Loan.Borrower ?? "Prestito")</PageTitle>
 
@@ -82,15 +84,10 @@ else
             <div class="overview-ranges" role="group" aria-label="Intervallo temporale">
                 @foreach (var option in ChartRanges.Options)
                 {
-                    <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => _range = option.Key">@option.Label</button>
+                    <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => SetRangeAsync(option.Key)">@option.Label</button>
                 }
             </div>
         </div>
-
-        @if (_readingMessage is not null)
-        {
-            <p class="alert alert-success" role="status">@_readingMessage</p>
-        }
 
         <div class="account-current">
             <div class="balance-main">
@@ -130,11 +127,6 @@ else
             </div>
         </div>
 
-        @if (_historyMessage is not null)
-        {
-            <p class="alert alert-success" role="status">@_historyMessage</p>
-        }
-
         @if (_loan.Readings.Count == 0)
         {
             <EmptyState Title="Nessuna rilevazione registrata"
@@ -147,14 +139,13 @@ else
                 <table class="data-table history-table history-table-loan">
                     <thead>
                         <tr>
-                            <th scope="col">Data</th>
-                            <th scope="col">Registrata il</th>
-                            <th scope="col" class="num">Importo</th>
-                            <th scope="col">Nota</th>
+                            <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="date" Label="Data" />
+                            <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="amount" Label="Importo" Numeric="true" />
+                            <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="note" Label="Nota" />
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var reading in _loan.Readings)
+                        @foreach (var reading in SortedReadings)
                         {
                             <tr class="history-row"
                                 tabindex="0"
@@ -162,7 +153,6 @@ else
                                 @onclick="() => OpenEditDialog(reading)"
                                 @onkeydown="e => HandleRowKeyDown(e, reading)">
                                 <td>@Format.Date(reading.ValidAt)</td>
-                                <td>@Format.UtcDate(reading.RecordedAt)</td>
                                 <td class="num"><AmountValue Value="@reading.Amount" /></td>
                                 <td class="history-note">@reading.Note</td>
                             </tr>
@@ -180,10 +170,6 @@ else
                 <p class="section-sub">Il prestito e le sue rilevazioni saranno rimossi. L'operazione non è reversibile.</p>
             </div>
         </div>
-        @if (_deleteError is not null)
-        {
-            <p class="alert alert-error" role="alert">@_deleteError</p>
-        }
         @if (_confirmingDeleteLoan)
         {
             <div class="alert alert-warning" role="alert">
@@ -243,29 +229,80 @@ else
     private bool _loading = true;
     private string? _loadError;
     private string _range = "max";
+    private bool _preferencesLoaded;
     private bool _readingDialogOpen;
     private bool _repaymentDialogOpen;
     private bool _renaming;
     private string _borrowerName = "";
     private string? _renameError;
     private bool _savingName;
-    private string? _readingMessage;
     private bool _editDialogOpen;
     private LoanReading? _editingReading;
-    private string? _historyMessage;
+    private TableSort _historySort = new("date");
     private bool _confirmingDeleteLoan;
     private bool _deletingLoan;
-    private string? _deleteError;
 
     private string AccountLinkKey =>
         string.IsNullOrEmpty(_canonicalAccountKey) ? AccountKey : _canonicalAccountKey;
 
     private IReadOnlyList<TimeSeriesSeries> Series => BuildSeries();
 
+    private IReadOnlyList<LoanReading> SortedReadings =>
+        _loan is null
+            ? []
+            : _historySort.Column switch
+            {
+                "amount" => _historySort.Apply(_loan.Readings, reading => reading.Amount.Amount).ToArray(),
+                "note" => _historySort.Apply(_loan.Readings, reading => reading.Note ?? "").ToArray(),
+                _ => _historySort.Apply(_loan.Readings, reading => reading.ValidAt).ToArray(),
+            };
+
     private bool HasChartData => Series.Count > 0;
 
     private DateOnly? RangeStart =>
         ChartRanges.Start(_range, DateOnly.FromDateTime(DateTime.UtcNow));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preferencesLoaded)
+        {
+            return;
+        }
+
+        _preferencesLoaded = true;
+        var storedRange = await Preferences.GetAsync("mf.chart.loan.range");
+        if (storedRange is not null &&
+            ChartRanges.Options.Any(option => option.Key == storedRange))
+        {
+            _range = storedRange;
+        }
+
+        var storedSort = await Preferences.GetAsync("mf.filters.loan.historySort");
+        if (storedSort is not null)
+        {
+            var parts = storedSort.Split('|');
+            if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
+            {
+                _historySort = new TableSort(parts[0], parts[1] == "1");
+            }
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SetRangeAsync(string range)
+    {
+        _range = range;
+        await Preferences.SetAsync("mf.chart.loan.range", range);
+    }
+
+    private async Task OnHistorySortChangedAsync()
+    {
+        await Preferences.SetAsync(
+            "mf.filters.loan.historySort",
+            $"{_historySort.Column}|{(_historySort.Descending ? "1" : "0")}");
+        StateHasChanged();
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -459,7 +496,6 @@ else
 
     private void OpenEditDialog(LoanReading reading)
     {
-        _historyMessage = null;
         _editingReading = reading;
         _editDialogOpen = true;
     }
@@ -472,27 +508,23 @@ else
 
     private async Task OnReadingUpdated(LoanReading reading)
     {
-        _historyMessage = "Rilevazione aggiornata.";
+        await Notifications.Success("Rilevazione aggiornata.");
         await ReloadAsync();
     }
 
     private async Task OnReadingDeleted(LoanReading reading)
     {
-        _historyMessage = "Rilevazione eliminata.";
+        await Notifications.Success("Rilevazione eliminata.");
         await ReloadAsync();
     }
 
-    private void OpenReadingDialog()
-    {
-        _readingMessage = null;
-        _readingDialogOpen = true;
-    }
+    private void OpenReadingDialog() => _readingDialogOpen = true;
 
     private void CloseReadingDialog() => _readingDialogOpen = false;
 
     private async Task OnReadingSaved(LoanReading reading)
     {
-        _readingMessage = $"Rilevazione registrata: {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.";
+        await Notifications.Success($"Rilevazione registrata: {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.");
         await ReloadAsync();
     }
 
@@ -529,7 +561,7 @@ else
         {
             await LoansService.RenameAsync(_loan.Loan.Id, name);
             _renaming = false;
-            _readingMessage = "Nome del prestito aggiornato.";
+            await Notifications.Success("Nome del prestito aggiornato.");
             await ReloadAsync();
         }
         catch (ArgumentException exception)
@@ -550,33 +582,21 @@ else
         }
     }
 
-    private void OpenRepaymentDialog()
-    {
-        _readingMessage = null;
-        _repaymentDialogOpen = true;
-    }
+    private void OpenRepaymentDialog() => _repaymentDialogOpen = true;
 
     private void CloseRepaymentDialog() => _repaymentDialogOpen = false;
 
     private async Task OnRepaymentSaved(LoanReading reading)
     {
-        _readingMessage = reading.Amount.Amount == 0m
+        await Notifications.Success(reading.Amount.Amount == 0m
             ? $"Restituzione registrata: il prestito di {reading.Loan.Borrower} è estinto."
-            : $"Restituzione registrata. Nuovo importo dovuto: {Format.Money(reading.Amount)}.";
+            : $"Restituzione registrata. Nuovo importo dovuto: {Format.Money(reading.Amount)}.");
         await ReloadAsync();
     }
 
-    private void StartDeleteLoan()
-    {
-        _deleteError = null;
-        _confirmingDeleteLoan = true;
-    }
+    private void StartDeleteLoan() => _confirmingDeleteLoan = true;
 
-    private void CancelDeleteLoan()
-    {
-        _confirmingDeleteLoan = false;
-        _deleteError = null;
-    }
+    private void CancelDeleteLoan() => _confirmingDeleteLoan = false;
 
     private async Task DeleteLoanAsync()
     {
@@ -586,7 +606,6 @@ else
         }
 
         _deletingLoan = true;
-        _deleteError = null;
         try
         {
             await LoansService.DeleteLoanAsync(_loanId);
@@ -594,11 +613,11 @@ else
         }
         catch (InvalidOperationException exception)
         {
-            _deleteError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _deleteError = "Eliminazione non riuscita: verificare la connessione al database e riprovare.";
+            await Notifications.Error("Eliminazione non riuscita: verificare la connessione al database e riprovare.");
         }
         finally
         {

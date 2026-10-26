@@ -5,6 +5,7 @@
 @using MiddiFranchi.Application.DataImport
 @inject DataImportService Import
 @inject IJSRuntime JS
+@inject NotificationService Notifications
 
 <PageTitle>Importa dati</PageTitle>
 
@@ -21,16 +22,13 @@
             Importa dati
         </h1>
     </div>
+    <div class="dashboard-header-meta">
+        <a class="secondary-button" href="/settings/data/import/accounts">
+            <MfIcon Name="upload" Size="16" /> Importa solo conti
+        </a>
+    </div>
 </div>
 
-@if (_message is not null)
-{
-    <p class="alert alert-success" role="status">@_message</p>
-}
-@if (_error is not null)
-{
-    <p class="alert alert-error" role="alert">@_error</p>
-}
 @if (_result is { } result)
 {
     <section class="card data-panel" aria-labelledby="import-result-title">
@@ -42,6 +40,7 @@
         </div>
         <dl class="data-confirm-summary">
             <div><dt>Conti</dt><dd>@result.AccountsCreated creati · @result.AccountsUpdated aggiornati</dd></div>
+            <div><dt>Prestiti</dt><dd>@result.LoansCreated creati (solo nome, senza valori)</dd></div>
             <div><dt>Saldi conti</dt><dd>@result.BalancesCreated creati · @result.BalancesUpdated aggiornati</dd></div>
             <div><dt>Strumenti</dt><dd>@result.InstrumentsCreated creati · @result.InstrumentsUpdated aggiornati</dd></div>
             <div><dt>Quotazioni</dt><dd>@result.PricesCreated create · @result.PricesUpdated aggiornate</dd></div>
@@ -58,8 +57,8 @@
         <div>
             <h2 id="import-file-title"><MfIcon Name="upload" Size="18" /> Archivio di importazione</h2>
             <p class="section-sub">
-                Carica l'archivio ZIP oppure i file CSV singolarmente e verifica il contenuto prima
-                di importare.
+                Carica un archivio ZIP oppure i singoli CSV, poi analizza il contenuto prima di
+                importare.
             </p>
         </div>
         <button type="button" class="secondary-button" disabled="@_templateBusy" @onclick="DownloadTemplateAsync">
@@ -75,8 +74,7 @@
                        accept=".mfimport,.zip,.csv,application/zip,text/csv" />
         </label>
         <p class="table-hint data-file-selected">
-            Puoi caricare l'archivio oppure selezionare più CSV: accounts.csv,
-            account_balances.csv, instruments.csv, instrument_prices.csv, operations.csv.
+            File riconosciuti: @string.Join(", ", ImportFileNames.All).
         </p>
         @if (_fileName is not null)
         {
@@ -122,10 +120,7 @@
 
         @if (!preview.HasErrors && preview.TotalRows > 0)
         {
-            <p class="alert alert-info" role="status">
-                Il file è valido. L'importazione inserisce o aggiorna i dati per <code>external_id</code>;
-                non elimina dati esistenti. Le operazioni già importate vengono saltate.
-            </p>
+            <p class="alert alert-info" role="status">Il file è valido. @ImportNotice(preview)</p>
         }
 
         <div class="form-actions">
@@ -143,70 +138,68 @@
         <div>
             <h2 id="import-syntax-title"><MfIcon Name="doc" Size="18" /> Formato dei file</h2>
             <p class="section-sub">
-                CSV UTF-8, separatore virgola, prima riga di intestazione. Date
-                <code>yyyy-MM-dd</code>, decimali con il punto, valuta <code>EUR</code>.
+                Serve almeno un file. CSV UTF-8, separatore virgola, prima riga di intestazione;
+                date <code>yyyy-MM-dd</code>, decimali con il punto, importi in EUR.
             </p>
         </div>
     </div>
 
-    <div class="import-syntax-grid">
-        <section class="import-syntax-card">
-            <h3><code>accounts.csv</code></h3>
-            <p class="import-columns">external_id, name, type, status, color_hex, icon</p>
-            <p class="import-notes">
-                <strong>type</strong>: Checking, Card, Cash, Liability, Loans ·
-                <strong>status</strong>: Active, Closed ·
-                <strong>icon</strong>: wallet, icon:wallet o data URL.
-            </p>
-        </section>
-        <section class="import-syntax-card">
-            <h3><code>account_balances.csv</code></h3>
-            <p class="import-columns">external_id, account_external_id, date, amount</p>
-            <p class="import-notes">
-                Una riga per ogni saldo storico. La data non può essere nel futuro.
-            </p>
-        </section>
-        <section class="import-syntax-card">
-            <h3><code>instruments.csv</code></h3>
-            <p class="import-columns">
-                external_id, name, asset_class, status, symbol, isin, quote_currency,
-                price_unit, notional_value, notional_currency, reference_url, notes,
-                maturity_date, coupon_rate, tax_rate
-            </p>
-            <p class="import-notes">
-                <strong>asset_class</strong>: Equity, Bond, MoneyMarket, RealEstate, Commodity,
-                Crypto, Mixed, Pension, Other ·
-                <strong>price_unit</strong>: PerUnit, PercentOfNominal ·
-                <strong>status</strong>: Active, Archived ·
-                <strong>tax_rate</strong>: aliquota in percentuale (0-100, default 26).
-            </p>
-        </section>
-        <section class="import-syntax-card">
-            <h3><code>instrument_prices.csv</code></h3>
-            <p class="import-columns">
-                external_id, instrument_external_id, date, price, currency, source
-            </p>
-            <p class="import-notes">
-                <strong>currency</strong> EUR per PerUnit, vuota per PercentOfNominal.
-            </p>
-        </section>
-        <section class="import-syntax-card import-syntax-wide">
-            <h3><code>operations.csv</code></h3>
-            <p class="import-columns">
-                external_id, kind, date, instrument_external_id,
-                settlement_account_external_id, quantity, price, fee, description
-            </p>
-            <p class="import-notes">
-                <strong>kind</strong>: Buy, Sell. Le operazioni vengono importate in ordine di data;
-                la catena acquisti/vendite deve essere coerente.
-            </p>
-        </section>
-    </div>
+    <details class="import-format-details">
+        <summary>Dettaglio delle colonne</summary>
 
-    <p class="table-hint">
-        Gli <code>external_id</code> sono stabili e univoci: reimportando lo stesso valore la riga
-        viene aggiornata. Scarica il modello per un archivio di esempio già pronto.
-    </p>
+        <div class="import-syntax-grid">
+            <section class="import-syntax-card import-syntax-wide">
+                <h3><code>accounts.csv</code></h3>
+                <dl class="import-spec">
+                    <div><dt>Chiave</dt><dd>nome del conto</dd></div>
+                    <div><dt>Obbligatorie</dt><dd><code>name</code> <code>type</code></dd></div>
+                    <div><dt>Opzionali</dt><dd><code>status</code> <code>color_hex</code> <code>icon</code> <code>loans</code></dd></div>
+                    <div><dt>Valori</dt><dd><code>type</code>: Checking, Card, Cash, Liability, Loans · <code>status</code>: Active, Closed · <code>loans</code>: nomi separati da <code>;</code>, solo per conti Loans.</dd></div>
+                </dl>
+            </section>
+            <section class="import-syntax-card">
+                <h3><code>account_balances.csv</code></h3>
+                <dl class="import-spec">
+                    <div><dt>Chiave</dt><dd>nome conto + data</dd></div>
+                    <div><dt>Obbligatorie</dt><dd><code>account_name</code> <code>date</code> <code>amount</code></dd></div>
+                    <div><dt>Note</dt><dd>La data non può essere nel futuro.</dd></div>
+                </dl>
+            </section>
+            <section class="import-syntax-card">
+                <h3><code>instruments.csv</code></h3>
+                <dl class="import-spec">
+                    <div><dt>Chiave</dt><dd>ISIN</dd></div>
+                    <div><dt>Obbligatorie</dt><dd><code>name</code> <code>asset_class</code> <code>price_unit</code> <code>isin</code></dd></div>
+                    <div><dt>Opzionali</dt><dd><code>status</code> <code>symbol</code> <code>quote_currency</code> <code>notional_value</code> <code>notional_currency</code> <code>reference_url</code> <code>notes</code> <code>maturity_date</code> <code>coupon_rate</code> <code>tax_rate</code></dd></div>
+                    <div><dt>Valori</dt><dd><code>asset_class</code>: Equity, Bond, MoneyMarket, RealEstate, Commodity, Crypto, Mixed, Pension, Other · <code>price_unit</code>: PerUnit, PercentOfNominal · <code>status</code>: Active, Archived.</dd></div>
+                </dl>
+            </section>
+            <section class="import-syntax-card">
+                <h3><code>instrument_prices.csv</code></h3>
+                <dl class="import-spec">
+                    <div><dt>Chiave</dt><dd>strumento + data</dd></div>
+                    <div><dt>Obbligatorie</dt><dd><code>date</code> <code>price</code> e almeno uno tra <code>instrument_isin</code> <code>instrument_symbol</code> <code>instrument_name</code></dd></div>
+                    <div><dt>Opzionali</dt><dd><code>currency</code> <code>source</code></dd></div>
+                    <div><dt>Valori</dt><dd>Strumento cercato per ISIN, poi simbolo, poi nome · <code>currency</code>: EUR per PerUnit, vuota per PercentOfNominal.</dd></div>
+                </dl>
+            </section>
+            <section class="import-syntax-card import-syntax-wide">
+                <h3><code>operations.csv</code></h3>
+                <dl class="import-spec">
+                    <div><dt>Chiave</dt><dd>strumento + tipo + data + quantità + prezzo + commissioni</dd></div>
+                    <div><dt>Obbligatorie</dt><dd><code>kind</code> <code>date</code> <code>quantity</code> <code>price</code> e almeno uno tra <code>instrument_isin</code> <code>instrument_symbol</code> <code>instrument_name</code></dd></div>
+                    <div><dt>Opzionali</dt><dd><code>fee</code> <code>description</code></dd></div>
+                    <div><dt>Valori</dt><dd>Strumento cercato per ISIN, poi simbolo, poi nome · <code>kind</code>: Buy, Sell · <code>fee</code> vuoto = 0 · operazioni importate in ordine di data.</dd></div>
+                </dl>
+            </section>
+        </div>
+
+        <p class="table-hint">
+            Reimportare aggiorna gli stessi record: conti per nome, saldi per nome e data,
+            strumenti per ISIN, quotazioni per strumento e data. Le operazioni identiche vengono
+            saltate.
+        </p>
+    </details>
 </section>
 
 <ImportDataDialog Open="_dialogOpen"
@@ -225,8 +218,6 @@
     private bool _working;
     private bool _templateBusy;
     private bool _dialogOpen;
-    private string? _message;
-    private string? _error;
 
     private async Task OnFileSelected(InputFileChangeEventArgs args)
     {
@@ -235,8 +226,6 @@
             return;
         }
 
-        _message = null;
-        _error = null;
         _preview = null;
         _result = null;
         DeleteFile();
@@ -248,7 +237,7 @@
         }
         catch (InvalidOperationException)
         {
-            _error = "Seleziona al massimo 20 file.";
+            await Notifications.Error("Seleziona al massimo 20 file.");
             return;
         }
 
@@ -260,7 +249,7 @@
         var totalSize = files.Sum(file => file.Size);
         if (totalSize > MaxImportBytes)
         {
-            _error = "I file superano il limite di 128 MB.";
+            await Notifications.Error("I file superano il limite di 128 MB.");
             return;
         }
 
@@ -269,7 +258,7 @@
         {
             if (files.Count > 1)
             {
-                _error = "Carica un solo archivio ZIP oppure i file CSV, non entrambi.";
+                await Notifications.Error("Carica un solo archivio ZIP oppure i file CSV, non entrambi.");
                 return;
             }
 
@@ -279,7 +268,7 @@
 
         if (!files.All(file => IsCsv(file.Name)))
         {
-            _error = "Formato non supportato: carica un archivio .mfimport/.zip oppure file .csv.";
+            await Notifications.Error("Formato non supportato: carica un archivio .mfimport/.zip oppure file .csv.");
             return;
         }
 
@@ -289,9 +278,9 @@
             .ToArray();
         if (unknown.Length > 0)
         {
-            _error =
+            await Notifications.Error(
                 $"Nomi file non riconosciuti: {string.Join(", ", unknown)}. " +
-                $"Attesi: {string.Join(", ", ImportFileNames.All)}.";
+                $"Attesi: {string.Join(", ", ImportFileNames.All)}.");
             return;
         }
 
@@ -302,7 +291,7 @@
             .ToArray();
         if (duplicates.Length > 0)
         {
-            _error = $"File duplicati: {string.Join(", ", duplicates)}.";
+            await Notifications.Error($"File duplicati: {string.Join(", ", duplicates)}.");
             return;
         }
 
@@ -333,7 +322,7 @@
         {
             DeleteFile();
             TryDelete(path);
-            _error = "Impossibile leggere l'archivio selezionato.";
+            await Notifications.Error("Impossibile leggere l'archivio selezionato.");
         }
     }
 
@@ -371,7 +360,7 @@
         {
             DeleteFile();
             TryDelete(path);
-            _error = "Impossibile leggere i file CSV selezionati.";
+            await Notifications.Error("Impossibile leggere i file CSV selezionati.");
         }
     }
 
@@ -396,8 +385,6 @@
             return;
         }
 
-        _message = null;
-        _error = null;
         _preview = null;
         _result = null;
         _working = true;
@@ -409,11 +396,11 @@
         }
         catch (ImportValidationException exception)
         {
-            _error = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _error = "Impossibile analizzare l'archivio. Verificare il formato dei file.";
+            await Notifications.Error("Impossibile analizzare l'archivio. Verificare il formato dei file.");
         }
         finally
         {
@@ -441,29 +428,27 @@
         }
 
         _dialogOpen = false;
-        _message = null;
-        _error = null;
         _working = true;
 
         try
         {
             await using var stream = File.OpenRead(_filePath);
             _result = await Import.ImportAsync(stream, ImportContract.ConfirmationPhrase);
-            _message = "Importazione completata.";
+            await Notifications.Success("Importazione completata.");
             _preview = null;
             DeleteFile();
         }
         catch (ImportValidationException exception)
         {
-            _error = string.Join(" ", exception.Errors);
+            await Notifications.Error(string.Join(" ", exception.Errors));
         }
         catch (ArgumentException exception)
         {
-            _error = exception.Message;
+            await Notifications.Error(exception.Message);
         }
         catch (Exception)
         {
-            _error = "Importazione non riuscita. Nessun dato è stato modificato.";
+            await Notifications.Error("Importazione non riuscita. Nessun dato è stato modificato.");
         }
         finally
         {
@@ -479,7 +464,6 @@
         }
 
         _templateBusy = true;
-        _error = null;
 
         try
         {
@@ -492,12 +476,50 @@
         }
         catch (Exception)
         {
-            _error = "Impossibile generare il modello di importazione.";
+            await Notifications.Error("Impossibile generare il modello di importazione.");
         }
         finally
         {
             _templateBusy = false;
         }
+    }
+
+    private static string ImportNotice(ImportPreview preview)
+    {
+        var notes = new List<string>();
+        if (preview.Accounts > 0)
+        {
+            notes.Add("I conti vengono inseriti o aggiornati per nome.");
+        }
+
+        if (preview.AccountBalances > 0)
+        {
+            notes.Add("I saldi conti vengono associati al conto per nome e alla data.");
+        }
+
+        if (preview.Instruments > 0)
+        {
+            notes.Add("Gli strumenti vengono inseriti o aggiornati per ISIN.");
+        }
+
+        if (preview.InstrumentPrices > 0 || preview.Operations > 0)
+        {
+            notes.Add("Quotazioni e operazioni collegano lo strumento per ISIN, simbolo o nome.");
+        }
+
+        notes.Add("L'importazione non elimina dati esistenti.");
+
+        if (preview.InstrumentPrices > 0)
+        {
+            notes.Add("Le quotazioni vengono aggiornate per strumento e data.");
+        }
+
+        if (preview.Operations > 0)
+        {
+            notes.Add("Le operazioni identiche vengono saltate.");
+        }
+
+        return string.Join(" ", notes);
     }
 
     private static string FormatSize(long bytes) => bytes switch

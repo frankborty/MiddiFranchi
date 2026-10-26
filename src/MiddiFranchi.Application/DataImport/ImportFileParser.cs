@@ -7,29 +7,18 @@ using MiddiFranchi.Domain.Shared;
 
 namespace MiddiFranchi.Application.DataImport;
 
-internal sealed record ParsedAccount(
-    string ExternalId,
-    string Name,
-    AccountType Type,
-    AccountStatus Status,
-    string? ColorHex,
-    string? IconDataUrl,
-    int Line);
-
 internal sealed record ParsedBalance(
-    string ExternalId,
-    string AccountExternalId,
+    string AccountName,
     DateOnly Date,
     decimal Amount,
     int Line);
 
 internal sealed record ParsedInstrument(
-    string ExternalId,
     string Name,
     AssetClass AssetClass,
     InstrumentStatus Status,
     string? Symbol,
-    string? Isin,
+    string Isin,
     PriceUnit PriceUnit,
     decimal? NotionalValue,
     string? ReferenceUrl,
@@ -40,8 +29,9 @@ internal sealed record ParsedInstrument(
     int Line);
 
 internal sealed record ParsedPrice(
-    string ExternalId,
-    string InstrumentExternalId,
+    string? InstrumentIsin,
+    string? InstrumentSymbol,
+    string? InstrumentName,
     DateOnly Date,
     decimal Price,
     string? Currency,
@@ -49,11 +39,11 @@ internal sealed record ParsedPrice(
     int Line);
 
 internal sealed record ParsedOperation(
-    string ExternalId,
     InvestmentOperationKind Kind,
     DateOnly Date,
-    string InstrumentExternalId,
-    string AccountExternalId,
+    string? InstrumentIsin,
+    string? InstrumentSymbol,
+    string? InstrumentName,
     decimal Quantity,
     decimal Price,
     decimal Fee,
@@ -62,7 +52,7 @@ internal sealed record ParsedOperation(
 
 internal sealed class ParsedImport
 {
-    public List<ParsedAccount> Accounts { get; } = [];
+    public List<AccountsImportRow> Accounts { get; } = [];
 
     public List<ParsedBalance> Balances { get; } = [];
 
@@ -120,24 +110,6 @@ internal static class ImportFileParser
             return result;
         }
 
-        foreach (var fileName in ImportFileNames.All)
-        {
-            var text = fileName switch
-            {
-                ImportFileNames.Accounts => accountsText,
-                ImportFileNames.AccountBalances => balancesText,
-                ImportFileNames.Instruments => instrumentsText,
-                ImportFileNames.InstrumentPrices => pricesText,
-                ImportFileNames.Operations => operationsText,
-                _ => null,
-            };
-
-            if (text is null)
-            {
-                result.Warnings.Add($"File «{fileName}» assente: la sezione viene considerata vuota.");
-            }
-        }
-
         if (accountsText is not null)
         {
             ParseAccounts(accountsText, result);
@@ -163,28 +135,8 @@ internal static class ImportFileParser
             ParseOperations(operationsText, result);
         }
 
-        AddDuplicateErrors(result.Errors, ImportFileNames.Accounts,
-            result.Accounts.Select(account => account.ExternalId));
-        AddDuplicateErrors(result.Errors, ImportFileNames.AccountBalances,
-            result.Balances.Select(balance => balance.ExternalId));
-        AddDuplicateErrors(result.Errors, ImportFileNames.Instruments,
-            result.Instruments.Select(instrument => instrument.ExternalId));
-        AddDuplicateErrors(result.Errors, ImportFileNames.InstrumentPrices,
-            result.Prices.Select(price => price.ExternalId));
-        AddDuplicateErrors(result.Errors, ImportFileNames.Operations,
-            result.Operations.Select(operation => operation.ExternalId));
-
+        AddBalanceDuplicateErrors(result);
         AddISINAndSymbolDuplicateErrors(result);
-
-        if (result.Accounts.Any(account => account.Type == AccountType.Loans))
-        {
-            result.Warnings.Add(
-                "I saldi dei conti di tipo Loans vengono ricostruiti dai prestiti all'avvio: " +
-                "i saldi importati per questi conti potrebbero essere sovrascritti.");
-        }
-
-        result.Warnings.Add(
-            "L'importazione non elimina dati esistenti: inserisce o aggiorna per external_id.");
 
         if (result.Operations.Count > 0)
         {
@@ -202,56 +154,10 @@ internal static class ImportFileParser
 
     private static void ParseAccounts(string text, ParsedImport result)
     {
-        var document = ParseDocument(text, ImportFileNames.Accounts, result);
-        if (document is null)
-        {
-            return;
-        }
-
-        try
-        {
-            document.EnsureColumns(
-                "external_id", "name", "type", "status", "color_hex", "icon");
-        }
-        catch (ImportValidationException exception)
-        {
-            result.Errors.Add($"{ImportFileNames.Accounts}: {exception.Message}");
-            return;
-        }
-
-        foreach (var row in document.Rows)
-        {
-            try
-            {
-                var externalId = row.Required("external_id");
-                var name = row.Required("name");
-                var type = ParseEnum<AccountType>(row, "type");
-                var status = ParseOptionalEnum(row, "status", AccountStatus.Active);
-                var color = row.GetTrimmed("color_hex");
-                var icon = NormalizeIcon(row.GetTrimmed("icon"));
-
-                _ = new Account(
-                    ExternalIdMapper.ToGuid(ExternalIdMapper.AccountEntity, externalId),
-                    name,
-                    type,
-                    Currency.Euro,
-                    status,
-                    color,
-                    icon);
-
-                result.Accounts.Add(new ParsedAccount(
-                    externalId, name, type, status, color, icon, row.Line));
-            }
-            catch (ImportValidationException exception)
-            {
-                result.Errors.Add(exception.Message);
-            }
-            catch (Exception exception) when (exception is ArgumentException or FormatException)
-            {
-                result.Errors.Add(
-                    $"{ImportFileNames.Accounts}, riga {row.Line}: {exception.Message}");
-            }
-        }
+        var file = AccountsImportParser.ReadText(text);
+        result.Accounts.AddRange(file.Rows);
+        result.Errors.AddRange(file.Errors);
+        result.Warnings.AddRange(file.Warnings);
     }
 
     private static void ParseBalances(string text, ParsedImport result)
@@ -264,7 +170,7 @@ internal static class ImportFileParser
 
         try
         {
-            document.EnsureColumns("external_id", "account_external_id", "date", "amount");
+            document.EnsureColumns("account_name", "date", "amount");
         }
         catch (ImportValidationException exception)
         {
@@ -277,8 +183,7 @@ internal static class ImportFileParser
         {
             try
             {
-                var externalId = row.Required("external_id");
-                var accountExternalId = row.Required("account_external_id");
+                var accountName = row.Required("account_name");
                 var date = ParseDate(row, "date");
                 if (date > today)
                 {
@@ -289,7 +194,10 @@ internal static class ImportFileParser
 
                 var amount = ParseDecimal(row, "amount");
                 result.Balances.Add(new ParsedBalance(
-                    externalId, accountExternalId, date, amount, row.Line));
+                    accountName,
+                    date,
+                    amount,
+                    row.Line));
             }
             catch (ImportValidationException exception)
             {
@@ -308,10 +216,7 @@ internal static class ImportFileParser
 
         try
         {
-            document.EnsureColumns(
-                "external_id", "name", "asset_class", "status", "symbol", "isin",
-                "quote_currency", "price_unit", "notional_value", "notional_currency",
-                "reference_url", "notes", "maturity_date", "coupon_rate");
+            document.EnsureColumns("name", "asset_class", "price_unit", "isin");
         }
         catch (ImportValidationException exception)
         {
@@ -323,18 +228,17 @@ internal static class ImportFileParser
         {
             try
             {
-                var externalId = row.Required("external_id");
+                var isin = row.Required("isin");
                 var name = row.Required("name");
                 var assetClass = ParseEnum<AssetClass>(row, "asset_class");
                 var status = ParseOptionalEnum(row, "status", InstrumentStatus.Active);
-                var symbol = row.GetTrimmed("symbol");
-                var isin = row.GetTrimmed("isin");
+                var symbol = NullIfEmpty(row.GetTrimmed("symbol"));
                 EnsureEuro(row, "quote_currency");
                 var priceUnit = ParseEnum<PriceUnit>(row, "price_unit");
                 var notionalValue = ParseOptionalDecimal(row, "notional_value");
                 EnsureEuro(row, "notional_currency");
-                var referenceUrl = row.GetTrimmed("reference_url");
-                var notes = row.GetTrimmed("notes");
+                var referenceUrl = NullIfEmpty(row.GetTrimmed("reference_url"));
+                var notes = NullIfEmpty(row.GetTrimmed("notes"));
                 var maturityDate = ParseOptionalDate(row, "maturity_date");
                 var couponRate = ParseOptionalDecimal(row, "coupon_rate");
                 var taxRate = ParseOptionalDecimal(row, "tax_rate")
@@ -344,8 +248,10 @@ internal static class ImportFileParser
                     ? new Money(value, Currency.Euro)
                     : (Money?)null;
 
+                var instrumentId = ImportIdMapper.ToInstrumentGuidByIsin(isin);
+
                 _ = new Instrument(
-                    ExternalIdMapper.ToGuid(ExternalIdMapper.InstrumentEntity, externalId),
+                    instrumentId,
                     name,
                     assetClass,
                     Currency.Euro,
@@ -361,7 +267,6 @@ internal static class ImportFileParser
                     taxRate);
 
                 result.Instruments.Add(new ParsedInstrument(
-                    externalId,
                     name,
                     assetClass,
                     status,
@@ -398,8 +303,7 @@ internal static class ImportFileParser
 
         try
         {
-            document.EnsureColumns(
-                "external_id", "instrument_external_id", "date", "price", "currency", "source");
+            document.EnsureColumns("date", "price");
         }
         catch (ImportValidationException exception)
         {
@@ -411,8 +315,8 @@ internal static class ImportFileParser
         {
             try
             {
-                var externalId = row.Required("external_id");
-                var instrumentExternalId = row.Required("instrument_external_id");
+                var (instrumentIsin, instrumentSymbol, instrumentName) =
+                    ParseInstrumentReference(row, ImportFileNames.InstrumentPrices);
                 var date = ParseDate(row, "date");
                 var price = ParseDecimal(row, "price");
                 if (price <= 0m)
@@ -438,8 +342,9 @@ internal static class ImportFileParser
                 }
 
                 result.Prices.Add(new ParsedPrice(
-                    externalId,
-                    instrumentExternalId,
+                    instrumentIsin,
+                    instrumentSymbol,
+                    instrumentName,
                     date,
                     price,
                     string.IsNullOrEmpty(currency) ? null : "EUR",
@@ -463,9 +368,7 @@ internal static class ImportFileParser
 
         try
         {
-            document.EnsureColumns(
-                "external_id", "kind", "date", "instrument_external_id",
-                "settlement_account_external_id", "quantity", "price", "fee", "description");
+            document.EnsureColumns("kind", "date", "quantity", "price");
         }
         catch (ImportValidationException exception)
         {
@@ -477,7 +380,6 @@ internal static class ImportFileParser
         {
             try
             {
-                var externalId = row.Required("external_id");
                 var kind = ParseEnum<InvestmentOperationKind>(row, "kind");
                 if (kind is not (InvestmentOperationKind.Buy or InvestmentOperationKind.Sell))
                 {
@@ -487,8 +389,9 @@ internal static class ImportFileParser
                 }
 
                 var date = ParseDate(row, "date");
-                var instrumentExternalId = row.Required("instrument_external_id");
-                var accountExternalId = row.Required("settlement_account_external_id");
+                var (instrumentIsin, instrumentSymbol, instrumentName) =
+                    ParseInstrumentReference(row, ImportFileNames.Operations);
+
                 var quantity = ParseDecimal(row, "quantity");
                 if (quantity <= 0m)
                 {
@@ -516,15 +419,15 @@ internal static class ImportFileParser
                 var description = row.GetTrimmed("description");
 
                 result.Operations.Add(new ParsedOperation(
-                    externalId,
                     kind,
                     date,
-                    instrumentExternalId,
-                    accountExternalId,
+                    instrumentIsin,
+                    instrumentSymbol,
+                    instrumentName,
                     quantity,
                     price,
                     fee,
-                    string.IsNullOrEmpty(description) ? null : description,
+                    NullIfEmpty(description),
                     row.Line));
             }
             catch (ImportValidationException exception)
@@ -572,7 +475,7 @@ internal static class ImportFileParser
         return reader.ReadToEnd();
     }
 
-    private static T ParseEnum<T>(CsvRow row, string column)
+    internal static T ParseEnum<T>(CsvRow row, string column)
         where T : struct, Enum
     {
         var value = row.Required(column);
@@ -587,7 +490,7 @@ internal static class ImportFileParser
         return parsed;
     }
 
-    private static T ParseOptionalEnum<T>(CsvRow row, string column, T defaultValue)
+    internal static T ParseOptionalEnum<T>(CsvRow row, string column, T defaultValue)
         where T : struct, Enum
     {
         var value = row.GetTrimmed(column);
@@ -700,7 +603,27 @@ internal static class ImportFileParser
             $"{row.FileName}, riga {row.Line}: è supportata solo la valuta EUR.");
     }
 
-    private static string? NormalizeIcon(string? value)
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrEmpty(value) ? null : value;
+
+    private static (string? Isin, string? Symbol, string? Name) ParseInstrumentReference(
+        CsvRow row,
+        string fileName)
+    {
+        var isin = NullIfEmpty(row.GetTrimmed("instrument_isin"));
+        var symbol = NullIfEmpty(row.GetTrimmed("instrument_symbol"));
+        var name = NullIfEmpty(row.GetTrimmed("instrument_name"));
+        if (isin is null && symbol is null && name is null)
+        {
+            throw new ImportValidationException(
+                $"{fileName}, riga {row.Line}: indica almeno uno tra instrument_isin, " +
+                "instrument_symbol e instrument_name.");
+        }
+
+        return (isin, symbol, name);
+    }
+
+    internal static string? NormalizeIcon(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -717,28 +640,28 @@ internal static class ImportFileParser
         return "icon:" + normalized;
     }
 
-    private static void AddDuplicateErrors(
-        List<string> errors,
-        string fileName,
-        IEnumerable<string> externalIds)
+    private static void AddBalanceDuplicateErrors(ParsedImport result)
     {
-        var duplicates = externalIds
-            .GroupBy(id => id, StringComparer.Ordinal)
+        var duplicatedKeys = result.Balances
+            .GroupBy(
+                balance => $"{balance.AccountName.Trim()}|{balance.Date}",
+                StringComparer.CurrentCultureIgnoreCase)
             .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
+            .Select(group => group.First())
             .ToArray();
 
-        foreach (var duplicate in duplicates)
+        foreach (var balance in duplicatedKeys)
         {
-            errors.Add($"{fileName}: external_id duplicato «{duplicate}».");
+            result.Errors.Add(
+                $"{ImportFileNames.AccountBalances}: saldo duplicato per il conto " +
+                $"«{balance.AccountName}» alla data {balance.Date:yyyy-MM-dd}.");
         }
     }
 
     private static void AddISINAndSymbolDuplicateErrors(ParsedImport result)
     {
         var duplicateIsins = result.Instruments
-            .Where(instrument => instrument.Isin is not null)
-            .GroupBy(instrument => instrument.Isin!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(instrument => instrument.Isin, StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
             .Select(group => group.Key)
             .ToArray();

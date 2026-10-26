@@ -100,6 +100,55 @@
             } catch (e) { }
         };
 
+        /* Preferenze dell'interfaccia persistenti (localStorage). */
+        window.mfGetPreference = function (key) {
+            try { return localStorage.getItem(key); } catch (e) { return null; }
+        };
+        window.mfSetPreference = function (key, value) {
+            try {
+                if (value === null || value === undefined) {
+                    localStorage.removeItem(key);
+                } else {
+                    localStorage.setItem(key, String(value));
+                }
+            } catch (e) { }
+        };
+
+        /* Notifiche temporanee: scompaiono da sole oppure si chiudono con il pulsante. */
+        window.mfToast = function (message, tone) {
+            var host = document.getElementById("mf-toast-host");
+            if (!host || !message) return;
+
+            var kind = tone === "success" || tone === "error" || tone === "warning" ? tone : "info";
+            var toast = document.createElement("div");
+            toast.className = "toast toast-" + kind;
+            toast.setAttribute("role", kind === "error" ? "alert" : "status");
+
+            var text = document.createElement("span");
+            text.className = "toast-text";
+            text.textContent = message;
+
+            var close = document.createElement("button");
+            close.type = "button";
+            close.className = "toast-close";
+            close.setAttribute("aria-label", "Chiudi notifica");
+            close.textContent = "×";
+
+            var dismissed = false;
+            function dismiss() {
+                if (dismissed) return;
+                dismissed = true;
+                toast.classList.add("toast-leaving");
+                setTimeout(function () { toast.remove(); }, 180);
+            }
+
+            close.addEventListener("click", dismiss);
+            toast.appendChild(text);
+            toast.appendChild(close);
+            host.appendChild(toast);
+            setTimeout(dismiss, kind === "error" ? 9000 : 5000);
+        };
+
         /* Sidebar mobile + focus back button. */
         window.mfToggleNav = function () {
             var page = document.getElementById("mf-page");

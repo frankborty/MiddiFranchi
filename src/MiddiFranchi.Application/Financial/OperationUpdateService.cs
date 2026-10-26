@@ -1,23 +1,28 @@
 using MiddiFranchi.Application.Persistence;
 using MiddiFranchi.Domain.Financial;
+using MiddiFranchi.Domain.Portfolio;
 
 namespace MiddiFranchi.Application.Financial;
 
 /// <summary>
-/// Modifica un'entrata o un'uscita esistente: categoria, importo, data e descrizione.
-/// Il tipo dell'operazione non cambia e il conto resta assente.
+/// Modifica un'entrata o un'uscita esistente: categoria, importo, data, descrizione e,
+/// quando richiesto, lo strumento finanziario associato. Il tipo dell'operazione non cambia
+/// e il conto resta assente.
 /// </summary>
 public sealed class OperationUpdateService
 {
     private readonly IFinancialOperationRepository _operations;
     private readonly ICategoryRepository _categories;
+    private readonly IInstrumentRepository _instruments;
 
     public OperationUpdateService(
         IFinancialOperationRepository operations,
-        ICategoryRepository categories)
+        ICategoryRepository categories,
+        IInstrumentRepository instruments)
     {
         _operations = operations;
         _categories = categories;
+        _instruments = instruments;
     }
 
     public async Task UpdateAsync(UpdateOperationRequest request, CancellationToken cancellationToken = default)
@@ -43,6 +48,13 @@ public sealed class OperationUpdateService
                 $"La categoria {category.Name} non è compatibile con il tipo dell'operazione.");
         }
 
+        Instrument? requestedInstrument = null;
+        if (request.UpdateInstrument && request.InstrumentId is { } instrumentId)
+        {
+            requestedInstrument = await _instruments.GetByIdAsync(instrumentId, cancellationToken)
+                ?? throw new InvalidOperationException("Strumento non trovato.");
+        }
+
         FinancialOperation updated = operation switch
         {
             Income income => new Income(
@@ -54,15 +66,17 @@ public sealed class OperationUpdateService
                 operation.RecordedAt,
                 request.Description,
                 notes: null,
-                instrument: income.Instrument),
-            Expense => new Expense(
+                instrument: request.UpdateInstrument ? requestedInstrument : income.Instrument),
+            Expense expense => new Expense(
                 operation.Id,
                 account: null,
                 category,
                 request.Amount,
                 request.OperationDate,
                 operation.RecordedAt,
-                request.Description),
+                request.Description,
+                notes: null,
+                instrument: request.UpdateInstrument ? requestedInstrument : expense.Instrument),
             _ => throw new InvalidOperationException("Operazione non modificabile."),
         };
 

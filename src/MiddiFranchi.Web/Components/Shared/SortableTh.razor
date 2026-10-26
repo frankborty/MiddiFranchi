@@ -1,0 +1,39 @@
+@namespace MiddiFranchi.Web.Components.Shared
+
+<th scope="col" class="@CssClass" aria-sort="@Sort.AriaSort(Column)">
+    <button type="button" class="sort-button" @onclick="HandleClick">
+        @Label <span class="sort-arrow" aria-hidden="true">@Sort.Arrow(Column)</span>
+    </button>
+</th>
+
+@code {
+    [Parameter, EditorRequired]
+    public TableSort Sort { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string Column { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = "";
+
+    [Parameter]
+    public bool Numeric { get; set; }
+
+    [Parameter]
+    public string? ExtraClass { get; set; }
+
+    /// <summary>Richiamato dopo il cambio di ordinamento per aggiornare le righe del padre.</summary>
+    [Parameter]
+    public EventCallback OnSort { get; set; }
+
+    private async Task HandleClick()
+    {
+        Sort.Toggle(Column);
+        await OnSort.InvokeAsync();
+    }
+
+    private string CssClass => string.Join(
+        ' ',
+        new[] { Numeric ? "num" : null, ExtraClass }
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+}

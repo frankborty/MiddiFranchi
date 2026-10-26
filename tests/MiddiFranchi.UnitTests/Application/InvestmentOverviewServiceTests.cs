@@ -58,6 +58,22 @@ public class InvestmentOverviewServiceTests
     }
 
     [Fact]
+    public async Task LoadAsync_ShouldIncludeOrdinaryCouponIncome()
+    {
+        var project = new Project();
+        var instrument = Instrument("BTP Italia", Euro);
+        var account = Account("Conto titoli", Euro);
+        project.AddBuy(instrument, account, 1m, 100m, new DateOnly(2026, 10, 1));
+        project.AddPrice(instrument, 100m, new DateOnly(2026, 10, 2));
+        project.AddOrdinaryIncome(instrument, 7.5m, new DateOnly(2026, 10, 10));
+
+        var overview = await project.Build().LoadAsync();
+
+        overview.Income.ShouldBe(new Money(7.5m, Euro));
+        overview.Assets.ShouldHaveSingleItem().Income.ShouldBe(new Money(7.5m, Euro));
+    }
+
+    [Fact]
     public async Task LoadAsync_ShouldNotTreatAnUnvaluedPositionAsZero()
     {
         var project = new Project();
@@ -189,6 +205,19 @@ public class InvestmentOverviewServiceTests
                 date,
                 RecordedAt));
         }
+
+        public void AddOrdinaryIncome(
+            Instrument instrument,
+            decimal amount,
+            DateOnly date) =>
+            Operations.Operations.Add(new Income(
+                Guid.NewGuid(),
+                account: null,
+                new Category(Guid.NewGuid(), "Cedole", CategoryType.Income),
+                new PositiveMoney(new Money(amount, instrument.QuoteCurrency)),
+                date,
+                RecordedAt,
+                instrument: instrument));
 
         public void AddPrice(Instrument instrument, decimal price, DateOnly validAt) =>
             Prices.Observations.Add(PriceObservation.AtUnitPrice(

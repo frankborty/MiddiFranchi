@@ -69,6 +69,7 @@ public class DefaultCategoriesSeederTests
     {
         _metadata.Values[DefaultCategoriesSeeder.SeedKey] = "done";
         _metadata.Values[DefaultCategoriesSeeder.InvestmentIncomeSeedKey] = "done";
+        _metadata.Values[DefaultCategoriesSeeder.InvestmentFeeSeedKey] = "done";
 
         var added = await _seeder.EnsureAsync();
 

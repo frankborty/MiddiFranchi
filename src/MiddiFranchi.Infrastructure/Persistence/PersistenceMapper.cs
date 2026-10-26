@@ -155,6 +155,7 @@ internal static class PersistenceMapper
                 ApplyAmount(record, expense.Amount);
                 record.AccountId = expense.Account?.Id;
                 record.CategoryId = expense.Category.Id;
+                record.InstrumentId = expense.Instrument?.Id;
                 break;
 
             case Transfer transfer:
@@ -293,7 +294,8 @@ internal static class PersistenceMapper
                 record.OperationDate,
                 record.RecordedAt,
                 record.Description,
-                null),
+                null,
+                OptionalInstrument(instruments, record.InstrumentId, record.Id)),
             OperationKind.Transfer => new Transfer(
                 record.Id,
                 RequiredAccount(accounts, record.SourceAccountId, record.Id),
@@ -601,7 +603,6 @@ internal static class PersistenceMapper
         AmountAmount = reading.Amount.Amount,
         AmountCurrencyCode = reading.Amount.Currency.Code,
         ValidAt = reading.ValidAt,
-        RecordedAt = reading.RecordedAt,
         Note = reading.Note,
     };
 
@@ -611,7 +612,6 @@ internal static class PersistenceMapper
             loan,
             new Money(record.AmountAmount, Currency.Parse(record.AmountCurrencyCode)),
             record.ValidAt,
-            record.RecordedAt,
             record.Note);
 
     private static PositiveMoney RequiredAmount(FinancialOperationRecord record, Guid operationId) =>

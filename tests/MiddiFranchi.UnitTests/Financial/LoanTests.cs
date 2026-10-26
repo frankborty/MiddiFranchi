@@ -51,8 +51,7 @@ public class LoanTests
             Guid.NewGuid(),
             loan,
             new Money(10m, Euro),
-            new DateOnly(2026, 4, 1),
-            DateTimeOffset.UtcNow);
+            new DateOnly(2026, 4, 1));
 
         reading.Amount.ShouldBe(new Money(10m, Euro));
         reading.Loan.ShouldBe(loan);

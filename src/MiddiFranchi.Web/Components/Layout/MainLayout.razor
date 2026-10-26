@@ -3,8 +3,9 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using MiddiFranchi.Web.Components.Shared
 @inject NavigationManager Navigation
+@inject SectionAppearanceService Appearance
 
-<div class="page nav-collapsed" id="mf-page">
+<div class="page nav-collapsed" id="mf-page" style="@Appearance.CssVariables">
     <aside class="app-sidebar" id="mf-sidebar">
         <div class="sidebar-top">
             <a class="brand-mark" href="" title="MiddiFranchi" aria-label="MiddiFranchi, vai alla dashboard">
@@ -21,13 +22,13 @@
         </div>
         <nav class="sidebar-nav" aria-label="Navigazione principale">
             <div class="sidebar-group">
-                <NavLink href="" class="nav-home" Match="NavLinkMatch.All" title="Dashboard" aria-label="Dashboard"><MfIcon Name="chart" Size="20" /><span class="nav-label">Dashboard</span></NavLink>
-                <NavLink href="accounts" class="nav-accounts" Match="NavLinkMatch.Prefix" title="Conti" aria-label="Conti"><MfIcon Name="wallet" Size="20" /><span class="nav-label">Conti</span></NavLink>
-                <NavLink href="investments" class="nav-investments" Match="NavLinkMatch.All" title="Investimenti" aria-label="Investimenti"><MfIcon Name="pie" Size="20" /><span class="nav-label">Investimenti</span></NavLink>
-                <NavLink href="operations" class="nav-operations" Match="NavLinkMatch.All" title="Movimenti" aria-label="Movimenti"><MfIcon Name="receipt" Size="20" /><span class="nav-label">Movimenti</span></NavLink>
+                <NavLink href="" class="nav-home" Match="NavLinkMatch.All" title="Dashboard" aria-label="Dashboard"><MfIcon Name="@Appearance.Get(AppSection.Dashboard).Icon" Size="20" /><span class="nav-label">Dashboard</span></NavLink>
+                <NavLink href="accounts" class="nav-accounts" Match="NavLinkMatch.Prefix" title="Conti" aria-label="Conti"><MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="20" /><span class="nav-label">Conti</span></NavLink>
+                <NavLink href="investments" class="nav-investments" Match="NavLinkMatch.All" title="Investimenti" aria-label="Investimenti"><MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="20" /><span class="nav-label">Investimenti</span></NavLink>
+                <NavLink href="operations" class="nav-operations" Match="NavLinkMatch.All" title="Movimenti" aria-label="Movimenti"><MfIcon Name="@Appearance.Get(AppSection.Operations).Icon" Size="20" /><span class="nav-label">Movimenti</span></NavLink>
             </div>
             <div class="sidebar-group sidebar-group-bottom">
-                <NavLink href="settings" class="nav-settings" Match="NavLinkMatch.Prefix" title="Configurazione" aria-label="Configurazione"><MfIcon Name="settings" Size="20" /><span class="nav-label">Configurazione</span></NavLink>
+                <NavLink href="settings" class="nav-settings" Match="NavLinkMatch.Prefix" title="Configurazione" aria-label="Configurazione"><MfIcon Name="@Appearance.Get(AppSection.Settings).Icon" Size="20" /><span class="nav-label">Configurazione</span></NavLink>
             </div>
         </nav>
     </aside>
@@ -40,6 +41,7 @@
         <main class="page-body">
             @Body
         </main>
+        <div id="mf-toast-host" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
         @if (!IsAccountsSection && !IsSettingsSection && !IsOperationsSection && !IsInvestmentsSection)
         {
             <a class="fab-add" href="operations?new=1" aria-label="Nuova operazione">
@@ -61,12 +63,23 @@
     private bool IsOperationsSection => IsOperationsPath(Navigation.Uri);
     private bool IsInvestmentsSection => IsInvestmentsPath(Navigation.Uri);
 
-    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        await Appearance.EnsureLoadedAsync();
+        Appearance.Changed += OnAppearanceChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
         _ = InvokeAsync(StateHasChanged);
 
-    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+    private void OnAppearanceChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Appearance.Changed -= OnAppearanceChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
 
     private static bool IsAccountsPath(string uri)
     {

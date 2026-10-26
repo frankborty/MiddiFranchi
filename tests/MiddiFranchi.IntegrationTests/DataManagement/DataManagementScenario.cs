@@ -132,8 +132,7 @@ internal static class DataManagementScenario
             Guid.NewGuid(),
             loan,
             new Money(150m, Currency.Euro),
-            date.AddDays(5),
-            new DateTimeOffset(2026, 1, 15, 8, 0, 0, TimeSpan.Zero)));
+            date.AddDays(5)));
 
         await metadata.SetAsync("test.key", "test-value");
     }

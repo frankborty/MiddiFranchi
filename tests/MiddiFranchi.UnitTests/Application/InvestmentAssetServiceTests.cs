@@ -24,6 +24,10 @@ public class InvestmentAssetServiceTests
         _account = new Account(
             Guid.NewGuid(), "Conto titoli", AccountType.Checking, Euro, AccountStatus.Active);
         _accounts.Accounts.Add(_account);
+        _categories.Categories.Add(new Category(
+            Guid.NewGuid(), "Fees", CategoryType.Expense, subcategory: "Tasse Investimenti"));
+        _categories.Categories.Add(new Category(
+            Guid.NewGuid(), "Fees", CategoryType.Expense, subcategory: "Conto Titoli"));
         _service = new InvestmentAssetService(
             _instruments,
             _operations,
@@ -179,6 +183,240 @@ public class InvestmentAssetServiceTests
     }
 
     [Fact]
+    public async Task RegisterSell_ShouldArchiveTheInstrumentWhenThePositionIsClosed()
+    {
+        var instrument = await CreateAsync();
+        await BuyAsync(instrument, quantity: 2m, price: 10m);
+
+        await SellAsync(instrument, quantity: 2m, price: 12m);
+
+        _instruments.Instruments.ShouldHaveSingleItem().Status.ShouldBe(InstrumentStatus.Archived);
+    }
+
+    [Fact]
+    public async Task RegisterSell_ShouldKeepTheInstrumentActiveWhenQuantityRemains()
+    {
+        var instrument = await CreateAsync();
+        await BuyAsync(instrument, quantity: 3m, price: 10m);
+
+        await SellAsync(instrument, quantity: 1m, price: 12m);
+
+        _instruments.Instruments.ShouldHaveSingleItem().Status.ShouldBe(InstrumentStatus.Active);
+    }
+
+    [Fact]
+    public async Task ImportOperations_ShouldArchiveAnInstrumentSoldOut()
+    {
+        var instrument = await CreateAsync();
+        var buyDate = Today.AddDays(-1);
+        var buyRecordedAt =
+            new DateTimeOffset(buyDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var sellRecordedAt =
+            new DateTimeOffset(Today.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        await _service.ImportOperationsAsync(
+        [
+            new ImportInvestmentOperationRequest(
+                Guid.NewGuid(),
+                buyRecordedAt,
+                new RegisterInvestmentOperationRequest(
+                    instrument.Id,
+                    InvestmentOperationKind.Buy,
+                    buyDate,
+                    Quantity: 1m,
+                    Price: 10m)),
+            new ImportInvestmentOperationRequest(
+                Guid.NewGuid(),
+                sellRecordedAt,
+                new RegisterInvestmentOperationRequest(
+                    instrument.Id,
+                    InvestmentOperationKind.Sell,
+                    Today,
+                    Quantity: 1m,
+                    Price: 12m)),
+        ]);
+
+        _instruments.Instruments.ShouldHaveSingleItem().Status.ShouldBe(InstrumentStatus.Archived);
+    }
+
+    [Fact]
+    public async Task RegisterBuy_ShouldCreateTheFeeExpense()
+    {
+        var instrument = await CreateAsync();
+
+        var buy = await BuyAsync(instrument, quantity: 2m, price: 10m, fee: 2.5m);
+
+        var expense = _operations.Operations.OfType<Expense>().ShouldHaveSingleItem();
+        expense.Amount.Value.Amount.ShouldBe(2.5m);
+        expense.Category.Name.ShouldBe("Fees");
+        expense.Category.Subcategory.ShouldBe("Conto Titoli");
+        expense.OperationDate.ShouldBe(buy.OperationDate);
+        expense.Description.ShouldBe("Commissioni su acquisto");
+    }
+
+    [Fact]
+    public async Task UpdateOperation_ShouldUpdateAndRemoveTheFeeExpense()
+    {
+        var instrument = await CreateAsync();
+        var buy = await BuyAsync(instrument, quantity: 2m, price: 10m, fee: 2.5m);
+        var feeExpenseId = _operations.Operations.OfType<Expense>().Single().Id;
+
+        await _service.UpdateOperationAsync(new UpdateInvestmentOperationRequest(
+            buy.Id,
+            Today,
+            Quantity: 2m,
+            Price: 10m,
+            FeeAmount: 3m));
+
+        var updatedExpense = _operations.Operations.OfType<Expense>().ShouldHaveSingleItem();
+        updatedExpense.Id.ShouldBe(feeExpenseId);
+        updatedExpense.Amount.Value.Amount.ShouldBe(3m);
+
+        await _service.UpdateOperationAsync(new UpdateInvestmentOperationRequest(
+            buy.Id,
+            Today,
+            Quantity: 2m,
+            Price: 10m,
+            FeeAmount: null));
+
+        _operations.Operations.OfType<Expense>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteOperation_ShouldRemoveTheFeeExpense()
+    {
+        var instrument = await CreateAsync();
+        var buy = await BuyAsync(instrument, fee: 2m);
+
+        await _service.DeleteOperationAsync(buy.Id);
+
+        _operations.Operations.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SaveIncomeTax_ShouldCreateAndRemoveTheLinkedExpense()
+    {
+        var income = AddIncome(100m, Today);
+
+        await _service.SaveIncomeTaxAsync(income.Id, 12.5m);
+
+        var tax = _operations.Operations.OfType<Expense>().ShouldHaveSingleItem();
+        tax.Amount.Value.Amount.ShouldBe(12.5m);
+        tax.Category.Name.ShouldBe("Fees");
+        tax.Category.Subcategory.ShouldBe("Tasse Investimenti");
+        tax.OperationDate.ShouldBe(income.OperationDate);
+
+        await _service.SaveIncomeTaxAsync(income.Id, null);
+
+        _operations.Operations.OfType<Expense>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SaveIncomeTax_ShouldLinkTheInstrument()
+    {
+        var instrument = await CreateAsync();
+        var income = AddIncome(100m, Today, instrument);
+
+        await _service.SaveIncomeTaxAsync(income.Id, 12.5m);
+
+        var tax = _operations.Operations.OfType<Expense>().ShouldHaveSingleItem();
+        tax.Instrument.ShouldBe(instrument);
+    }
+
+    [Fact]
+    public async Task DeleteIncome_ShouldRemoveTheLinkedTaxExpense()
+    {
+        var income = AddIncome(100m, Today);
+        await _service.SaveIncomeTaxAsync(income.Id, 10m);
+
+        var deletion = new OperationDeletionService(_operations);
+        await deletion.DeleteAsync(income.Id);
+
+        _operations.Operations.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task History_ShouldExposeTheLinkedTaxForIncome()
+    {
+        var income = AddIncome(100m, Today);
+        await _service.SaveIncomeTaxAsync(income.Id, 7m);
+
+        var history = new OperationHistoryService(_operations, _categories);
+        var row = (await history.ListAsync()).Single(candidate => candidate.Id == income.Id);
+
+        row.Tax.ShouldNotBeNull().Amount.ShouldBe(7m);
+    }
+
+    [Fact]
+    public async Task UpdateOperation_ShouldKeepTaxExpensesSeparateForSalesOnTheSameDay()
+    {
+        var first = await CreateAsync(name: "ETF uno", isin: "IE00B4L5Y983");
+        var second = await CreateAsync(name: "ETF due", isin: "IE00B4L5Y984");
+        var buyDate = Today.AddDays(-2);
+        var sellDate = Today.AddDays(-1);
+
+        await BuyAsync(first, quantity: 1m, price: 10m, date: buyDate);
+        var firstSell = await SellAsync(first, quantity: 1m, price: 12m, date: sellDate);
+        await BuyAsync(second, quantity: 1m, price: 10m, date: buyDate);
+        var secondSell = await SellAsync(second, quantity: 1m, price: 12m, date: sellDate);
+
+        await _service.ReactivateAsync(first.Id);
+        await _service.ReactivateAsync(second.Id);
+
+        await _service.UpdateOperationAsync(new UpdateInvestmentOperationRequest(
+            firstSell.Id,
+            sellDate,
+            Quantity: 1m,
+            Price: 12m,
+            TaxAmount: 8m));
+        await _service.UpdateOperationAsync(new UpdateInvestmentOperationRequest(
+            secondSell.Id,
+            sellDate,
+            Quantity: 1m,
+            Price: 12m,
+            TaxAmount: 3m));
+
+        var taxes = _operations.Operations
+            .OfType<Expense>()
+            .Where(expense => string.Equals(
+                expense.Category.Subcategory,
+                "Tasse Investimenti",
+                StringComparison.OrdinalIgnoreCase))
+            .OrderBy(expense => expense.Amount.Value.Amount)
+            .ToArray();
+
+        taxes.Length.ShouldBe(2);
+        taxes[0].Amount.Value.Amount.ShouldBe(3m);
+        taxes[1].Amount.Value.Amount.ShouldBe(8m);
+        taxes[0].Id.ShouldNotBe(taxes[1].Id);
+    }
+
+    [Fact]
+    public async Task ArchiveSoldOut_ShouldArchiveAnInstrumentWithoutHeldQuantity()
+    {
+        var instrument = await CreateAsync();
+        await BuyAsync(instrument, quantity: 1m, price: 10m);
+        await SellAsync(instrument, quantity: 1m, price: 12m);
+        await _service.ReactivateAsync(instrument.Id);
+
+        await _service.ArchiveSoldOutAsync([instrument.Id]);
+
+        _instruments.Instruments.ShouldHaveSingleItem().Status.ShouldBe(InstrumentStatus.Archived);
+    }
+
+    [Fact]
+    public async Task ArchiveSoldOut_ShouldKeepAnInstrumentWithHeldQuantityActive()
+    {
+        var instrument = await CreateAsync();
+        await BuyAsync(instrument, quantity: 2m, price: 10m);
+        await SellAsync(instrument, quantity: 1m, price: 12m);
+
+        await _service.ArchiveSoldOutAsync([instrument.Id]);
+
+        _instruments.Instruments.ShouldHaveSingleItem().Status.ShouldBe(InstrumentStatus.Active);
+    }
+
+    [Fact]
     public async Task Archive_ShouldSucceedForAnInstrumentNeverTraded()
     {
         var instrument = await CreateAsync();
@@ -308,27 +546,46 @@ public class InvestmentAssetServiceTests
             isin,
             TaxRate: taxRate));
 
+    private Income AddIncome(decimal amount, DateOnly date, Instrument? instrument = null)
+    {
+        var category = new Category(Guid.NewGuid(), "Cedole", CategoryType.Income);
+        var income = new Income(
+            Guid.NewGuid(),
+            account: null,
+            category,
+            new PositiveMoney(new Money(amount, Euro)),
+            date,
+            new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+            instrument: instrument);
+        _operations.Operations.Add(income);
+        return income;
+    }
+
     private Task<InvestmentOperation> BuyAsync(
         Instrument instrument,
         decimal quantity = 1m,
         decimal price = 10m,
-        DateOnly? date = null) =>
+        DateOnly? date = null,
+        decimal? fee = null) =>
         _service.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
             instrument.Id,
             InvestmentOperationKind.Buy,
             date ?? Today,
             quantity,
-            price));
+            price,
+            FeeAmount: fee));
 
     private Task<InvestmentOperation> SellAsync(
         Instrument instrument,
         decimal quantity = 1m,
         decimal price = 10m,
-        DateOnly? date = null) =>
+        DateOnly? date = null,
+        decimal? fee = null) =>
         _service.RegisterOperationAsync(new RegisterInvestmentOperationRequest(
             instrument.Id,
             InvestmentOperationKind.Sell,
             date ?? Today,
             quantity,
-            price));
+            price,
+            FeeAmount: fee));
 }

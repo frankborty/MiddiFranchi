@@ -2,10 +2,12 @@
 @rendermode InteractiveServer
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Financial
+@inject NotificationService Notifications
 @using MiddiFranchi.Web.Components.Shared
 @inject CategoryService Categories
 @inject CategoryAdminService Admin
 @inject OperationHistoryService History
+@inject FilterPreferences Filters
 
 <PageTitle>Categorie</PageTitle>
 
@@ -38,11 +40,6 @@ else if (_loadError is not null)
 }
 else
 {
-    @if (_message is not null)
-    {
-        <p class="alert alert-success" role="status">@_message</p>
-    }
-
     <section class="category-workbench @(_activeType == CategoryType.Income ? "income" : "expense")"
              aria-label="Configurazione categorie">
         <div class="category-workbench-bar">
@@ -69,7 +66,8 @@ else
                        aria-label="Cerca categorie e sottocategorie"
                        placeholder="Cerca categoria o sottocategoria…"
                        @bind="_search"
-                       @bind:event="oninput" />
+                       @bind:event="oninput"
+                       @bind:after="PersistFiltersAsync" />
                 @if (!string.IsNullOrWhiteSpace(_search))
                 {
                     <button type="button" class="category-search-clear" aria-label="Azzera ricerca" @onclick="ClearSearch">
@@ -630,7 +628,6 @@ else
     private bool _loading = true;
     private bool _working;
     private string? _loadError;
-    private string? _message;
     private IReadOnlyList<Category> _categories = [];
     private IReadOnlyDictionary<Guid, int> _operationCounts = new Dictionary<Guid, int>();
     private IReadOnlyList<CategoryAdminGroup> _incomeGroups = [];
@@ -640,6 +637,7 @@ else
     private string? _selectedGroupName;
     private string _search = "";
     private bool _mobileDetail;
+    private bool _filtersLoaded;
 
     private string? _inlineGroupKey;
     private string _inlineName = "";
@@ -698,11 +696,56 @@ else
         EditSubcategory,
     }
 
+    private sealed class FilterState
+    {
+        public string Search { get; set; } = "";
+        public string Type { get; set; } = nameof(CategoryType.Expense);
+        public string? Group { get; set; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
         _loading = false;
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _filtersLoaded)
+        {
+            return;
+        }
+
+        _filtersLoaded = true;
+        var state = await Filters.GetAsync<FilterState>("mf.filters.settings.categories");
+        if (state is null)
+        {
+            return;
+        }
+
+        _search = state.Search ?? "";
+        if (Enum.TryParse<CategoryType>(state.Type, ignoreCase: true, out var type))
+        {
+            _activeType = type;
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.Group))
+        {
+            _selectedGroupName = state.Group;
+        }
+
+        EnsureSelection();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task PersistFiltersAsync() => Filters.SetAsync(
+        "mf.filters.settings.categories",
+        new FilterState
+        {
+            Search = _search,
+            Type = _activeType.ToString(),
+            Group = _selectedGroupName,
+        });
 
     private async Task LoadAsync()
     {
@@ -794,6 +837,7 @@ else
         _selectedGroupName = GroupsOf(type).FirstOrDefault()?.Name;
         _mobileDetail = false;
         SyncInlineEditor();
+        _ = PersistFiltersAsync();
     }
 
     private void SelectGroup(CategoryAdminGroup group)
@@ -802,11 +846,16 @@ else
         _selectedGroupName = group.Name;
         _mobileDetail = true;
         SyncInlineEditor();
+        _ = PersistFiltersAsync();
     }
 
     private void ShowCatalog() => _mobileDetail = false;
 
-    private void ClearSearch() => _search = "";
+    private void ClearSearch()
+    {
+        _search = "";
+        _ = PersistFiltersAsync();
+    }
 
     private void EnsureSelection()
     {
@@ -882,7 +931,7 @@ else
                 Clean(_inlineDescription),
                 _inlineIcon,
                 _inlineColor);
-            _message = $"Categoria «{name}» aggiornata.";
+            await Notifications.Success($"Categoria «{name}» aggiornata.");
             _activeType = group.Type;
             _selectedGroupName = name;
             _inlineGroupKey = null;
@@ -959,7 +1008,7 @@ else
                 group.Rows[0].Category.Id,
                 name,
                 Clean(_inlineSubcategoryDescription));
-            _message = $"Sottocategoria «{name}» aggiunta.";
+            await Notifications.Success($"Sottocategoria «{name}» aggiunta.");
             _addingSubcategory = false;
             _inlineSubcategoryName = "";
             _inlineSubcategoryDescription = "";
@@ -1032,7 +1081,7 @@ else
                 row.Category.Id,
                 name,
                 Clean(_inlineEditSubcategoryDescription));
-            _message = $"Sottocategoria «{name}» aggiornata.";
+            await Notifications.Success($"Sottocategoria «{name}» aggiornata.");
             _editingSubcategoryRow = null;
             await LoadAsync();
         }
@@ -1207,7 +1256,7 @@ else
                         _editorType == CategoryType.Expense ? _editSubcategory.Trim() : null,
                         _editIcon,
                         _editColor));
-                    _message = $"Categoria «{created.Name}» creata.";
+                    await Notifications.Success($"Categoria «{created.Name}» creata.");
                     _activeType = created.Type;
                     _selectedGroupName = created.Name;
                     _mobileDetail = true;
@@ -1220,7 +1269,7 @@ else
                         Clean(_editDescription),
                         _editIcon,
                         _editColor);
-                    _message = $"Categoria «{_editName.Trim()}» aggiornata.";
+                    await Notifications.Success($"Categoria «{_editName.Trim()}» aggiornata.");
                     _activeType = _editorGroup.Type;
                     _selectedGroupName = _editName.Trim();
                     _mobileDetail = true;
@@ -1231,7 +1280,7 @@ else
                         _editorGroup.Rows[0].Category.Id,
                         subcategoryName,
                         Clean(_editDescription));
-                    _message = $"Sottocategoria «{createdSubcategory.Subcategory}» aggiunta.";
+                    await Notifications.Success($"Sottocategoria «{createdSubcategory.Subcategory}» aggiunta.");
                     _activeType = _editorGroup.Type;
                     _selectedGroupName = _editorGroup.Name;
                     _mobileDetail = true;
@@ -1241,7 +1290,7 @@ else
                         _editorRow.Category.Id,
                         _editSubcategory.Trim(),
                         Clean(_editDescription));
-                    _message = $"Sottocategoria «{_editSubcategory.Trim()}» aggiornata.";
+                    await Notifications.Success($"Sottocategoria «{_editSubcategory.Trim()}» aggiornata.");
                     _activeType = _editorRow.Category.Type;
                     _selectedGroupName = _editorRow.Category.Name;
                     _mobileDetail = true;
@@ -1379,7 +1428,7 @@ else
                 : await Admin.MoveSubcategoryOperationsAsync(
                     _moveRow!.Category.Id,
                     ResolveMoveDestinationRow()!.Category.Id);
-            _message = moved == 1 ? "1 operazione spostata." : $"{moved} operazioni spostate.";
+            await Notifications.Success(moved == 1 ? "1 operazione spostata." : $"{moved} operazioni spostate.");
             _moveOpen = false;
             await LoadAsync();
         }
@@ -1550,9 +1599,9 @@ else
                     _deleteRow!.Category.Id,
                     destinationRow?.Category.Id);
 
-            _message = moved > 0
+            await Notifications.Success(moved > 0
                 ? $"{moved} operazioni spostate e {(_deleteGroupMode ? "categoria" : "sottocategoria")} eliminata."
-                : $"{(_deleteGroupMode ? "Categoria" : "Sottocategoria")} eliminata.";
+                : $"{(_deleteGroupMode ? "Categoria" : "Sottocategoria")} eliminata.");
             _deleteOpen = false;
             await LoadAsync();
         }

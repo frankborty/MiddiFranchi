@@ -343,7 +343,7 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_FinancialOperations_Kind", "\"Kind\" IN ('Income', 'Expense', 'Transfer', 'Investment', 'Reversal')");
 
-                            t.HasCheckConstraint("CK_FinancialOperations_NonInvestmentFields", "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND (\"InstrumentId\" IS NULL OR \"Kind\" = 'Income') AND \"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND \"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");
+                            t.HasCheckConstraint("CK_FinancialOperations_NonInvestmentFields", "\"Kind\" = 'Investment' OR (\"InvestmentKind\" IS NULL AND (\"InstrumentId\" IS NULL OR \"Kind\" IN ('Income', 'Expense')) AND \"SettlementAccountId\" IS NULL AND \"QuantityValue\" IS NULL AND \"QuotedPriceUnit\" IS NULL AND \"QuotedPricePriceAmount\" IS NULL AND \"QuotedPricePriceCurrencyCode\" IS NULL AND \"QuotedPricePercentOfNominal\" IS NULL)");
 
                             t.HasCheckConstraint("CK_FinancialOperations_NonOrdinaryFields", "\"Kind\" IN ('Income', 'Expense') OR (\"AccountId\" IS NULL AND \"CategoryId\" IS NULL)");
 
@@ -482,15 +482,10 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("text");
 
-                    b.Property<DateTimeOffset>("RecordedAt")
-                        .HasColumnType("timestamptz");
-
                     b.Property<DateOnly>("ValidAt")
                         .HasColumnType("date");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("LoanId", "RecordedAt");
 
                     b.HasIndex("LoanId", "ValidAt");
 

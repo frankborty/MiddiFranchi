@@ -1,49 +1,105 @@
 # MiddiFranchi
 
-MiddiFranchi is a personal finance application built with .NET 10, Blazor Web App (Interactive
-Server rendering), and PostgreSQL. The repository contains the solution bootstrap, the domain
-model, and the EF Core/PostgreSQL persistence foundation.
+MiddiFranchi è un progetto **educativo** di finanza personale: un'applicazione web per
+registrare conti, movimenti, investimenti e il patrimonio nel tempo. Non è un prodotto
+commerciale e non è pensato per essere usato con dati reali senza una verifica autonoma.
 
-## Project structure
+## Come è stato realizzato
+
+L'intero progetto è stato sviluppato **tramite agent code**. Non è stata aperta una UI per
+verificare il risultato e il codice non è stato controllato manualmente riga per riga.
+Il repository esiste per mostrare un possibile flusso di lavoro con agenti di coding su
+un'applicazione .NET completa, non come esempio di codice certificato o pronto per la
+produzione.
+
+Di conseguenza possono esserci imperfezioni, scelte non ottimali e comportamenti non
+verificati in ogni scenario.
+
+## Stato del progetto e supporto
+
+Questo progetto è fornito **così com'è**, senza garanzie e senza supporto.
+
+**Bug, problemi, richieste di assistenza o segnalazioni non verranno presi in carico.**
+Non aprire issue per chiedere correzioni: il progetto è condiviso esclusivamente a scopo
+educativo. Se vuoi usarlo, studialo, modificalo e adattalo in autonomia.
+
+## A cosa serve
+
+Il progetto mostra come modellare e implementare, in modo incrementale:
+
+- conti, saldi manuali e movimenti finanziari;
+- entrate, uscite, trasferimenti, storni e categorie;
+- strumenti finanziari, quotazioni, acquisti, vendite, cedole e dividendi;
+- prestiti e rilevazioni del patrimonio;
+- importazione e backup/ripristino dei dati;
+- una UI Blazor con dashboard, filtri persistenti e preferenze di aspetto;
+- separazione tra dominio, applicazione, infrastruttura e presentazione;
+- persistenza PostgreSQL con Entity Framework Core e migrazioni;
+- test unitari e test di integrazione con PostgreSQL tramite Testcontainers.
+
+## Stack
+
+- **C# / .NET 10**
+- **Blazor Web App** con rendering Interactive Server
+- **Clean Architecture** (Domain, Application, Infrastructure, Web)
+- **Entity Framework Core** con **Npgsql**
+- **PostgreSQL 17**
+- **xUnit** e **Shouldly**
+- **Docker / Docker Compose**
+
+## Struttura
 
 ```text
 MiddiFranchi/
 ├── src/
-│   ├── MiddiFranchi.Domain/          Entities, value objects, and domain rules
-│   ├── MiddiFranchi.Application/     Use cases, application services, and interfaces
-│   ├── MiddiFranchi.Infrastructure/  EF Core, Npgsql, persistence, external integrations
-│   └── MiddiFranchi.Web/             Blazor Web App (Interactive Server)
+│   ├── MiddiFranchi.Domain/           Entità, value object e regole di dominio
+│   ├── MiddiFranchi.Application/      Casi d'uso, servizi applicativi e interfacce
+│   ├── MiddiFranchi.Infrastructure/   EF Core, Npgsql, persistenza e integrazioni
+│   └── MiddiFranchi.Web/              Blazor Web App (Interactive Server)
 ├── tests/
-│   ├── MiddiFranchi.UnitTests/       Domain and application unit tests
-│   └── MiddiFranchi.IntegrationTests/ Integration tests, including future PostgreSQL tests
-├── docs/
-│   └── decisions/                    Architecture decision records
+│   ├── MiddiFranchi.UnitTests/        Test di dominio e applicazione
+│   └── MiddiFranchi.IntegrationTests/ Test di integrazione con PostgreSQL
+├── docs/                              Documentazione e decisioni architetturali
+├── import/                            File di import locali (ignorati da Git)
+├── compose.local.yaml                 Stack Docker locale (app + PostgreSQL)
+├── compose.yaml                       Stack Docker per il deployment
 ├── MiddiFranchi.sln
 ├── AGENTS.md
-├── .gitignore
 └── README.md
 ```
 
-### Dependency rules
+### Regole di dipendenza
 
-- Domain depends on no other solution project.
-- Application depends on Domain only.
-- Infrastructure depends on Application and Domain.
-- Web depends on Application and Infrastructure.
-- UnitTests reference Domain and Application.
-- IntegrationTests reference Domain, Application, and Infrastructure.
+- `Domain` non dipende da altri progetti della soluzione.
+- `Application` dipende solo da `Domain`.
+- `Infrastructure` dipende da `Application` e `Domain`.
+- `Web` dipende da `Application` e `Infrastructure`.
+- I test unitari dipendono da `Domain` e `Application`.
+- I test di integrazione dipendono da `Domain`, `Application` e `Infrastructure`.
 
-## Prerequisites
+## Privacy e dati personali
 
-- .NET 10 SDK (10.0.400 or a compatible later version)
-- PostgreSQL for running the application against a database.
-- Docker Desktop for the PostgreSQL integration tests. The tests use Testcontainers and are skipped
-  by default unless explicitly enabled.
-- An optional IDE such as Visual Studio or JetBrains Rider.
+Il repository **non contiene dati personali o finanziari reali**. I file di import locali
+sono esclusi tramite `.gitignore` (`import/`). Le migrazioni non contengono importi, ISIN o
+strumenti riconducibili a un portafoglio reale.
 
-## Restore, build, and test
+Per usare l'applicazione:
 
-Run these commands from the repository root:
+- usa un database tuo e non condividere connection string o credenziali;
+- conserva i segreti con .NET user secrets o variabili d'ambiente;
+- non committare backup, estratti conto o file di import;
+- non usare dati reali senza aver verificato autonomamente il comportamento dell'app.
+
+## Prerequisiti
+
+- .NET 10 SDK
+- PostgreSQL per eseguire l'applicazione
+- Docker Desktop per lo stack locale e per i test di integrazione PostgreSQL
+- Facoltativo: Visual Studio, JetBrains Rider o VS Code
+
+## Build e test
+
+Dalla root del repository:
 
 ```bash
 dotnet restore MiddiFranchi.sln
@@ -51,84 +107,76 @@ dotnet build MiddiFranchi.sln --configuration Release --no-restore
 dotnet test MiddiFranchi.sln --configuration Release --no-build
 ```
 
-## Configuration and secrets
-
-No connection string or credentials are committed to this repository. The application reads the
-connection string from `ConnectionStrings:DefaultConnection`. For local development, store it with
-.NET user secrets:
-
-```bash
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=middifranchi;Username=...;Password=..." --project src/MiddiFranchi.Web
-```
-
-Do not add connection strings, passwords, or other secrets to `appsettings.json`,
-`appsettings.Development.json`, or any other tracked file.
-
-The Web application resolves the connection string when the `DbContext` is first used. By default it
-applies pending EF migrations at startup (`Database:MigrateOnStartup=true`), so the database must be
-reachable when the application starts. Set `Database__MigrateOnStartup=false` to disable automatic
-migrations and manage the schema separately.
-
-## Docker and Portainer
-
-Use the Docker Registry endpoint (the one that responds on `/v2/`), not an optional web UI.
-Set your registry in a shell variable and build/publish the image:
-
-```bash
-export REGISTRY=registry.example.com:5000
-docker build -t "$REGISTRY/middifranchi:1.0.0" .
-docker push "$REGISTRY/middifranchi:1.0.0"
-```
-
-Then create a Portainer stack using [`compose.yaml`](compose.yaml) and set at least:
-
-- `MIDDIFRANCHI_IMAGE`
-- `DB_CONNECTION_STRING`
-- `MIDDIFRANCHI_PORT` (optional)
-
-For a local trial with Docker Desktop and a PostgreSQL container, see
-[docs/local-docker.md](docs/local-docker.md) and run:
-
-```bash
-docker compose -f compose.local.yaml up -d --build
-```
-
-See [docs/deployment.md](docs/deployment.md) for the full Portainer, PostgreSQL, reverse proxy,
-HTTPS, migration, upgrade, and troubleshooting guide.
-
-## Persistence and migrations
-
-The EF Core context and migrations live in `src/MiddiFranchi.Infrastructure/Persistence`. The
-design-time factory reads the connection string from the environment variable
-`ConnectionStrings__DefaultConnection`; set it only in the current shell session:
-
-```powershell
-$env:ConnectionStrings__DefaultConnection = "Host=localhost;Database=middifranchi;Username=...;Password=..."
-dotnet ef migrations add <MigrationName> --project src/MiddiFranchi.Infrastructure --startup-project src/MiddiFranchi.Web --configuration Release --output-dir Persistence/Migrations
-dotnet ef database update --project src/MiddiFranchi.Infrastructure --startup-project src/MiddiFranchi.Web --configuration Release
-```
-
-The committed migrations include the schema. A fresh database receives the base seed data
-(special accounts and categories) but no demo movements or instruments.
-
-## PostgreSQL integration tests
-
-Integration tests use a real PostgreSQL instance started by Testcontainers. Docker must be running.
-They are opt-in so the default test run succeeds without Docker:
+I test di integrazione PostgreSQL sono opt-in e richiedono Docker:
 
 ```powershell
 $env:MIGDIFRANCHI_POSTGRES_TESTS = "1"
 dotnet test tests/MiddiFranchi.IntegrationTests/MiddiFranchi.IntegrationTests.csproj --configuration Release
 ```
 
-The suite creates an isolated container, applies the migrations, and rolls back the data changes of
-each test.
+I test usano Testcontainers: creano un container PostgreSQL isolato, applicano le migrazioni
+e isolano i dati di ogni test.
 
-## Documentation
+## Avvio locale con Docker
 
-Architecture decision records belong in `docs/decisions/`. See
-[docs/decisions/README.md](docs/decisions/README.md) for the naming convention.
+```bash
+docker compose -f compose.local.yaml up -d --build
+```
 
-- [Backup and restore](docs/backup-restore.md)
-- [Data import](docs/data-import.md)
-- [Docker and Portainer deployment](docs/deployment.md)
+L'applicazione è disponibile su `http://localhost:8080`. La configurazione locale usa un
+database PostgreSQL nel container e applica le migrazioni all'avvio.
+
+Per fermare lo stack:
+
+```bash
+docker compose -f compose.local.yaml down
+```
+
+Per un deployment generico, vedere [compose.yaml](compose.yaml) e
+[docs/deployment.md](docs/deployment.md).
+
+## Configurazione
+
+La connection string viene letta da `ConnectionStrings:DefaultConnection`.
+
+Per lo sviluppo locale, usare i user secrets:
+
+```bash
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" \
+  "Host=localhost;Database=middifranchi;Username=...;Password=..." \
+  --project src/MiddiFranchi.Web
+```
+
+Non inserire password, token o connection string in file tracciati.
+
+## Migrazioni EF Core
+
+Il contesto EF Core e le migrazioni si trovano in
+`src/MiddiFranchi.Infrastructure/Persistence`. La factory di design-time legge la
+connection string dalla variabile d'ambiente `ConnectionStrings__DefaultConnection`.
+
+```powershell
+$env:ConnectionStrings__DefaultConnection = "Host=localhost;Database=middifranchi;Username=...;Password=..."
+dotnet ef migrations add <NomeMigrazione> --project src/MiddiFranchi.Infrastructure --startup-project src/MiddiFranchi.Web --output-dir Persistence/Migrations
+dotnet ef database update --project src/MiddiFranchi.Infrastructure --startup-project src/MiddiFranchi.Web
+```
+
+Le migrazioni sono incluse nel repository. Un database nuovo riceve solo i dati di base
+(conti speciali e categorie), non movimenti o strumenti dimostrativi.
+
+## Documentazione
+
+- [Modello di dominio](docs/domain-model.md)
+- [Design system](docs/design-system.md)
+- [Backup e ripristino](docs/backup-restore.md)
+- [Importazione dati](docs/data-import.md)
+- [Importazione conti](docs/data-import-accounts.md)
+- [Docker e deploy](docs/deployment.md)
+- [Docker locale](docs/local-docker.md)
+- [Decisioni architetturali](docs/decisions/)
+
+## Nota finale
+
+Questo repository è un esperimento educativo, non un servizio. Se qualcosa non funziona,
+la risposta è: studia il codice, prova a sistemarlo e impara. Non è previsto che qualcuno
+lo faccia per te.

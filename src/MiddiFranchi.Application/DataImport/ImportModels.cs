@@ -48,6 +48,7 @@ public sealed record ImportResult(
     int InstrumentsUpdated,
     int PricesCreated,
     int PricesUpdated,
+    int LoansCreated,
     int OperationsImported,
     int OperationsSkipped)
 {
@@ -56,10 +57,25 @@ public sealed record ImportResult(
         BalancesCreated + BalancesUpdated +
         InstrumentsCreated + InstrumentsUpdated +
         PricesCreated + PricesUpdated +
+        LoansCreated +
         OperationsImported;
 }
 
 public sealed record ImportTemplate(string FileName, byte[] Content);
+
+public sealed record AccountsImportPreview(
+    int Count,
+    int Loans,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> Errors)
+{
+    public bool HasErrors => Errors.Count > 0;
+}
+
+public sealed record AccountsImportResult(
+    int AccountsCreated,
+    int AccountsUpdated,
+    int LoansCreated);
 
 public sealed class ImportValidationException : Exception
 {

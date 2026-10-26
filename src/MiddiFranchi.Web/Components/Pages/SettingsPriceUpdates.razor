@@ -4,6 +4,7 @@
 @inject IPriceUpdateStore PriceUpdateStore
 @inject PriceUpdateService PriceUpdates
 @inject InvestmentWorkspaceService Workspace
+@inject NotificationService Notifications
 
 <PageTitle>Aggiornamento prezzi</PageTitle>
 
@@ -30,15 +31,6 @@ else if (_loadError is not null)
 }
 else
 {
-    @if (_message is not null)
-    {
-        <p class="alert alert-success" role="status">@_message</p>
-    }
-    @if (_actionError is not null)
-    {
-        <p class="alert alert-error" role="alert">@_actionError</p>
-    }
-
     <section class="settings-status-card @PriceStatusTone" aria-labelledby="price-status-title">
         @{
             var updateSettings = PriceUpdateStore.GetSettings();
@@ -167,8 +159,6 @@ else
     private InvestmentWorkspace? _workspace;
     private bool _loading = true;
     private string? _loadError;
-    private string? _message;
-    private string? _actionError;
 
     private bool _updateEnabled = true;
     private TimeOnly _updateTime = new(12, 0);
@@ -234,7 +224,7 @@ else
         }
         catch (Exception)
         {
-            _actionError = "Impossibile aggiornare gli strumenti. Verificare la connessione al database e riprovare.";
+            await Notifications.Error("Impossibile aggiornare gli strumenti. Verificare la connessione al database e riprovare.");
         }
     }
 
@@ -246,15 +236,14 @@ else
         _updateFrequency = settings.Frequency;
     }
 
-    private void SavePriceSettings()
+    private async Task SavePriceSettings()
     {
         PriceUpdateStore.SaveSettings(new PriceUpdateSettings(
             _updateEnabled,
             _updateTime,
             _updateFrequency,
             "XMIL"));
-        _message = "Impostazioni di aggiornamento salvate.";
-        _actionError = null;
+        await Notifications.Success("Impostazioni di aggiornamento salvate.");
     }
 
     private async Task UpdateAllNowAsync()
@@ -265,21 +254,20 @@ else
         }
 
         _updatingAll = true;
-        _message = null;
-        _actionError = null;
         try
         {
             var results = await PriceUpdates.UpdateAllAsync();
             var failures = results.Where(result => !result.Success).ToArray();
-            _message = failures.Length == 0
+            await Notifications.Success(failures.Length == 0
                 ? $"{results.Count} strumenti aggiornati."
-                : $"{results.Count - failures.Length} aggiornati, {failures.Length} errori.";
-            _actionError = failures.Length == 0
-                ? null
-                : string.Join(
+                : $"{results.Count - failures.Length} aggiornati, {failures.Length} errori.");
+            if (failures.Length > 0)
+            {
+                await Notifications.Error(string.Join(
                     " ",
                     failures.Select(result =>
-                        $"{(string.IsNullOrWhiteSpace(result.Name) ? "Aggiornamento" : result.Name)}: {result.Error}"));
+                        $"{(string.IsNullOrWhiteSpace(result.Name) ? "Aggiornamento" : result.Name)}: {result.Error}")));
+            }
 
             await ReloadAsync();
         }

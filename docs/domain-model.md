@@ -72,7 +72,7 @@ Le invarianti della rilevazione manuale:
 8. L'Application rifiuta una nuova rilevazione con ValidAt successiva alla data corrente, valutata in UTC alla registrazione. Il Domain resta indipendente dall'orologio.
 
 2.1.2 Prestito e rilevazione del prestito (Loan, LoanReading)
-Un **Loan** appartiene esclusivamente a un conto di tipo Prestiti e conserva identificativo, debitore, conto di riferimento e istante di creazione. Un **LoanReading** è una rilevazione manuale dell'importo ancora dovuto per quel singolo prestito: conserva importo in EUR, ValidAt e RecordedAt con le stesse regole delle rilevazioni manuali dei conti.
+Un **Loan** appartiene esclusivamente a un conto di tipo Prestiti e conserva identificativo, debitore, conto di riferimento e istante di creazione. Un **LoanReading** è una rilevazione manuale dell'importo ancora dovuto per quel singolo prestito: conserva importo in EUR, data di riferimento (ValidAt) e nota facoltativa. La data di registrazione non viene conservata.
 
 Invarianti dei prestiti:
 1. Ogni prestito ha le proprie rilevazioni, indipendenti da quelle degli altri prestiti.

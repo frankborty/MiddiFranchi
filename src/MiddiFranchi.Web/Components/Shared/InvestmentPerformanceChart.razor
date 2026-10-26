@@ -1,5 +1,6 @@
 @namespace MiddiFranchi.Web.Components.Shared
 @using MiddiFranchi.Application.Financial
+@inject ChartPreferences Preferences
 
 <section class="card investment-chart-card" aria-labelledby="investment-chart-title">
     <div class="section-head">
@@ -95,10 +96,16 @@
     [Parameter]
     public bool ShowPerformanceToggle { get; set; } = true;
 
+    private const string RangeKey = "mf.chart.performance.range";
+    private const string YearKey = "mf.chart.performance.year";
+    private const string LineKey = "mf.chart.performance.line";
+    private const string PercentKey = "mf.chart.performance.percent";
+
     private ChartRange _chartRange = ChartRange.Max;
     private int? _chartYear;
     private bool _showPerformanceLine;
     private bool _performancePercent = true;
+    private bool _preferencesLoaded;
 
     private const string PerformanceColor = "#8b5cf6";
 
@@ -118,6 +125,33 @@
         {
             _showPerformanceLine = false;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preferencesLoaded)
+        {
+            return;
+        }
+
+        _preferencesLoaded = true;
+
+        var range = await Preferences.GetAsync(RangeKey);
+        if (Enum.TryParse<ChartRange>(range, out var storedRange))
+        {
+            _chartRange = storedRange;
+        }
+
+        var year = await Preferences.GetAsync(YearKey);
+        _chartYear = int.TryParse(year, out var storedYear) ? storedYear : null;
+
+        if (ShowPerformanceToggle)
+        {
+            _showPerformanceLine = await Preferences.GetBoolAsync(LineKey) ?? _showPerformanceLine;
+            _performancePercent = await Preferences.GetBoolAsync(PercentKey) ?? _performancePercent;
+        }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private IReadOnlyList<InvestmentHistoryPoint> ChartPoints
@@ -178,14 +212,19 @@
 
     private bool IsChartRange(ChartRange range) => _chartYear is null && _chartRange == range;
 
-    private void SetChartRange(ChartRange range)
+    private async Task SetChartRange(ChartRange range)
     {
         _chartRange = range;
         _chartYear = null;
+        await Preferences.SetAsync(RangeKey, range.ToString());
+        await Preferences.SetAsync(YearKey, "");
     }
 
-    private void OnChartYearChanged(ChangeEventArgs args) =>
+    private async Task OnChartYearChanged(ChangeEventArgs args)
+    {
         _chartYear = int.TryParse(args.Value?.ToString(), out var year) ? year : null;
+        await Preferences.SetAsync(YearKey, _chartYear?.ToString() ?? "");
+    }
 
     private (DateOnly? From, DateOnly? To) ChartWindow(DateOnly valuationDate)
     {
@@ -370,9 +409,17 @@
         return invested.Amount > 0m ? result / invested.Amount : null;
     }
 
-    private void SetPerformancePercent(bool percent) => _performancePercent = percent;
+    private async Task SetPerformancePercent(bool percent)
+    {
+        _performancePercent = percent;
+        await Preferences.SetBoolAsync(PercentKey, percent);
+    }
 
-    private void TogglePerformanceLine() => _showPerformanceLine = !_showPerformanceLine;
+    private async Task TogglePerformanceLine()
+    {
+        _showPerformanceLine = !_showPerformanceLine;
+        await Preferences.SetBoolAsync(LineKey, _showPerformanceLine);
+    }
 
     private enum ChartRange
     {

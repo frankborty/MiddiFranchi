@@ -1,4 +1,5 @@
 using MiddiFranchi.Application.Financial;
+using MiddiFranchi.Application.Shared;
 using MiddiFranchi.Domain.Financial;
 using MiddiFranchi.Domain.Portfolio;
 using MiddiFranchi.Domain.Shared;
@@ -51,6 +52,7 @@ public class InvestmentWorkspaceServiceTests
         workspace.CatalogCount.ShouldBe(1);
         workspace.ArchivedCount.ShouldBe(0);
         workspace.TotalIncome.ShouldBe(new Money(0m, Euro));
+        workspace.NetIncome.ShouldBe(new Money(0m, Euro));
     }
 
     [Fact]
@@ -86,6 +88,56 @@ public class InvestmentWorkspaceServiceTests
     }
 
     [Fact]
+    public async Task LoadAsync_ShouldIncludeOrdinaryCouponIncomeInTotals()
+    {
+        var instrument = AddInstrument("BTP Italia");
+        _operations.Operations.Add(new Income(
+            Guid.NewGuid(),
+            account: null,
+            new Category(Guid.NewGuid(), "Cedole", CategoryType.Income),
+            new PositiveMoney(new Money(12.5m, Euro)),
+            new DateOnly(2026, 10, 10),
+            RecordedAt,
+            instrument: instrument));
+
+        var workspace = await _service.LoadAsync();
+
+        var row = workspace.Assets.ShouldHaveSingleItem();
+        row.Income.ShouldBe(new Money(12.5m, Euro));
+        workspace.TotalIncome.ShouldBe(new Money(12.5m, Euro));
+        workspace.NetIncome.ShouldBe(new Money(12.5m, Euro));
+    }
+
+    [Fact]
+    public async Task LoadAsync_ShouldSubtractCouponTaxesFromNetIncome()
+    {
+        var instrument = AddInstrument("BTP Italia");
+        var incomeId = Guid.NewGuid();
+        _operations.Operations.Add(new Income(
+            incomeId,
+            account: null,
+            new Category(Guid.NewGuid(), "Cedole", CategoryType.Income),
+            new PositiveMoney(new Money(12.5m, Euro)),
+            new DateOnly(2026, 10, 10),
+            RecordedAt,
+            instrument: instrument));
+        _operations.Operations.Add(new Expense(
+            DeterministicId.From("tax-expense", incomeId.ToString("N")),
+            account: null,
+            new Category(Guid.NewGuid(), "Fees", CategoryType.Expense, null, "Tasse Investimenti"),
+            new PositiveMoney(new Money(2.5m, Euro)),
+            new DateOnly(2026, 10, 10),
+            RecordedAt,
+            "Tasse su cedola",
+            instrument: instrument));
+
+        var workspace = await _service.LoadAsync();
+
+        workspace.TotalIncome.ShouldBe(new Money(12.5m, Euro));
+        workspace.NetIncome.ShouldBe(new Money(10m, Euro));
+    }
+
+    [Fact]
     public async Task LoadAsync_ShouldKeepIncomeSeparateFromTheUnrealizedResult()
     {
         var instrument = AddInstrument("ETF globale");
@@ -101,6 +153,7 @@ public class InvestmentWorkspaceServiceTests
         row.UnrealizedResult.ShouldBe(new Money(20m, Euro));
         row.TotalResult.ShouldBe(new Money(25m, Euro));
         workspace.TotalIncome.ShouldBe(new Money(5m, Euro));
+        workspace.NetIncome.ShouldBe(new Money(5m, Euro));
         workspace.Overview.Performance.ShouldBe(new Money(20m, Euro));
     }
 

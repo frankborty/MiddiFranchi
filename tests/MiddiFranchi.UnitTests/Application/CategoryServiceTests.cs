@@ -58,6 +58,25 @@ public class CategoryServiceTests
     }
 
     [Fact]
+    public async Task Update_ShouldApplyIconAndColorToEverySubcategory()
+    {
+        var first = await _service.CreateAsync(
+            new NewCategory("Fees", CategoryType.Expense, null, "Conto Titoli", "receipt", "#64748b"));
+        var second = await _service.CreateAsync(
+            new NewCategory("Fees", CategoryType.Expense, null, "Tasse Investimenti", "percent", "#b4232c"));
+
+        await _service.UpdateAsync(
+            first.Id,
+            new NewCategory("Fees", CategoryType.Expense, null, "Conto Titoli", "wallet", "#111111"));
+
+        var group = _categories.Categories
+            .Where(category => category.Name == "Fees" && category.Type == CategoryType.Expense)
+            .ToArray();
+        group.ShouldAllBe(category => category.Icon == "wallet" && category.ColorHex == "#111111");
+        group.Single(category => category.Id == second.Id).Subcategory.ShouldBe("Tasse Investimenti");
+    }
+
+    [Fact]
     public async Task Update_ShouldRejectAMissingCategory()
     {
         var exception = await Should.ThrowAsync<InvalidOperationException>(

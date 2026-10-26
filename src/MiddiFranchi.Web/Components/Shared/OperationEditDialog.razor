@@ -5,6 +5,7 @@
 @using MiddiFranchi.Domain.Shared
 @inject OperationUpdateService Updates
 @inject OperationDeletionService Deletions
+@inject InvestmentAssetService InvestmentAssets
 
 @if (Open && Operation is { } operation)
 {
@@ -13,7 +14,7 @@
              @onclick:stopPropagation="true">
             <div class="section-head">
                 <div>
-                    <h2 id="edit-operation-title">Modifica operazione</h2>
+                    <h2 id="edit-operation-title">@(_editing ? "Modifica operazione" : "Dettaglio operazione")</h2>
                     <p class="section-sub">
                         <StatusBadge Tone="@KindTone">@KindLabel</StatusBadge>
                     </p>
@@ -28,69 +29,130 @@
                 <p class="alert alert-error" role="alert">@_error</p>
             }
 
-            <form class="form-grid operation-form" @onsubmit="SaveAsync">
-                @if (IsExpense)
-                {
-                    <label>
-                        <span>Categoria</span>
-                        <select @bind="_categoryName" @bind:after="OnCategoryGroupChanged">
-                            <option value="">Tutte le categorie</option>
-                            @foreach (var group in ExpenseGroups)
-                            {
-                                <option value="@group.Name">@group.Name</option>
-                            }
-                        </select>
-                    </label>
-                    <label>
-                        <span>Sottocategoria *</span>
-                        <select @bind="_categoryId" @bind:after="OnSubcategoryChanged" required aria-required="true">
-                            <option value="">Seleziona…</option>
-                            @foreach (var group in VisibleExpenseGroups)
-                            {
-                                <optgroup label="@group.Name">
-                                    @foreach (var category in group.Categories)
-                                    {
-                                        <option value="@category.Id">@SubcategoryLabel(category)</option>
-                                    }
-                                </optgroup>
-                            }
-                        </select>
-                    </label>
-                }
-                else
-                {
-                    <label class="operation-form-wide">
-                        <span>Categoria *</span>
-                        <select @bind="_categoryId" required aria-required="true">
-                            <option value="">Seleziona…</option>
-                            @foreach (var category in IncomeCategories)
-                            {
-                                <option value="@category.Id">@category.Name</option>
-                            }
-                        </select>
-                    </label>
-                }
-
-                <label>
-                    <span>Importo *</span>
-                    <input type="text" inputmode="decimal" placeholder="0,00" required aria-required="true" @bind="_amountText" />
-                </label>
-                <label>
-                    <span>Data *</span>
-                    <input type="date" required aria-required="true" @bind="_validAt" />
-                </label>
-                <label class="operation-form-wide">
-                    <span>Descrizione / Nota</span>
-                    <input type="text" maxlength="200" placeholder="Es. Spesa settimanale" @bind="_description" />
-                </label>
+            @if (!_editing)
+            {
+                <div class="operation-edit-values">
+                    <div><span>Categoria</span><strong>@CategoryDisplay</strong></div>
+                    @if (IsExpense)
+                    {
+                        <div><span>Sottocategoria</span><strong>@SubcategoryDisplay</strong></div>
+                    }
+                    <div><span>Importo</span><strong>@AmountDisplay</strong></div>
+                    <div><span>Data</span><strong>@DateDisplay</strong></div>
+                    @if (ShowTax && !IsExpense)
+                    {
+                        <div><span>Tasse pagate</span><strong>@TaxDisplay</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Operation.InstrumentName))
+                    {
+                        <div><span>Strumento</span><strong>@Operation.InstrumentName</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Operation.AccountLabel))
+                    {
+                        <div><span>Conto</span><strong>@Operation.AccountLabel</strong></div>
+                    }
+                    <div class="operation-edit-values-wide">
+                        <span>Descrizione / Nota</span>
+                        <strong>@DescriptionDisplay</strong>
+                    </div>
+                </div>
 
                 <div class="form-actions">
-                    <button type="submit" class="primary-button" disabled="@(_saving || !CanSave)">
-                        Salva modifiche
+                    <button type="button" class="primary-button" disabled="@_saving" @onclick="StartEditing">
+                        <MfIcon Name="edit" Size="16" /> Modifica
                     </button>
-                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Annulla</button>
+                    <button type="button" class="secondary-button" disabled="@_saving" @onclick="CloseAsync">Chiudi</button>
                 </div>
-            </form>
+            }
+            else
+            {
+                <form class="form-grid operation-form" @onsubmit="SaveAsync">
+                    @if (IsExpense)
+                    {
+                        <div class="operation-form-pair operation-form-wide">
+                            <label>
+                                <span>Categoria</span>
+                                <select @bind="_categoryName" @bind:after="OnCategoryGroupChanged">
+                                    <option value="">Tutte le categorie</option>
+                                    @foreach (var group in ExpenseGroups)
+                                    {
+                                        <option value="@group.Name">@group.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                <span>Sottocategoria *</span>
+                                <select @bind="_categoryId" @bind:after="OnSubcategoryChanged" required aria-required="true">
+                                    <option value="">Seleziona…</option>
+                                    @foreach (var group in VisibleExpenseGroups)
+                                    {
+                                        <optgroup label="@group.Name">
+                                            @foreach (var category in group.Categories)
+                                            {
+                                                <option value="@category.Id">@SubcategoryLabel(category)</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                            </label>
+                        </div>
+                    }
+                    else
+                    {
+                        <label class="operation-form-wide">
+                            <span>Categoria *</span>
+                            <select @bind="_categoryId" required aria-required="true">
+                                <option value="">Seleziona…</option>
+                                @foreach (var category in IncomeCategories)
+                                {
+                                    <option value="@category.Id">@category.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+
+                    @if (ShowInstrumentSelector)
+                    {
+                        <label class="operation-form-wide">
+                            <span>Strumento finanziario</span>
+                            <select @bind="_instrumentId">
+                                <option value="">Nessuno strumento</option>
+                                @foreach (var instrument in InstrumentChoices)
+                                {
+                                    <option value="@instrument.Id">@instrument.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+
+                    <label>
+                        <span>Importo *</span>
+                        <input type="text" inputmode="decimal" placeholder="0,00" required aria-required="true" @bind="_amountText" />
+                    </label>
+                    <label>
+                        <span>Data *</span>
+                        <input type="date" required aria-required="true" @bind="_validAt" />
+                    </label>
+                    @if (ShowTax && !IsExpense)
+                    {
+                        <label>
+                            <span>Tasse pagate</span>
+                            <input type="text" inputmode="decimal" placeholder="0,00" @bind="_taxText" />
+                        </label>
+                    }
+                    <label class="operation-form-wide">
+                        <span>Descrizione / Nota</span>
+                        <textarea rows="3" maxlength="500" placeholder="Es. Spesa settimanale" @bind="_description"></textarea>
+                    </label>
+
+                    <div class="form-actions">
+                        <button type="submit" class="primary-button" disabled="@(_saving || !CanSave)">
+                            Salva modifiche
+                        </button>
+                        <button type="button" class="secondary-button" disabled="@_saving" @onclick="CancelEditing">Annulla</button>
+                    </div>
+                </form>
+            }
 
             <div class="settings-danger-zone">
                 @if (_confirmingDelete)
@@ -125,6 +187,10 @@
 
     [Parameter] public IReadOnlyList<Category> Categories { get; set; } = [];
 
+    [Parameter] public IReadOnlyList<InvestmentOption> Instruments { get; set; } = [];
+
+    [Parameter] public bool ShowTax { get; set; }
+
     [Parameter] public EventCallback OnClose { get; set; }
 
     [Parameter] public EventCallback<string> OnSaved { get; set; }
@@ -133,11 +199,14 @@
     private Guid? _loadedOperationId;
     private bool _saving;
     private bool _confirmingDelete;
+    private bool _editing;
     private string? _error;
     private string _categoryId = "";
     private string _categoryName = "";
     private bool _filterByCategory;
+    private string _instrumentId = "";
     private string _amountText = "";
+    private string _taxText = "";
     private DateOnly? _validAt;
     private string? _description;
 
@@ -168,6 +237,57 @@
         !string.IsNullOrWhiteSpace(_amountText) &&
         _validAt is not null;
 
+    private Category? SelectedCategory =>
+        CategoryChoices.FirstOrDefault(category => category.Id.ToString() == _categoryId);
+
+    private bool IsCouponIncome =>
+        !IsExpense &&
+        (Operation?.InstrumentId is not null ||
+         string.Equals(
+             SelectedCategory?.Name ?? Operation?.CategoryName,
+             "Cedole",
+             StringComparison.CurrentCultureIgnoreCase));
+
+    private bool ShowInstrumentSelector =>
+        IsCouponIncome && (Instruments.Count > 0 || Operation?.InstrumentId is not null);
+
+    private IReadOnlyList<InvestmentOption> InstrumentChoices
+    {
+        get
+        {
+            var choices = Instruments.ToList();
+            if (Operation is { InstrumentId: { } instrumentId, InstrumentName: { } instrumentName } &&
+                choices.All(choice => choice.Id != instrumentId))
+            {
+                choices.Add(new InvestmentOption(instrumentId, instrumentName));
+            }
+
+            return choices
+                .OrderBy(choice => choice.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+        }
+    }
+
+    private string CategoryDisplay =>
+        SelectedCategory?.Name ?? Operation?.CategoryName ?? "—";
+
+    private string SubcategoryDisplay =>
+        SelectedCategory?.Subcategory ?? Operation?.Subcategory ?? "—";
+
+    private string AmountDisplay =>
+        Operation?.Amount is { } amount
+            ? Format.Money(new Money(Math.Abs(amount.Amount), amount.Currency))
+            : "—";
+
+    private string DateDisplay =>
+        _validAt is { } date ? Format.Date(date) : "—";
+
+    private string TaxDisplay =>
+        ShowTax && !IsExpense ? $"{_taxText} €" : "—";
+
+    private string DescriptionDisplay =>
+        string.IsNullOrWhiteSpace(_description) ? "—" : _description;
+
     protected override void OnParametersSet()
     {
         if (!Open || Operation is not { } operation)
@@ -184,15 +304,33 @@
 
         _wasOpen = true;
         _loadedOperationId = operation.Id;
+        LoadFromOperation(operation);
+    }
+
+    private void LoadFromOperation(OperationHistoryRow operation)
+    {
         _saving = false;
         _confirmingDelete = false;
+        _editing = false;
         _error = null;
         _categoryId = operation.CategoryId?.ToString() ?? "";
         _categoryName = operation.CategoryName ?? "";
         _filterByCategory = !string.IsNullOrWhiteSpace(_categoryName);
+        _instrumentId = operation.InstrumentId?.ToString() ?? "";
         _amountText = DecimalText.Format(Math.Abs(operation.Amount.GetValueOrDefault().Amount));
+        _taxText = DecimalText.Format(operation.Tax?.Amount ?? 0m);
         _validAt = operation.OperationDate;
         _description = operation.Description;
+    }
+
+    private void StartEditing() => _editing = true;
+
+    private void CancelEditing()
+    {
+        if (Operation is { } operation)
+        {
+            LoadFromOperation(operation);
+        }
     }
 
     private void OnCategoryGroupChanged()
@@ -239,9 +377,28 @@
             return;
         }
 
+        decimal? taxAmount = null;
+        if (ShowTax && !IsExpense)
+        {
+            if (!string.IsNullOrWhiteSpace(_taxText))
+            {
+                if (!TryParseAmount(_taxText, out var tax) || tax < 0m)
+                {
+                    _error = "Le tasse devono essere un numero non negativo.";
+                    return;
+                }
+
+                taxAmount = tax > 0m ? tax : null;
+            }
+        }
+
         _saving = true;
         _error = null;
         StateHasChanged();
+        var updateInstrument = ShowInstrumentSelector;
+        Guid? instrumentId = updateInstrument && Guid.TryParse(_instrumentId, out var parsedInstrumentId)
+            ? parsedInstrumentId
+            : null;
         try
         {
             await Updates.UpdateAsync(new UpdateOperationRequest(
@@ -249,7 +406,15 @@
                 Guid.Parse(_categoryId),
                 new PositiveMoney(new Money(amount, Currency.Euro)),
                 _validAt!.Value,
-                string.IsNullOrWhiteSpace(_description) ? null : _description.Trim()));
+                Description: string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
+                InstrumentId: instrumentId,
+                UpdateInstrument: updateInstrument));
+
+            if (ShowTax && !IsExpense && !Operation.IsInvestment)
+            {
+                await InvestmentAssets.SaveIncomeTaxAsync(Operation.Id, taxAmount);
+            }
+
             await OnSaved.InvokeAsync("Operazione aggiornata.");
             await OnClose.InvokeAsync();
         }

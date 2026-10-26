@@ -6,14 +6,19 @@
 @using MiddiFranchi.Domain.Portfolio
 @using MiddiFranchi.Domain.Shared
 @inject InvestmentWorkspaceService Workspace
+@inject NotificationService Notifications
 @inject PriceUpdateService PriceUpdates
+@inject FilterPreferences Filters
+@inject CategoryService CategoriesService
+@inject OperationHistoryService History
+@inject SectionAppearanceService Appearance
 
 <PageTitle>Investimenti</PageTitle>
 
 <header class="dashboard-header">
     <div>
         <h1 class="account-detail-title">
-            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="pie" Size="20" /></span>
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="20" /></span>
             Investimenti
         </h1>
     </div>
@@ -63,8 +68,8 @@ else if (_workspace is { } workspace)
             <StatTile Label="Rendimento %"
                       Value="@ResultPercentValue(workspace.Overview.TotalResultPercent)"
                       ValueClass="@ResultPercentClass(workspace.Overview.TotalResultPercent)" />
-            <StatTile Label="Cedole e dividendi"
-                      Value="@Format.Money(workspace.TotalIncome)" />
+            <StatTile Label="Cedole e dividendi netti"
+                      Value="@Format.Money(workspace.NetIncome)" />
         </div>
 
         @if (workspace.Overview.AssetCount == 0)
@@ -161,12 +166,6 @@ else if (_workspace is { } workspace)
                     <h2 id="investments-table-title"><MfIcon Name="list" Size="18" /> Strumenti</h2>
                 </div>
                 <div class="investment-table-actions">
-                    <button type="button" class="secondary-button"
-                            disabled="@_updatingAllPrices"
-                            @onclick="UpdateAllPricesAsync">
-                        <MfIcon Name="refresh" Size="16" />
-                        @(_updatingAllPrices ? "Aggiornamento…" : "Aggiorna tutti")
-                    </button>
                     @if (QuotesUpToDate)
                     {
                         <StatusBadge Tone="income" Title="@QuoteStatusTooltip">@QuoteStatusLabel</StatusBadge>
@@ -179,23 +178,21 @@ else if (_workspace is { } workspace)
                             <StatusBadge Tone="warning">@QuoteStatusLabel</StatusBadge>
                         </button>
                     }
+                    <button type="button" class="secondary-button"
+                            disabled="@_updatingAllPrices"
+                            @onclick="UpdateAllPricesAsync">
+                        <MfIcon Name="refresh" Size="16" />
+                        @(_updatingAllPrices ? "Aggiornamento…" : "Aggiorna tutti")
+                    </button>
                 </div>
             </div>
-
-            @if (_priceUpdateMessage is not null)
-            {
-                <p class="alert alert-success" role="status">@_priceUpdateMessage</p>
-            }
-            @if (_priceUpdateError is not null)
-            {
-                <p class="alert alert-error" role="alert">@_priceUpdateError</p>
-            }
 
             <div class="investment-toolbar">
                 <div class="category-search investment-search-compact">
                     <MfIcon Name="search" Size="16" />
                     <input type="search" placeholder="Cerca"
-                           aria-label="Cerca strumenti" @bind="_search" @bind:event="oninput" />
+                           aria-label="Cerca strumenti" @bind="_search" @bind:event="oninput"
+                           @bind:after="PersistFiltersAsync" />
                     @if (!string.IsNullOrWhiteSpace(_search))
                     {
                         <button type="button" class="category-search-clear" aria-label="Azzera ricerca"
@@ -293,18 +290,6 @@ else if (_workspace is { } workspace)
                                                     <StatusBadge Tone="@AssetClassPalette.Tone(asset.AssetClass)">
                                                         @Format.AssetClassLabel(asset.AssetClass)
                                                     </StatusBadge>
-                                                    <span class="status-chip neutral">Tasse @Format.Percent(asset.TaxRate / 100m)</span>
-                                                    @if (asset.Isin is { } isin)
-                                                    {
-                                                        <span class="investment-isin">@isin</span>
-                                                    }
-                                                    @if (asset.ReferenceUrl is { } referenceUrl)
-                                                    {
-                                                        <a class="investment-link" href="@referenceUrl" target="_blank"
-                                                           rel="noopener noreferrer" aria-label="Scheda di @asset.Name">
-                                                            <MfIcon Name="external-link" Size="14" /> Scheda
-                                                        </a>
-                                                    }
                                                 </div>
                                             </div>
                                         </div>
@@ -368,6 +353,73 @@ else if (_workspace is { } workspace)
             }
         </section>
 
+        <section class="card investments-table-card investments-coupons-card" aria-labelledby="investments-coupons-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="investments-coupons-title"><MfIcon Name="percent" Size="18" /> Cedole</h2>
+                </div>
+                @if (_coupons.Count > 0)
+                {
+                    <StatusBadge Tone="income">@FilteredCoupons.Count</StatusBadge>
+                }
+            </div>
+
+            @if (_coupons.Count == 0)
+            {
+                <EmptyState Title="Nessuna cedola registrata" Icon="percent" />
+            }
+            else
+            {
+                <div class="investment-toolbar coupons-toolbar">
+                    <div class="category-search investment-search-compact">
+                        <MfIcon Name="search" Size="16" />
+                        <input type="search" placeholder="Cerca cedole"
+                               aria-label="Cerca cedole" @bind="_couponSearch" @bind:event="oninput"
+                               @bind:after="PersistFiltersAsync" />
+                        @if (!string.IsNullOrWhiteSpace(_couponSearch))
+                        {
+                            <button type="button" class="category-search-clear" aria-label="Azzera ricerca cedole"
+                                    @onclick="ClearCouponSearch">
+                                <MfIcon Name="close" Size="14" />
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                @if (FilteredCoupons.Count == 0)
+                {
+                    <EmptyState Title="Nessuna cedola corrisponde al filtro" Icon="filter" />
+                }
+                else
+                {
+                    <div class="table-scroll" tabindex="0">
+                        <table class="data-table investments-coupons-table">
+                            <thead>
+                                <tr>
+                                    <SortableTh OnSort="OnCouponSortChangedAsync" Sort="_couponSort" Column="date" Label="Data" />
+                                    <SortableTh OnSort="OnCouponSortChangedAsync" Sort="_couponSort" Column="instrument" Label="Strumento" />
+                                    <SortableTh OnSort="OnCouponSortChangedAsync" Sort="_couponSort" Column="gross" Label="Lordo" Numeric="true" />
+                                    <SortableTh OnSort="OnCouponSortChangedAsync" Sort="_couponSort" Column="net" Label="Netto" Numeric="true" />
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var coupon in FilteredCoupons)
+                                {
+                                <tr class="movement-row" tabindex="0" title="Apri e modifica"
+                                    @onclick="() => OpenCouponAsync(coupon)"
+                                    @onkeydown="args => OnCouponKeyDown(args, coupon)">
+                                    <td>@Format.Date(coupon.OperationDate)</td>
+                                    <td>@(coupon.InstrumentName ?? "—")</td>
+                                    <td class="num">@Format.Money(new Money(CouponGross(coupon), Currency.Euro))</td>
+                                    <td class="num">@Format.Money(new Money(CouponNet(coupon), Currency.Euro))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                }
+            }
+        </section>
     }
 }
 
@@ -381,6 +433,21 @@ else if (_workspace is { } workspace)
                        AssetClassColor="@AllocationDialogColor"
                        Items="AllocationDialogItems"
                        OnClose="CloseAllocationDialog" />
+
+<OperationEditDialog Open="_couponEditOpen"
+                     Operation="_editingCoupon"
+                     Categories="_categories"
+                     Instruments="_instrumentOptions"
+                     ShowTax="true"
+                     OnClose="CloseCouponEdit"
+                     OnSaved="OnCouponSaved" />
+
+<InvestmentOperationDialog Open="_investmentDialogOpen"
+                           Asset="_investmentAsset"
+                           Operation="_investmentOperation"
+                           OnClose="CloseInvestmentDialog"
+                           OnSaved="OnInvestmentSaved"
+                           OnDeleted="OnInvestmentDeleted" />
 
 @code {
     private static readonly string[] InstrumentColors =
@@ -399,19 +466,29 @@ else if (_workspace is { } workspace)
     private bool _loading = true;
     private string? _loadError;
     private bool _updatingAllPrices;
-    private string? _priceUpdateMessage;
-    private string? _priceUpdateError;
 
     private string _search = "";
     private readonly HashSet<AssetClass> _classFilters = [];
     private bool _showArchived;
     private SortColumn _sortColumn = SortColumn.CurrentValue;
     private bool _sortDescending = true;
+    private bool _filtersLoaded;
     private AllocationSegment? _allocationHover;
     private bool _allocationDialogOpen;
     private AssetClass? _allocationDialogClass;
 
     private bool _outdatedQuotesOpen;
+
+    private IReadOnlyList<OperationHistoryRow> _coupons = [];
+    private string _couponSearch = "";
+    private TableSort _couponSort = new("date", descending: true);
+    private IReadOnlyList<Category> _categories = [];
+    private IReadOnlyList<InvestmentOption> _instrumentOptions = [];
+    private bool _couponEditOpen;
+    private OperationHistoryRow? _editingCoupon;
+    private InvestmentAssetRow? _investmentAsset;
+    private InvestmentOperationRow? _investmentOperation;
+    private bool _investmentDialogOpen;
 
     private enum SortColumn
     {
@@ -432,17 +509,101 @@ else if (_workspace is { } workspace)
         string DashOffset,
         AssetClass AssetClass);
 
+    private sealed class FilterState
+    {
+        public string Search { get; set; } = "";
+        public string[] Classes { get; set; } = [];
+        public bool ShowArchived { get; set; }
+        public string SortColumn { get; set; } = "CurrentValue";
+        public bool SortDescending { get; set; } = true;
+        public string CouponSearch { get; set; } = "";
+        public string CouponSortColumn { get; set; } = "date";
+        public bool CouponSortDescending { get; set; } = true;
+    }
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _filtersLoaded)
+        {
+            return;
+        }
+
+        _filtersLoaded = true;
+        var state = await Filters.GetAsync<FilterState>("mf.filters.investments");
+        if (state is null)
+        {
+            return;
+        }
+
+        _search = state.Search ?? "";
+        _classFilters.Clear();
+        foreach (var name in state.Classes)
+        {
+            if (Enum.TryParse<AssetClass>(name, ignoreCase: true, out var assetClass))
+            {
+                _classFilters.Add(assetClass);
+            }
+        }
+
+        _showArchived = state.ShowArchived;
+        if (Enum.TryParse<SortColumn>(state.SortColumn, ignoreCase: true, out var column))
+        {
+            _sortColumn = column;
+        }
+
+        _sortDescending = state.SortDescending;
+        _couponSearch = state.CouponSearch ?? "";
+        _couponSort = new TableSort(
+            string.IsNullOrWhiteSpace(state.CouponSortColumn) ? "date" : state.CouponSortColumn,
+            state.CouponSortDescending);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task PersistFiltersAsync() => Filters.SetAsync(
+        "mf.filters.investments",
+        new FilterState
+        {
+            Search = _search,
+            Classes = _classFilters.Select(assetClass => assetClass.ToString()).ToArray(),
+            ShowArchived = _showArchived,
+            SortColumn = _sortColumn.ToString(),
+            SortDescending = _sortDescending,
+            CouponSearch = _couponSearch,
+            CouponSortColumn = _couponSort.Column,
+            CouponSortDescending = _couponSort.Descending,
+        });
 
     private async Task LoadAsync()
     {
         _loading = true;
         _loadError = null;
         _workspace = null;
+        _coupons = [];
+        _categories = [];
+        _instrumentOptions = [];
 
         try
         {
-            _workspace = await Workspace.LoadAsync();
+            var workspace = await Workspace.LoadAsync();
+            _workspace = workspace;
+            _categories = await CategoriesService.ListAsync();
+            _instrumentOptions = workspace.Assets
+                .Where(asset => !asset.IsArchived)
+                .OrderBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+                .Select(asset => new InvestmentOption(asset.InstrumentId, asset.Name))
+                .ToArray();
+            var history = await History.ListAsync();
+            _coupons = history
+                .Where(row =>
+                    row.Kind == OperationKind.Income &&
+                    row.Status == OperationStatus.Registered &&
+                    string.Equals(row.CategoryName, "Cedole", StringComparison.CurrentCultureIgnoreCase))
+                .OrderByDescending(row => row.OperationDate)
+                .ThenByDescending(row => row.RecordedAt)
+                .ThenByDescending(row => row.Id)
+                .ToArray();
             RefreshRouteKeys();
         }
         catch (InvalidOperationException exception)
@@ -460,6 +621,116 @@ else if (_workspace is { } workspace)
         }
     }
 
+    private static decimal CouponGross(OperationHistoryRow coupon) =>
+        coupon.Amount?.Amount ?? 0m;
+
+    private static decimal CouponNet(OperationHistoryRow coupon) =>
+        CouponGross(coupon) - (coupon.Tax?.Amount ?? 0m);
+
+    private IReadOnlyList<OperationHistoryRow> FilteredCoupons
+    {
+        get
+        {
+            IEnumerable<OperationHistoryRow> rows = _coupons;
+            var term = _couponSearch.Trim();
+            if (term.Length > 0)
+            {
+                rows = rows.Where(coupon =>
+                    (coupon.InstrumentName ?? "").Contains(term, StringComparison.CurrentCultureIgnoreCase) ||
+                    (coupon.Description ?? "").Contains(term, StringComparison.CurrentCultureIgnoreCase) ||
+                    Format.Date(coupon.OperationDate).Contains(term, StringComparison.CurrentCultureIgnoreCase) ||
+                    coupon.OperationDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        .Contains(term, StringComparison.CurrentCultureIgnoreCase));
+            }
+
+            return _couponSort.Column switch
+            {
+                "instrument" => _couponSort.Apply(
+                    rows,
+                    coupon => coupon.InstrumentName ?? "",
+                    StringComparer.CurrentCultureIgnoreCase).ToArray(),
+                "gross" => _couponSort.Apply(rows, CouponGross).ToArray(),
+                "net" => _couponSort.Apply(rows, CouponNet).ToArray(),
+                _ => _couponSort.Apply(rows, coupon => coupon.OperationDate).ToArray(),
+            };
+        }
+    }
+
+    private void ClearCouponSearch()
+    {
+        _couponSearch = "";
+        _ = PersistFiltersAsync();
+    }
+
+    private async Task OnCouponSortChangedAsync()
+    {
+        await PersistFiltersAsync();
+        StateHasChanged();
+    }
+
+    private async Task OpenCouponAsync(OperationHistoryRow coupon)
+    {
+        if (coupon.IsInvestment)
+        {
+            await OpenInvestmentCouponAsync(coupon);
+            return;
+        }
+
+        _editingCoupon = coupon;
+        _couponEditOpen = true;
+    }
+
+    private async Task OpenInvestmentCouponAsync(OperationHistoryRow coupon)
+    {
+        var workspace = _workspace ?? await Workspace.LoadAsync();
+        var asset = coupon.InstrumentId is { } instrumentId
+            ? workspace.Assets.FirstOrDefault(candidate => candidate.InstrumentId == instrumentId)
+            : null;
+        var operation = asset?.Operations.FirstOrDefault(candidate => candidate.Id == coupon.Id);
+        if (asset is null || operation is null)
+        {
+            await Notifications.Error("Cedola non trovata.");
+            return;
+        }
+
+        _investmentAsset = asset;
+        _investmentOperation = operation;
+        _investmentDialogOpen = true;
+    }
+
+    private async Task OnCouponKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args, OperationHistoryRow coupon)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            await OpenCouponAsync(coupon);
+        }
+    }
+
+    private void CloseCouponEdit() => _couponEditOpen = false;
+
+    private async Task OnCouponSaved(string message)
+    {
+        await Notifications.Success(message);
+        _couponEditOpen = false;
+        await LoadAsync();
+    }
+
+    private void CloseInvestmentDialog() => _investmentDialogOpen = false;
+
+    private async Task OnInvestmentSaved()
+    {
+        await Notifications.Success("Operazione salvata.");
+        _investmentDialogOpen = false;
+        await LoadAsync();
+    }
+
+    private async Task OnInvestmentDeleted()
+    {
+        await Notifications.Success("Operazione eliminata.");
+        _investmentDialogOpen = false;
+        await LoadAsync();
+    }
+
     private async Task UpdateAllPricesAsync()
     {
         if (_updatingAllPrices)
@@ -468,27 +739,26 @@ else if (_workspace is { } workspace)
         }
 
         _updatingAllPrices = true;
-        _priceUpdateMessage = null;
-        _priceUpdateError = null;
         try
         {
             var results = await PriceUpdates.UpdateAllAsync();
             var failures = results.Where(result => !result.Success).ToArray();
-            _priceUpdateMessage = failures.Length == 0
+            await Notifications.Success(failures.Length == 0
                 ? $"{results.Count} strumenti aggiornati."
-                : $"{results.Count - failures.Length} aggiornati, {failures.Length} errori.";
-            _priceUpdateError = failures.Length == 0
-                ? null
-                : string.Join(
+                : $"{results.Count - failures.Length} aggiornati, {failures.Length} errori.");
+            if (failures.Length > 0)
+            {
+                await Notifications.Error(string.Join(
                     " ",
                     failures.Select(result =>
-                        $"{(string.IsNullOrWhiteSpace(result.Name) ? "Aggiornamento" : result.Name)}: {result.Error}"));
+                        $"{(string.IsNullOrWhiteSpace(result.Name) ? "Aggiornamento" : result.Name)}: {result.Error}")));
+            }
 
             await ReloadAsync();
         }
         catch (Exception)
         {
-            _priceUpdateError = "Aggiornamento non riuscito. Verificare la connessione e riprovare.";
+            await Notifications.Error("Aggiornamento non riuscito. Verificare la connessione e riprovare.");
         }
         finally
         {
@@ -732,13 +1002,18 @@ else if (_workspace is { } workspace)
         return $"--pill-color: {color}; --pill-tint: {color}22";
     }
 
-    private void ClearSearch() => _search = "";
+    private void ClearSearch()
+    {
+        _search = "";
+        _ = PersistFiltersAsync();
+    }
 
     private void SetClassFilter(AssetClass? assetClass)
     {
         if (assetClass is null)
         {
             _classFilters.Clear();
+            _ = PersistFiltersAsync();
             return;
         }
 
@@ -746,9 +1021,15 @@ else if (_workspace is { } workspace)
         {
             _classFilters.Remove(assetClass.Value);
         }
+
+        _ = PersistFiltersAsync();
     }
 
-    private void ToggleShowArchived() => _showArchived = !_showArchived;
+    private void ToggleShowArchived()
+    {
+        _showArchived = !_showArchived;
+        _ = PersistFiltersAsync();
+    }
 
     private void SetAllocationHover(AllocationSegment segment) => _allocationHover = segment;
 
@@ -814,11 +1095,14 @@ else if (_workspace is { } workspace)
         if (_sortColumn == column)
         {
             _sortDescending = !_sortDescending;
-            return;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortDescending = column != SortColumn.Name;
         }
 
-        _sortColumn = column;
-        _sortDescending = column != SortColumn.Name;
+        _ = PersistFiltersAsync();
     }
 
     private string SortArrow(SortColumn column) =>

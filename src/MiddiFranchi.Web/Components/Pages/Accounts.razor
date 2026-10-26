@@ -6,12 +6,15 @@
 @using MiddiFranchi.Domain.Shared
 @inject AccountOverviewService Overview
 @inject ManualBalanceService ManualBalanceSvc
+@inject NotificationService Notifications
+@inject ChartPreferences Preferences
+@inject SectionAppearanceService Appearance
 
 <PageTitle>Conti</PageTitle>
 
 <div class="dashboard-header">
     <h1 class="account-detail-title">
-        <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="wallet" Size="18" /></span>
+        <span class="account-avatar accounts" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="18" /></span>
         Conti
     </h1>
     <div class="dashboard-header-meta">
@@ -47,18 +50,44 @@ else
                         <div>
                             <h2 id="accounts-history-title"><MfIcon Name="chart" Size="18" /> Valore conti</h2>
                         </div>
-                        <div class="overview-ranges" role="group" aria-label="Intervallo temporale">
-                            @foreach (var option in ChartRangeOptions)
-                            {
-                                <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => _range = option.Key">@option.Label</button>
-                            }
+                        <div class="accounts-chart-controls">
+                            <div class="overview-ranges" role="group" aria-label="Intervallo temporale">
+                                @foreach (var option in ChartRangeOptions)
+                                {
+                                    <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => SetRangeAsync(option.Key)">@option.Label</button>
+                                }
+                            </div>
+                            <div class="overview-ranges" role="group" aria-label="Tipo di grafico">
+                                @foreach (var option in ChartKindOptions)
+                                {
+                                    <button type="button" class="@ChartRanges.Class(option.Key, ChartKindKey)" aria-pressed="@AriaPressed(ChartKindKey == option.Key)" @onclick="() => SetChartKindAsync(option.Kind)">@option.Label</button>
+                                }
+                            </div>
+                            <details class="filter-menu-wrap accounts-chart-filter">
+                                <summary class="filter-trigger @(HasChartAccountFilter ? "active" : "")">
+                                    <MfIcon Name="filter" Size="15" />
+                                    <span>@ChartAccountsLabel</span>
+                                    <MfIcon Name="chevron-down" Size="13" />
+                                </summary>
+                                <div class="filter-panel accounts-chart-panel">
+                                    <button type="button"
+                                            class="filter-option @(_chartAccountIds.Count == 0 ? "selected" : "")"
+                                            @onclick="SelectAllChartAccountsAsync">
+                                        Tutti i conti
+                                    </button>
+                                    @foreach (var row in ChartAccountOptions)
+                                    {
+                                        <label class="filter-check">
+                                            <input type="checkbox"
+                                                   checked="@_chartAccountIds.Contains(row.AccountId)"
+                                                   @onchange="args => ToggleChartAccountAsync(row.AccountId, args)" />
+                                            <span>@row.Name</span>
+                                        </label>
+                                    }
+                                </div>
+                            </details>
                         </div>
                     </div>
-
-                    @if (_readingMessage is not null)
-                    {
-                        <p class="alert alert-success" role="status">@_readingMessage</p>
-                    }
 
                     <div class="accounts-current">
                         <div class="balance-main">
@@ -90,11 +119,12 @@ else
                         <ApexTimeSeriesChart Title=""
                                              Currency="@_rows[0].Currency"
                                              Series="@ChartSeries"
-                                             Stacked="true"
+                                             Stacked="@(_chartKind != AccountsChartKind.Line)"
                                              ShowStackedTotal="false"
                                              ShowHeader="false"
                                              ShowFooter="false"
                                              ShowDataTable="false"
+                                             ShowMarkers="false"
                                              XAxisLabelMode="month" />
 
                         @if (ChartStatistics is { } statistics)
@@ -299,11 +329,19 @@ else
     private IReadOnlyList<AccountOverviewRow>? _rows;
     private IReadOnlyDictionary<Guid, string> _routeKeys = new Dictionary<Guid, string>();
     private IReadOnlyList<ManualBalance> _allReadings = [];
+    private AccountsChartKind _chartKind = AccountsChartKind.Both;
+    private readonly HashSet<Guid> _chartAccountIds = [];
+    private static readonly (string Key, string Label, AccountsChartKind Kind)[] ChartKindOptions =
+    [
+        ("both", "Barre e linea", AccountsChartKind.Both),
+        ("bars", "Barre", AccountsChartKind.Bars),
+        ("line", "Linea", AccountsChartKind.Line),
+    ];
     private bool _loading = true;
     private bool _hideClosedAccounts = true;
     private string _range = "max";
+    private bool _preferencesLoaded;
     private bool _readingDialogOpen;
-    private string? _readingMessage;
     private string? _loadError;
     private CategoryBreakdownItem? _accountHoverSlice;
 
@@ -416,7 +454,33 @@ else
             .Select(row => new ManualBalanceDialog.AccountChoice(row.AccountId, row.Name, row.Type, row.IconDataUrl))
             .ToArray() ?? [];
 
-    private IReadOnlyList<TimeSeriesSeries> ChartSeries => BuildChartSeries();
+    private IReadOnlyList<TimeSeriesSeries> ChartSeries
+    {
+        get
+        {
+            var series = BuildChartSeries();
+            return _chartKind == AccountsChartKind.Bars
+                ? series.Where(item => item.Label != "Totale").ToArray()
+                : series;
+        }
+    }
+
+    private string ChartKindKey => ChartKindOptions
+        .First(option => option.Kind == _chartKind)
+        .Key;
+
+    private bool HasChartAccountFilter => _chartAccountIds.Count > 0;
+
+    private string ChartAccountsLabel => _chartAccountIds.Count == 0
+        ? "Tutti i conti"
+        : _chartAccountIds.Count == 1
+            ? "1 conto"
+            : $"{_chartAccountIds.Count} conti";
+
+    private IReadOnlyList<AccountOverviewRow> ChartAccountOptions => _rows?
+        .Where(row => _allReadings.Any(reading => reading.AccountId == row.AccountId))
+        .OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
+        .ToArray() ?? [];
 
     private bool HasChartData =>
         ChartSeries.Any(series => series.Points.Any(point => point.Value is not null));
@@ -452,7 +516,7 @@ else
                 return null;
             }
 
-            var series = ChartSeries.FirstOrDefault(candidate => candidate.Label == "Totale");
+            var series = BuildChartSeries().FirstOrDefault(candidate => candidate.Label == "Totale");
             if (series is null)
             {
                 return null;
@@ -529,6 +593,94 @@ else
         _loading = false;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preferencesLoaded)
+        {
+            return;
+        }
+
+        _preferencesLoaded = true;
+        var storedHideClosed = await Preferences.GetAsync("mf.filters.accounts.hideClosed");
+        if (storedHideClosed is "0")
+        {
+            _hideClosedAccounts = false;
+        }
+        else if (storedHideClosed is "1")
+        {
+            _hideClosedAccounts = true;
+        }
+
+        var storedRange = await Preferences.GetAsync("mf.chart.accounts.range");
+        if (storedRange is not null &&
+            (storedRange == "year" ||
+             storedRange == "max" ||
+             int.TryParse(storedRange, out _)))
+        {
+            _range = storedRange;
+        }
+
+        var storedKind = await Preferences.GetAsync("mf.chart.accounts.kind");
+        if (Enum.TryParse<AccountsChartKind>(storedKind, ignoreCase: true, out var kind) &&
+            Enum.IsDefined(kind))
+        {
+            _chartKind = kind;
+        }
+
+        var storedAccounts = await Preferences.GetAsync("mf.chart.accounts.selected");
+        if (!string.IsNullOrWhiteSpace(storedAccounts) && _rows is not null)
+        {
+            var validIds = _rows.Select(row => row.AccountId).ToHashSet();
+            foreach (var part in storedAccounts.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (Guid.TryParse(part, out var accountId) && validIds.Contains(accountId))
+                {
+                    _chartAccountIds.Add(accountId);
+                }
+            }
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SetRangeAsync(string range)
+    {
+        _range = range;
+        await Preferences.SetAsync("mf.chart.accounts.range", range);
+    }
+
+    private async Task SetChartKindAsync(AccountsChartKind kind)
+    {
+        _chartKind = kind;
+        await Preferences.SetAsync("mf.chart.accounts.kind", ChartKindKey);
+    }
+
+    private async Task ToggleChartAccountAsync(Guid accountId, ChangeEventArgs args)
+    {
+        if (args.Value is bool selected)
+        {
+            if (selected)
+            {
+                _chartAccountIds.Add(accountId);
+            }
+            else
+            {
+                _chartAccountIds.Remove(accountId);
+            }
+        }
+
+        await SaveChartAccountsAsync();
+    }
+
+    private async Task SelectAllChartAccountsAsync()
+    {
+        _chartAccountIds.Clear();
+        await SaveChartAccountsAsync();
+    }
+
+    private Task SaveChartAccountsAsync() =>
+        Preferences.SetAsync("mf.chart.accounts.selected", string.Join(",", _chartAccountIds));
+
     private async Task LoadRowsAsync()
     {
         try
@@ -575,12 +727,15 @@ else
             return [];
         }
 
-        var readingsByAccount = _rows.ToDictionary(
+        var chartRows = _rows
+            .Where(row => _chartAccountIds.Count == 0 || _chartAccountIds.Contains(row.AccountId))
+            .ToArray();
+        var readingsByAccount = chartRows.ToDictionary(
             row => row.AccountId,
             row => _allReadings.Where(reading => reading.AccountId == row.AccountId).ToArray());
 
         var series = new List<TimeSeriesSeries>();
-        foreach (var row in _rows)
+        foreach (var row in chartRows)
         {
             var readings = readingsByAccount[row.AccountId];
             if (readings.Length == 0)
@@ -674,7 +829,11 @@ else
     private static string Invariant(decimal value) =>
         value.ToString("0.###", CultureInfo.InvariantCulture);
 
-    private void ToggleHideClosedAccounts() => _hideClosedAccounts = !_hideClosedAccounts;
+    private async Task ToggleHideClosedAccounts()
+    {
+        _hideClosedAccounts = !_hideClosedAccounts;
+        await Preferences.SetBoolAsync("mf.filters.accounts.hideClosed", _hideClosedAccounts);
+    }
 
     private static string Tone(Money? value) => value switch
     {
@@ -683,6 +842,13 @@ else
         _ => "neutral",
     };
 
+    private enum AccountsChartKind
+    {
+        Both,
+        Bars,
+        Line,
+    }
+
     private sealed record AccountChartStatistics(
         Money Maximum,
         Money Minimum,
@@ -690,17 +856,13 @@ else
         Money? AverageMonthlyChange,
         Money? AverageAnnualChange);
 
-    private void OpenReadingDialog()
-    {
-        _readingMessage = null;
-        _readingDialogOpen = true;
-    }
+    private void OpenReadingDialog() => _readingDialogOpen = true;
 
     private void CloseReadingDialog() => _readingDialogOpen = false;
 
     private async Task OnReadingSaved(ManualBalance reading)
     {
-        _readingMessage = $"Rilevazione registrata: {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.";
+        await Notifications.Success($"Rilevazione registrata: {Format.Money(reading.Amount)} al {Format.Date(reading.ValidAt)}.");
         await LoadRowsAsync();
     }
 }

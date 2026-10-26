@@ -59,8 +59,9 @@ public sealed class InvestmentIncomeService
 
         return await _transactions.RunAsync(async token =>
         {
+            var incomeId = Guid.NewGuid();
             var income = new Income(
-                Guid.NewGuid(),
+                incomeId,
                 account: null,
                 incomeCategory,
                 request.GrossAmount,
@@ -75,14 +76,15 @@ public sealed class InvestmentIncomeService
             if (request.TaxAmount is { } tax && tax.Value.Amount > 0m)
             {
                 taxExpense = new Expense(
-                    Guid.NewGuid(),
+                    InvestmentExpenses.TaxIdForOperation(incomeId),
                     account: null,
                     taxCategory,
                     tax,
                     request.OperationDate,
                     recordedAt,
                     $"Tasse su {instrument.Name}",
-                    notes: null);
+                    notes: null,
+                    instrument: instrument);
                 await _operations.AddAsync(taxExpense, token);
             }
 

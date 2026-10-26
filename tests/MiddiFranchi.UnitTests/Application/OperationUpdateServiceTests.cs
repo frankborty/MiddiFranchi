@@ -1,5 +1,6 @@
 using MiddiFranchi.Application.Financial;
 using MiddiFranchi.Domain.Financial;
+using MiddiFranchi.Domain.Portfolio;
 using MiddiFranchi.Domain.Shared;
 using Shouldly;
 
@@ -11,11 +12,12 @@ public class OperationUpdateServiceTests
 
     private readonly FakeFinancialOperationRepository _operations = new();
     private readonly FakeCategoryRepository _categories = new();
+    private readonly FakeInstrumentRepository _instruments = new();
     private readonly OperationUpdateService _service;
 
     public OperationUpdateServiceTests()
     {
-        _service = new OperationUpdateService(_operations, _categories);
+        _service = new OperationUpdateService(_operations, _categories, _instruments);
     }
 
     [Fact]
@@ -50,6 +52,39 @@ public class OperationUpdateServiceTests
         updated.OperationDate.ShouldBe(new DateOnly(2026, 4, 12));
         updated.Description.ShouldBe("Nuova descrizione");
         updated.GeneratePostings().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldReassignTheInstrumentOfAnIncome()
+    {
+        var category = new Category(Guid.NewGuid(), "Cedole", CategoryType.Income);
+        var oldInstrument = new Instrument(
+            Guid.NewGuid(), "ETF vecchio", AssetClass.Equity, Euro, PriceUnit.PerUnit);
+        var newInstrument = new Instrument(
+            Guid.NewGuid(), "ETF nuovo", AssetClass.Equity, Euro, PriceUnit.PerUnit);
+        _categories.Categories.Add(category);
+        _instruments.Instruments.Add(oldInstrument);
+        _instruments.Instruments.Add(newInstrument);
+        var income = new Income(
+            Guid.NewGuid(),
+            account: null,
+            category,
+            new PositiveMoney(new Money(10m, Euro)),
+            new DateOnly(2026, 4, 10),
+            DateTimeOffset.UtcNow,
+            instrument: oldInstrument);
+        _operations.Operations.Add(income);
+
+        await _service.UpdateAsync(new UpdateOperationRequest(
+            income.Id,
+            category.Id,
+            new PositiveMoney(new Money(10m, Euro)),
+            income.OperationDate,
+            InstrumentId: newInstrument.Id,
+            UpdateInstrument: true));
+
+        var updated = _operations.Operations.ShouldHaveSingleItem().ShouldBeOfType<Income>();
+        updated.Instrument.ShouldBe(newInstrument);
     }
 
     [Fact]

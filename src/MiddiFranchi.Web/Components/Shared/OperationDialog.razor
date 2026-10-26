@@ -125,7 +125,7 @@
                 @if (IsCouponDividend && !HasCouponCategories)
                 {
                     <p class="alert alert-warning operation-form-wide" role="status">
-                        Mancano le categorie «Cedole &amp; Dividendi» (entrata) e «Fees · Tasse Plusvalenze» (uscita).
+                        Mancano le categorie «Cedole &amp; Dividendi» (entrata) e «Fees · Tasse Investimenti» (uscita).
                         <a class="primary-link" href="settings/categories">Configura le categorie</a>.
                     </p>
                 }
@@ -195,7 +195,7 @@
     private Category? TaxExpenseCategory => Categories.FirstOrDefault(category =>
         category.Type == CategoryType.Expense &&
         string.Equals(category.Name, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
-        string.Equals(category.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase));
+        string.Equals(category.Subcategory, "Tasse Investimenti", StringComparison.CurrentCultureIgnoreCase));
 
     private bool HasCouponCategories =>
         CouponIncomeCategory is not null && TaxExpenseCategory is not null;
@@ -358,7 +358,7 @@
             if (CouponIncomeCategory is not { } incomeCategory ||
                 TaxExpenseCategory is not { } taxCategory)
             {
-                _error = "Mancano le categorie «Cedole» e «Fees · Tasse Plusvalenze».";
+                _error = "Mancano le categorie «Cedole» e «Fees · Tasse Investimenti».";
                 return;
             }
 

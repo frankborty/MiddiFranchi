@@ -217,7 +217,7 @@ public class LoanServiceTests
             reading.Id, new Money(80m, Euro), new DateOnly(2026, 9, 15), null);
         ManualBalances.Latest(_manualBalances.Readings, _loansAccount.Id)!
             .Amount.ShouldBe(new Money(80m, Euro));
-        updated.RecordedAt.ShouldBe(reading.RecordedAt);
+        updated.ValidAt.ShouldBe(new DateOnly(2026, 9, 15));
 
         await _service.DeleteReadingAsync(reading.Id);
         ManualBalances.Latest(_manualBalances.Readings, _loansAccount.Id)!

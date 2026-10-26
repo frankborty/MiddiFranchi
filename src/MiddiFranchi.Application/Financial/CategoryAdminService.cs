@@ -84,14 +84,15 @@ public sealed class CategoryAdminService
             throw new InvalidOperationException("La sottocategoria esiste già in questa categoria.");
         }
 
+        var appearance = CanonicalAppearance(group);
         var created = new Category(
             Guid.NewGuid(),
             source.Name,
             source.Type,
             string.IsNullOrWhiteSpace(description) ? source.Description : description.Trim(),
             name,
-            source.Icon,
-            source.ColorHex);
+            appearance.Icon,
+            appearance.ColorHex);
         await _categories.AddAsync(created, cancellationToken);
         return created;
     }
@@ -161,23 +162,25 @@ public sealed class CategoryAdminService
         }
 
         var categories = await _categories.ListAsync(cancellationToken);
-        if (categories.Any(category =>
-                category.Type == source.Type &&
-                Same(category.Name, source.Name) &&
+        var group = categories
+            .Where(category => category.Type == source.Type && Same(category.Name, source.Name))
+            .ToArray();
+        if (group.Any(category =>
                 category.Id != source.Id &&
                 Same(category.Subcategory, name)))
         {
             throw new InvalidOperationException("La sottocategoria esiste già in questa categoria.");
         }
 
+        var appearance = CanonicalAppearance(group);
         var updated = new Category(
             source.Id,
             source.Name,
             source.Type,
             description,
             name,
-            source.Icon,
-            source.ColorHex);
+            appearance.Icon,
+            appearance.ColorHex);
         await _categories.UpdateAsync(updated, cancellationToken);
     }
 
@@ -372,7 +375,8 @@ public sealed class CategoryAdminService
                     expense.OperationDate,
                     expense.RecordedAt,
                     expense.Description,
-                    expense.Notes),
+                    expense.Notes,
+                    expense.Instrument),
                 _ => throw new InvalidOperationException("Tipo di operazione non gestito."),
             };
 
@@ -389,6 +393,15 @@ public sealed class CategoryAdminService
         Expense expense => expense.Category.Id,
         _ => null,
     };
+
+    /// <summary>Icona e colore condivisi dalla categoria, scelti in modo deterministico.</summary>
+    private static (string? Icon, string? ColorHex) CanonicalAppearance(IEnumerable<Category> group) =>
+        group
+            .GroupBy(category => (category.Icon, category.ColorHex))
+            .OrderByDescending(appearance => appearance.Count())
+            .ThenBy(appearance => appearance.Key.Icon ?? "", StringComparer.Ordinal)
+            .Select(appearance => appearance.Key)
+            .First();
 
     private static bool Same(string? left, string? right) =>
         string.Equals(left, right, StringComparison.CurrentCultureIgnoreCase);

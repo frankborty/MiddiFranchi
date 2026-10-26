@@ -1,0 +1,415 @@
+@page "/settings/data/import/accounts"
+@rendermode InteractiveServer
+@implements IDisposable
+@using MiddiFranchi.Application.DataImport
+@inject AccountsImportService Import
+@inject IJSRuntime JS
+@inject NotificationService Notifications
+
+<PageTitle>Importa conti</PageTitle>
+
+<a class="section-link settings-back" href="/settings/data/import">
+    <MfIcon Name="arrow-left" Size="16" /> Importa dati
+</a>
+
+<div class="dashboard-header">
+    <div>
+        <h1 class="account-detail-title">
+            <span class="account-avatar sidebar-tone" aria-hidden="true">
+                <MfIcon Name="upload" Size="18" />
+            </span>
+            Importa conti
+        </h1>
+    </div>
+</div>
+
+@if (_result is { } result)
+{
+    <section class="card data-panel" aria-labelledby="accounts-import-result-title">
+        <div class="section-head">
+            <div>
+                <h2 id="accounts-import-result-title"><MfIcon Name="check" Size="18" /> Importazione completata</h2>
+                <p class="section-sub">Riepilogo dei conti elaborati.</p>
+            </div>
+        </div>
+        <dl class="data-confirm-summary">
+            <div><dt>Conti</dt><dd>@result.AccountsCreated creati · @result.AccountsUpdated aggiornati</dd></div>
+            <div><dt>Prestiti</dt><dd>@result.LoansCreated creati (solo nome, senza valori)</dd></div>
+        </dl>
+        <div class="form-actions">
+            <a class="secondary-button" href="/settings/data">Vai a Dati e backup</a>
+        </div>
+    </section>
+}
+
+<section class="card data-panel" aria-labelledby="accounts-import-file-title">
+    <div class="section-head">
+        <div>
+            <h2 id="accounts-import-file-title"><MfIcon Name="upload" Size="18" /> File dei conti</h2>
+            <p class="section-sub">
+                Carica un file CSV con tutti i conti e le loro impostazioni: i conti nuovi vengono
+                creati, quelli con lo stesso nome vengono aggiornati.
+            </p>
+        </div>
+        <button type="button" class="secondary-button" disabled="@_templateBusy" @onclick="DownloadTemplateAsync">
+            <MfIcon Name="download" Size="16" />
+            @(_templateBusy ? "Preparazione…" : "Scarica modello")
+        </button>
+    </div>
+
+    <div class="form-grid data-form">
+        <label class="data-file-field">
+            <span>File CSV dei conti</span>
+            <InputFile OnChange="OnFileSelected" accept=".csv,text/csv" />
+        </label>
+        @if (_fileName is not null)
+        {
+            <p class="table-hint data-file-selected">@_fileName · @FormatSize(_fileSize)</p>
+        }
+    </div>
+
+    <div class="form-actions import-file-actions">
+        <button type="button" class="secondary-button"
+                disabled="@(_working || _filePath is null)"
+                @onclick="AnalyzeAsync">
+            <MfIcon Name="search" Size="16" /> Analizza file
+        </button>
+    </div>
+
+    @if (_preview is { } preview)
+    {
+        <div class="data-summary-grid">
+            <StatTile Label="Conti" Value="@preview.Count.ToString()" />
+            <StatTile Label="Prestiti (nomi)" Value="@preview.Loans.ToString()" />
+        </div>
+
+        @foreach (var warning in preview.Warnings)
+        {
+            <p class="alert alert-warning" role="status">@warning</p>
+        }
+
+        @if (preview.HasErrors)
+        {
+            <div class="alert alert-error" role="alert">
+                <strong>Il file contiene errori: correggili e rianalizza.</strong>
+                <ul class="import-error-list">
+                    @foreach (var error in preview.Errors)
+                    {
+                        <li>@error</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (!preview.HasErrors && preview.Count > 0)
+        {
+            <p class="alert alert-info" role="status">
+                Il file è valido. I conti vengono riconosciuti per <strong>nome</strong> (ignora
+                maiuscole/minuscole): i conti esistenti vengono aggiornati, i nuovi creati.
+                Nessun conto viene eliminato.
+            </p>
+        }
+
+        <div class="form-actions">
+            <button type="button" class="primary-button"
+                    disabled="@(_working || preview.HasErrors || preview.Count == 0)"
+                    @onclick="OpenImportDialog">
+                <MfIcon Name="upload" Size="16" /> Importa…
+            </button>
+        </div>
+    }
+</section>
+
+<section class="card data-panel" aria-labelledby="accounts-import-syntax-title">
+    <div class="section-head">
+        <div>
+            <h2 id="accounts-import-syntax-title"><MfIcon Name="doc" Size="18" /> Formato del file</h2>
+            <p class="section-sub">
+                CSV UTF-8, separatore virgola, prima riga di intestazione.
+            </p>
+        </div>
+    </div>
+
+    <div class="import-syntax-grid">
+        <section class="import-syntax-card import-syntax-wide">
+            <h3><code>Conti</code></h3>
+            <p class="import-columns">name, type, status, color_hex, icon, loans</p>
+            <p class="import-notes">
+                <strong>name</strong>: obbligatorio, univoco (è la chiave che aggiorna i conti già
+                presenti) ·
+                <strong>type</strong>: Checking, Card, Cash, Liability, Loans ·
+                <strong>status</strong>: Active (default), Closed ·
+                <strong>color_hex</strong>: <code>#RRGGBB</code> o vuoto ·
+                <strong>icon</strong>: wallet, icon:wallet o data URL; vuoto = icona predefinita ·
+                <strong>loans</strong>: solo per conti di tipo Loans: nomi dei prestiti separati
+                da <code>;</code>, senza valori; vuoto = nessun prestito aggiunto.
+            </p>
+        </section>
+    </div>
+
+    <p class="table-hint">
+        Un conto <code>Loans</code> con prestiti registrati non può essere convertito a un altro
+        tipo.
+    </p>
+</section>
+
+@if (_dialogOpen && _preview is { } dialogPreview)
+{
+    <div class="modal-backdrop" @onclick="CloseImportDialog">
+        <div class="modal-card data-confirm-modal" role="dialog" aria-modal="true"
+             aria-labelledby="accounts-import-confirm-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="accounts-import-confirm-title"><MfIcon Name="upload" Size="18" /> Importa conti</h2>
+                    <p class="section-sub">Conferma l'importazione del file.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" @onclick="CloseImportDialog">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            <p class="alert alert-info" role="status">
+                L'importazione crea o aggiorna i conti per <strong>nome</strong> e non elimina
+                i conti esistenti.
+            </p>
+
+            <dl class="data-confirm-summary">
+                <div><dt>Conti</dt><dd>@dialogPreview.Count</dd></div>
+                <div><dt>Prestiti (nomi)</dt><dd>@dialogPreview.Loans</dd></div>
+            </dl>
+
+            <label class="data-confirm-field">
+                <span>Digita <strong>@ImportContract.ConfirmationPhrase</strong> per confermare</span>
+                <input type="text" autocomplete="off" @bind="_confirmation" @bind:event="oninput" />
+            </label>
+
+            <div class="form-actions">
+                <button type="button" class="primary-button"
+                        disabled="@(!_dialogConfirmationValid)"
+                        @onclick="ConfirmImportAsync">
+                    <MfIcon Name="upload" Size="16" /> Importa
+                </button>
+                <button type="button" class="secondary-button" @onclick="CloseImportDialog">Annulla</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const long MaxImportBytes = 8L * 1024 * 1024;
+
+    private string? _filePath;
+    private string? _fileName;
+    private long _fileSize;
+    private AccountsImportPreview? _preview;
+    private AccountsImportResult? _result;
+    private bool _working;
+    private bool _templateBusy;
+    private bool _dialogOpen;
+    private string _confirmation = "";
+
+    private bool _dialogConfirmationValid =>
+        string.Equals(_confirmation, ImportContract.ConfirmationPhrase, StringComparison.Ordinal);
+
+    private async Task OnFileSelected(InputFileChangeEventArgs args)
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _preview = null;
+        _result = null;
+        DeleteFile();
+
+        var file = args.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxImportBytes)
+        {
+            await Notifications.Error("Il file supera il limite di 8 MB.");
+            return;
+        }
+
+        var path = NewTempPath();
+        try
+        {
+            await using var input = file.OpenReadStream(MaxImportBytes);
+            await using var output = new FileStream(
+                path,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                81920,
+                useAsync: true);
+            await input.CopyToAsync(output);
+
+            _filePath = path;
+            _fileName = Path.GetFileName(file.Name);
+            _fileSize = file.Size;
+        }
+        catch (Exception)
+        {
+            DeleteFile();
+            TryDelete(path);
+            await Notifications.Error("Impossibile leggere il file selezionato.");
+        }
+    }
+
+    private async Task AnalyzeAsync()
+    {
+        if (_working || _filePath is null)
+        {
+            return;
+        }
+
+        _preview = null;
+        _result = null;
+        _working = true;
+
+        try
+        {
+            await using var stream = File.OpenRead(_filePath);
+            _preview = await Import.InspectAsync(stream);
+        }
+        catch (ImportValidationException exception)
+        {
+            await Notifications.Error(exception.Message);
+        }
+        catch (Exception)
+        {
+            await Notifications.Error("Impossibile analizzare il file. Verificare il formato dei dati.");
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private void OpenImportDialog()
+    {
+        if (_preview is not { HasErrors: false, Count: > 0 })
+        {
+            return;
+        }
+
+        _confirmation = "";
+        _dialogOpen = true;
+    }
+
+    private void CloseImportDialog()
+    {
+        _dialogOpen = false;
+        _confirmation = "";
+    }
+
+    private async Task ConfirmImportAsync()
+    {
+        if (_working || _filePath is null || _preview is null)
+        {
+            return;
+        }
+
+        _dialogOpen = false;
+        _working = true;
+
+        try
+        {
+            await using var stream = File.OpenRead(_filePath);
+            _result = await Import.ImportAsync(stream, ImportContract.ConfirmationPhrase);
+            await Notifications.Success("Importazione completata.");
+            _preview = null;
+            DeleteFile();
+        }
+        catch (ImportValidationException exception)
+        {
+            await Notifications.Error(string.Join(" ", exception.Errors));
+        }
+        catch (ArgumentException exception)
+        {
+            await Notifications.Error(exception.Message);
+        }
+        catch (Exception)
+        {
+            await Notifications.Error("Importazione non riuscita. Nessun dato è stato modificato.");
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private async Task DownloadTemplateAsync()
+    {
+        if (_templateBusy)
+        {
+            return;
+        }
+
+        _templateBusy = true;
+
+        try
+        {
+            var template = await Import.CreateTemplateAsync();
+            await using var stream = new MemoryStream(template.Content);
+            await JS.InvokeVoidAsync(
+                "mfDownloadFile",
+                template.FileName,
+                new DotNetStreamReference(stream));
+        }
+        catch (Exception)
+        {
+            await Notifications.Error("Impossibile generare il modello di importazione.");
+        }
+        finally
+        {
+            _templateBusy = false;
+        }
+    }
+
+    private static string NewTempPath()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "MiddiFranchi", "imports");
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, Guid.NewGuid().ToString("N") + ".accounts-import");
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024.0):0.##} MB",
+    };
+
+    private void DeleteFile()
+    {
+        if (_filePath is null)
+        {
+            return;
+        }
+
+        TryDelete(_filePath);
+        _filePath = null;
+        _fileName = null;
+        _fileSize = 0;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    public void Dispose() => DeleteFile();
+}

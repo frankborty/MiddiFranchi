@@ -37,8 +37,7 @@ public class LoanPersistenceTests : PostgresTestBase
             Guid.NewGuid(),
             loan,
             new Money(100m, Euro),
-            new DateOnly(2026, 10, 1),
-            new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero));
+            new DateOnly(2026, 10, 1));
         await readings.AddAsync(reading);
         ClearTracker();
 

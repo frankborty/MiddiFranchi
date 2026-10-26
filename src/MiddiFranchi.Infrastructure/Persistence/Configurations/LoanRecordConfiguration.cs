@@ -39,7 +39,6 @@ internal sealed class LoanReadingRecordConfiguration : IEntityTypeConfiguration<
         builder.Property(reading => reading.Id).ValueGeneratedNever();
         builder.Property(reading => reading.AmountAmount).IsNumeric();
         builder.Property(reading => reading.AmountCurrencyCode).IsCurrencyCode();
-        builder.Property(reading => reading.RecordedAt).HasColumnType("timestamptz").IsRequired();
         builder.Property(reading => reading.Note).IsOptionalText();
 
         builder.HasOne(reading => reading.Loan)
@@ -48,6 +47,5 @@ internal sealed class LoanReadingRecordConfiguration : IEntityTypeConfiguration<
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(reading => new { reading.LoanId, reading.ValidAt });
-        builder.HasIndex(reading => new { reading.LoanId, reading.RecordedAt });
     }
 }

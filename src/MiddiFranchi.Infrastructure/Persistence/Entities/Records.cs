@@ -244,8 +244,6 @@ public sealed class LoanReadingRecord
 
     public DateOnly ValidAt { get; set; }
 
-    public DateTimeOffset RecordedAt { get; set; }
-
     public string? Note { get; set; }
 }
 

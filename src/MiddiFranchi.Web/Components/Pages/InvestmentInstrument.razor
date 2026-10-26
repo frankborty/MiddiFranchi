@@ -8,9 +8,12 @@
 @inject InvestmentWorkspaceService Workspace
 @inject InvestmentAssetService AssetService
 @inject OperationHistoryService History
+@inject SectionAppearanceService Appearance
 @inject CategoryService CategoriesService
 @inject PriceUpdateService PriceUpdates
 @inject NavigationManager Navigation
+@inject NotificationService Notifications
+@inject ChartPreferences Preferences
 
 <PageTitle>@(_asset?.Name ?? "Strumento") — MiddiFranchi</PageTitle>
 
@@ -20,7 +23,7 @@
             <MfIcon Name="arrow-left" Size="16" /> Investimenti
         </a>
         <h1 class="account-detail-title">
-            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="pie" Size="20" /></span>
+            <span class="account-avatar investments" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="20" /></span>
             @(_asset?.Name ?? "Strumento")
         </h1>
         @if (_asset is { } headerAsset)
@@ -90,15 +93,6 @@ else if (_loadError is not null)
 }
 else if (_asset is { } asset)
 {
-    @if (_message is not null)
-    {
-        <p class="alert alert-success" role="status">@_message</p>
-    }
-    @if (_actionError is not null)
-    {
-        <p class="alert alert-error" role="alert">@_actionError</p>
-    }
-
     <div class="investments-kpi-grid detail-kpi instrument-kpi-row">
         @if (asset.AssetClass == AssetClass.Bond)
         {
@@ -260,20 +254,22 @@ else if (_asset is { } asset)
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th scope="col">Data</th>
-                                <th scope="col">Descrizione</th>
-                                <th scope="col" class="num">Lordo</th>
-                                <th scope="col" class="num">Netto</th>
+                                <SortableTh OnSort="() => StateHasChanged()" Sort="_couponSort" Column="date" Label="Data" />
+                                <SortableTh OnSort="() => StateHasChanged()" Sort="_couponSort" Column="description" Label="Descrizione" />
+                                <SortableTh OnSort="() => StateHasChanged()" Sort="_couponSort" Column="gross" Label="Lordo" Numeric="true" />
+                                <SortableTh OnSort="() => StateHasChanged()" Sort="_couponSort" Column="tax" Label="Tasse" Numeric="true" />
+                                <SortableTh OnSort="() => StateHasChanged()" Sort="_couponSort" Column="net" Label="Netto" Numeric="true" />
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var coupon in CouponPayments)
+                            @foreach (var coupon in SortedCoupons)
                             {
                                 <tr class="history-row" tabindex="0" title="Apri e modifica"
                                     @onclick="() => OpenCouponAsync(coupon)">
                                     <td>@Format.Date(coupon.Date)</td>
                                     <td>@coupon.Description</td>
                                     <td class="num">@Format.Money(coupon.Gross)</td>
+                                    <td class="num">@Format.Money(coupon.Tax)</td>
                                     <td class="num">@Format.Money(coupon.Net)</td>
                                 </tr>
                             }
@@ -301,16 +297,16 @@ else if (_asset is { } asset)
                 <table class="data-table investment-operations-table">
                     <thead>
                         <tr>
-                            <th scope="col">Data</th>
-                            <th scope="col">Tipo</th>
-                            <th scope="col" class="num">Quantità</th>
-                            <th scope="col" class="num">Prezzo</th>
-                            <th scope="col" class="num">Importo</th>
-                            <th scope="col" class="num">Commissioni</th>
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_operationSort" Column="date" Label="Data" />
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_operationSort" Column="kind" Label="Tipo" />
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_operationSort" Column="quantity" Label="Quantità" Numeric="true" />
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_operationSort" Column="price" Label="Prezzo" Numeric="true" />
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_operationSort" Column="amount" Label="Importo" Numeric="true" />
+                            <SortableTh OnSort="() => StateHasChanged()" Sort="_operationSort" Column="fees" Label="Commissioni" Numeric="true" />
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var operation in VisibleOperations)
+                        @foreach (var operation in SortedOperations)
                         {
                             var editable = CanEditOperation(operation);
                             <tr class="@(operation.IsReversed ? "investment-operation-reversed" : "") @(editable ? "investment-operation-clickable" : "")"
@@ -544,6 +540,8 @@ else if (_asset is { } asset)
 <OperationEditDialog Open="_couponEditOpen"
                      Operation="_editingCouponIncome"
                      Categories="_categories"
+                     Instruments="InstrumentOptions"
+                     ShowTax="true"
                      OnClose="CloseCouponEdit"
                      OnSaved="OnCouponSaved" />
 
@@ -565,6 +563,12 @@ else if (_asset is { } asset)
     private string? _loadedKey;
 
     private InvestmentWorkspace? _workspace;
+    private IReadOnlyList<InvestmentOption> InstrumentOptions =>
+        _workspace?.Assets
+            .Where(asset => !asset.IsArchived)
+            .OrderBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(asset => new InvestmentOption(asset.InstrumentId, asset.Name))
+            .ToArray() ?? [];
     private InvestmentAssetRow? _asset;
     private IReadOnlyList<OperationHistoryRow> _couponIncomes = [];
     private IReadOnlyList<OperationHistoryRow> _couponTaxes = [];
@@ -573,8 +577,8 @@ else if (_asset is { } asset)
     private OperationHistoryRow? _editingCouponIncome;
     private bool _loading = true;
     private string? _loadError;
-    private string? _message;
-    private string? _actionError;
+    private readonly TableSort _couponSort = new("date", descending: true);
+    private readonly TableSort _operationSort = new("date", descending: true);
 
     private bool _assetDialogOpen;
 
@@ -599,6 +603,34 @@ else if (_asset is { } asset)
     private ChartRange _chartRange = ChartRange.Max;
     private int? _chartYear;
     private ReturnView _returnView = ReturnView.Cumulative;
+    private bool _preferencesLoaded;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preferencesLoaded)
+        {
+            return;
+        }
+
+        _preferencesLoaded = true;
+
+        var range = await Preferences.GetAsync("mf.chart.instrument.range");
+        if (Enum.TryParse<ChartRange>(range, out var storedRange))
+        {
+            _chartRange = storedRange;
+        }
+
+        var year = await Preferences.GetAsync("mf.chart.instrument.year");
+        _chartYear = int.TryParse(year, out var storedYear) ? storedYear : null;
+
+        var view = await Preferences.GetAsync("mf.chart.instrument.view");
+        if (Enum.TryParse<ReturnView>(view, out var storedView))
+        {
+            _returnView = storedView;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -673,8 +705,9 @@ else if (_asset is { } asset)
             .ToArray();
         _couponTaxes = history
             .Where(row => row.Kind == OperationKind.Expense &&
+                row.InstrumentId == bond.InstrumentId &&
                 string.Equals(row.CategoryName, "Fees", StringComparison.CurrentCultureIgnoreCase) &&
-                string.Equals(row.Subcategory, "Tasse Plusvalenze", StringComparison.CurrentCultureIgnoreCase))
+                string.Equals(row.Subcategory, "Tasse Investimenti", StringComparison.CurrentCultureIgnoreCase))
             .ToArray();
     }
 
@@ -719,6 +752,7 @@ else if (_asset is { } asset)
                         operation.OperationDate,
                         CouponLabel(operation.Description),
                         amount,
+                        new Money(tax, amount.Currency),
                         new Money(amount.Amount - tax, amount.Currency),
                         operation.Id,
                         true);
@@ -734,6 +768,7 @@ else if (_asset is { } asset)
                         row.OperationDate,
                         CouponLabel(row.Description),
                         gross,
+                        tax,
                         new Money(gross.Amount - tax.Amount, gross.Currency),
                         row.Id,
                         false);
@@ -746,8 +781,51 @@ else if (_asset is { } asset)
         }
     }
 
+    private IReadOnlyList<CouponPayment> SortedCoupons => _couponSort.Column switch
+    {
+        "description" => _couponSort.Apply(
+            CouponPayments,
+            coupon => coupon.Description,
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        "gross" => _couponSort.Apply(CouponPayments, coupon => coupon.Gross.Amount).ToArray(),
+        "tax" => _couponSort.Apply(CouponPayments, coupon => coupon.Tax.Amount).ToArray(),
+        "net" => _couponSort.Apply(CouponPayments, coupon => coupon.Net.Amount).ToArray(),
+        _ => _couponSort.Apply(CouponPayments, coupon => coupon.Date).ToArray(),
+    };
+
+    private IReadOnlyList<InvestmentOperationRow> SortedOperations => _operationSort.Column switch
+    {
+        "kind" => _operationSort.Apply(
+            VisibleOperations,
+            operation => Format.InvestmentOperationKindLabel(operation.Kind),
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        "quantity" => _operationSort.Apply(
+            VisibleOperations,
+            operation => operation.Quantity?.Value ?? decimal.MinValue).ToArray(),
+        "price" => _operationSort.Apply(
+            VisibleOperations,
+            operation => operation.Price ?? decimal.MinValue).ToArray(),
+        "amount" => _operationSort.Apply(
+            VisibleOperations,
+            operation => OperationSortAmount(operation)).ToArray(),
+        "fees" => _operationSort.Apply(
+            VisibleOperations,
+            operation => operation.Fees?.Amount ?? decimal.MinValue).ToArray(),
+        _ => _operationSort.Apply(VisibleOperations, operation => operation.OperationDate).ToArray(),
+    };
+
+    private static decimal OperationSortAmount(InvestmentOperationRow operation) =>
+        operation.Kind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell
+            ? operation.GrossAmount?.Amount ?? decimal.MinValue
+            : operation.Amount?.Amount ?? decimal.MinValue;
+
     private Money TaxFor(OperationHistoryRow income)
     {
+        if (income.Tax is { } linkedTax)
+        {
+            return linkedTax;
+        }
+
         var tax = _couponTaxes
             .Where(row => row.OperationDate == income.OperationDate && row.RecordedAt == income.RecordedAt)
             .Sum(row => Math.Abs(row.Amount?.Amount ?? 0m));
@@ -758,6 +836,7 @@ else if (_asset is { } asset)
         DateOnly Date,
         string Description,
         Money Gross,
+        Money Tax,
         Money Net,
         Guid OperationId,
         bool IsInvestment);
@@ -976,7 +1055,11 @@ else if (_asset is { } asset)
         _ => "Rendimento annuale",
     };
 
-    private void SetReturnView(ReturnView view) => _returnView = view;
+    private async Task SetReturnView(ReturnView view)
+    {
+        _returnView = view;
+        await Preferences.SetAsync("mf.chart.instrument.view", view.ToString());
+    }
 
     private string PeriodTooltipMode => ReturnGranularity switch
     {
@@ -1025,14 +1108,19 @@ else if (_asset is { } asset)
     private bool IsChartRange(ChartRange range) =>
         _chartYear is null && _chartRange == range;
 
-    private void SetChartRange(ChartRange range)
+    private async Task SetChartRange(ChartRange range)
     {
         _chartRange = range;
         _chartYear = null;
+        await Preferences.SetAsync("mf.chart.instrument.range", range.ToString());
+        await Preferences.SetAsync("mf.chart.instrument.year", "");
     }
 
-    private void OnChartYearChanged(ChangeEventArgs args) =>
+    private async Task OnChartYearChanged(ChangeEventArgs args)
+    {
         _chartYear = int.TryParse(args.Value?.ToString(), out var year) ? year : null;
+        await Preferences.SetAsync("mf.chart.instrument.year", _chartYear?.ToString() ?? "");
+    }
 
     private (DateOnly? From, DateOnly? To) ChartWindow()
     {
@@ -1063,8 +1151,6 @@ else if (_asset is { } asset)
 
     private void OpenNewOperation(InvestmentAssetRow asset, InvestmentOperationKind kind)
     {
-        _message = null;
-        _actionError = null;
         _operationBeingEdited = null;
         _operationPresetKind = kind;
         _operationLockKind = false;
@@ -1081,8 +1167,6 @@ else if (_asset is { } asset)
             return;
         }
 
-        _message = null;
-        _actionError = null;
         _operationBeingEdited = null;
         _operationPresetKind = InvestmentOperationKind.Sell;
         _operationLockKind = true;
@@ -1099,8 +1183,6 @@ else if (_asset is { } asset)
             return;
         }
 
-        _message = null;
-        _actionError = null;
         _operationBeingEdited = operation;
         _operationPresetKind = operation.Kind;
         _operationLockKind = true;
@@ -1116,8 +1198,7 @@ else if (_asset is { } asset)
     {
         var shouldArchive = _archiveAfterOperation;
         _archiveAfterOperation = false;
-        _message = "Operazione salvata.";
-        _actionError = null;
+        await Notifications.Success("Operazione salvata.");
         await ReloadAsync();
 
         if (shouldArchive)
@@ -1125,20 +1206,19 @@ else if (_asset is { } asset)
             try
             {
                 await AssetService.ArchiveAsync(InstrumentId);
-                _message = "Strumento venduto e archiviato.";
+                await Notifications.Success("Strumento venduto e archiviato.");
                 await ReloadAsync();
             }
             catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
             {
-                _actionError = exception.Message;
+                await Notifications.Error(exception.Message);
             }
         }
     }
 
     private async Task OnOperationDeleted()
     {
-        _message = "Operazione eliminata.";
-        _actionError = null;
+        await Notifications.Success("Operazione eliminata.");
         await ReloadAsync();
     }
 
@@ -1177,23 +1257,18 @@ else if (_asset is { } asset)
 
     private async Task OnCouponSaved(string message)
     {
-        _message = message;
+        await Notifications.Success(message);
         _couponEditOpen = false;
         await ReloadAsync();
     }
 
-    private void OpenEditAsset()
-    {
-        _message = null;
-        _actionError = null;
-        _assetDialogOpen = true;
-    }
+    private void OpenEditAsset() => _assetDialogOpen = true;
 
     private void CloseAssetDialog() => _assetDialogOpen = false;
 
     private async Task OnAssetSaved()
     {
-        _message = "Strumento salvato.";
+        await Notifications.Success("Strumento salvato.");
         await ReloadAsync();
     }
 
@@ -1235,24 +1310,22 @@ else if (_asset is { } asset)
         }
 
         _priceUpdatingFromSource = true;
-        _message = null;
-        _actionError = null;
         try
         {
             var result = await PriceUpdates.UpdateInstrumentAsync(asset.InstrumentId);
             if (result.Success)
             {
-                _message = "Quotazione aggiornata da Borsa Italiana.";
+                await Notifications.Success("Quotazione aggiornata da Borsa Italiana.");
                 await ReloadAsync();
             }
             else
             {
-                _actionError = result.Error ?? "Aggiornamento non riuscito.";
+                await Notifications.Error(result.Error ?? "Aggiornamento non riuscito.");
             }
         }
         catch (Exception)
         {
-            _actionError = "Impossibile aggiornare la quotazione da Borsa Italiana.";
+            await Notifications.Error("Impossibile aggiornare la quotazione da Borsa Italiana.");
         }
         finally
         {
@@ -1279,7 +1352,7 @@ else if (_asset is { } asset)
         {
             await AssetService.RecordPriceAsync(new RecordPriceRequest(InstrumentId, price, _priceDate));
             _showPriceForm = false;
-            _message = "Quotazione aggiornata.";
+            await Notifications.Success("Quotazione aggiornata.");
             await ReloadAsync();
         }
         catch (ArgumentException exception)
@@ -1310,32 +1383,30 @@ else if (_asset is { } asset)
 
     private async Task ArchiveAsync()
     {
-        _actionError = null;
         try
         {
             await AssetService.ArchiveAsync(InstrumentId);
             _confirmArchive = false;
-            _message = "Strumento archiviato.";
+            await Notifications.Success("Strumento archiviato.");
             await ReloadAsync();
         }
         catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
     }
 
     private async Task ReactivateAssetAsync()
     {
-        _actionError = null;
         try
         {
             await AssetService.ReactivateAsync(InstrumentId);
-            _message = "Strumento riattivato.";
+            await Notifications.Success("Strumento riattivato.");
             await ReloadAsync();
         }
         catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
     }
 
@@ -1349,7 +1420,6 @@ else if (_asset is { } asset)
 
     private async Task DeleteAssetAsync()
     {
-        _actionError = null;
         try
         {
             await AssetService.DeleteAsync(InstrumentId);
@@ -1357,7 +1427,7 @@ else if (_asset is { } asset)
         }
         catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
-            _actionError = exception.Message;
+            await Notifications.Error(exception.Message);
         }
     }
 

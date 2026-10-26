@@ -2,6 +2,7 @@
 @using MiddiFranchi.Application.Financial
 @using MiddiFranchi.Domain.Financial
 @inject CategoryService CategoriesService
+@inject NotificationService Notifications
 
 @if (_loading)
 {
@@ -40,20 +41,20 @@ else
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th scope="col">Categoria</th>
-                                    <th scope="col">Sottocategoria</th>
-                                    <th scope="col">Tipo</th>
-                                    <th scope="col">Descrizione</th>
+                                    <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="name" Label="Categoria" />
+                                    <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="subcategory" Label="Sottocategoria" />
+                                    <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="type" Label="Tipo" />
+                                    <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="description" Label="Descrizione" />
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var category in _categories)
+                                @foreach (var category in SortedCategories)
                                 {
                                     <tr>
                                         <td>
                                             <span class="category-name-cell">
-                                                <span class="category-mark" style="--mf-category-color: @CategoryAppearance.ColorFor(category.ColorHex)" aria-hidden="true">
-                                                    <MfIcon Name="@CategoryAppearance.IconFor(category.Icon)" Size="14" />
+                                                <span class="category-mark" style="--mf-category-color: @CategoryAppearance.ColorFor(AppearanceFor(category).ColorHex)" aria-hidden="true">
+                                                    <MfIcon Name="@CategoryAppearance.IconFor(AppearanceFor(category).Icon)" Size="14" />
                                                 </span>
                                                 <button type="button"
                                                         class="table-link"
@@ -82,10 +83,6 @@ else
         <div class="sp-5">
             <section class="card">
                 <h2><MfIcon Name="plus" Size="18" /> Nuova categoria</h2>
-                @if (_createdMessage is not null)
-                {
-                    <p class="alert alert-success" role="status">@_createdMessage</p>
-                }
                 @if (_createError is not null)
                 {
                     <p class="alert alert-error" role="alert">@_createError</p>
@@ -143,8 +140,8 @@ else
                                 Subcategory="@selected.Subcategory"
                                 Type="@selected.Type"
                                 Description="@selected.Description"
-                                Icon="@selected.Icon"
-                                ColorHex="@selected.ColorHex"
+                                Icon="@AppearanceFor(selected).Icon"
+                                ColorHex="@AppearanceFor(selected).ColorHex"
                                 OnClose="CloseSettings"
                                 OnSaved="OnSettingsSaved" />
     }
@@ -156,7 +153,7 @@ else
     private bool _saving;
     private string? _loadError;
     private string? _createError;
-    private string? _createdMessage;
+    private readonly TableSort _sort = new("name");
     private string _name = "";
     private string _subcategory = "";
     private string _type = nameof(CategoryType.Income);
@@ -168,6 +165,40 @@ else
 
     private string CategoryCountLabel =>
         _categories.Count == 1 ? "1 categoria" : $"{_categories.Count} categorie";
+
+    /// <summary>Icona e colore della categoria condivisi da tutte le sue sottocategorie.</summary>
+    private (string? Icon, string? ColorHex) AppearanceFor(Category category) => _categories
+        .Where(candidate =>
+            candidate.Type == category.Type &&
+            string.Equals(
+                candidate.Name.Trim(),
+                category.Name.Trim(),
+                StringComparison.CurrentCultureIgnoreCase))
+        .GroupBy(candidate => (candidate.Icon, candidate.ColorHex))
+        .OrderByDescending(appearance => appearance.Count())
+        .ThenBy(appearance => appearance.Key.Icon ?? "", StringComparer.Ordinal)
+        .Select(appearance => appearance.Key)
+        .FirstOrDefault();
+
+    private IReadOnlyList<Category> SortedCategories => _sort.Column switch
+    {
+        "subcategory" => _sort.Apply(
+            _categories,
+            category => category.Subcategory ?? "",
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        "type" => _sort.Apply(
+            _categories,
+            category => Format.CategoryTypeLabel(category.Type),
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        "description" => _sort.Apply(
+            _categories,
+            category => category.Description ?? "",
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        _ => _sort.Apply(
+            _categories,
+            category => category.Name,
+            StringComparer.CurrentCultureIgnoreCase).ToArray(),
+    };
 
     private bool IsExpenseType => _type == nameof(CategoryType.Expense);
 
@@ -204,7 +235,6 @@ else
         }
 
         _createError = null;
-        _createdMessage = null;
 
         if (string.IsNullOrWhiteSpace(_name))
         {
@@ -230,7 +260,7 @@ else
                     string.IsNullOrWhiteSpace(_subcategory) ? null : _subcategory.Trim(),
                     _icon,
                     _color));
-            _createdMessage = $"Categoria «{category.Name}» registrata.";
+            await Notifications.Success($"Categoria «{category.Name}» registrata.");
             _name = "";
             _subcategory = "";
             _description = null;
@@ -270,7 +300,7 @@ else
 
     private async Task OnSettingsSaved(Category category)
     {
-        _createdMessage = $"Categoria «{category.Name}» aggiornata.";
+        await Notifications.Success($"Categoria «{category.Name}» aggiornata.");
         await ReloadAsync();
     }
 }

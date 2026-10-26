@@ -16,10 +16,7 @@
                 </button>
             </div>
 
-            <p class="alert alert-info" role="status">
-                L'importazione inserisce o aggiorna i dati per <code>external_id</code> e non elimina
-                i dati esistenti. Le operazioni già presenti vengono saltate.
-            </p>
+            <p class="alert alert-info" role="status">@Notice</p>
 
             <dl class="data-confirm-summary">
                 <div><dt>Conti</dt><dd>@preview.Accounts</dd></div>
@@ -58,6 +55,46 @@
 
     private bool CanConfirm =>
         string.Equals(_confirmation, ImportContract.ConfirmationPhrase, StringComparison.Ordinal);
+
+    private string Notice => Preview is { } preview ? BuildNotice(preview) : "";
+
+    private static string BuildNotice(ImportPreview preview)
+    {
+        var notes = new List<string>();
+        if (preview.Accounts > 0)
+        {
+            notes.Add("I conti vengono inseriti o aggiornati per nome.");
+        }
+
+        if (preview.AccountBalances > 0)
+        {
+            notes.Add("I saldi conti vengono associati al conto per nome e alla data.");
+        }
+
+        if (preview.Instruments > 0)
+        {
+            notes.Add("Gli strumenti vengono inseriti o aggiornati per ISIN.");
+        }
+
+        if (preview.InstrumentPrices > 0 || preview.Operations > 0)
+        {
+            notes.Add("Quotazioni e operazioni collegano lo strumento per ISIN, simbolo o nome.");
+        }
+
+        notes.Add("L'importazione non elimina dati esistenti.");
+
+        if (preview.InstrumentPrices > 0)
+        {
+            notes.Add("Le quotazioni vengono aggiornate per strumento e data.");
+        }
+
+        if (preview.Operations > 0)
+        {
+            notes.Add("Le operazioni identiche vengono saltate.");
+        }
+
+        return string.Join(" ", notes);
+    }
 
     protected override void OnParametersSet()
     {
