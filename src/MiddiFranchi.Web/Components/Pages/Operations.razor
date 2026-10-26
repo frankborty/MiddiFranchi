@@ -166,6 +166,10 @@ else
                                 aria-pressed="@(_trendKind == TrendKind.Expense)" @onclick="() => SelectTrend(TrendKind.Expense)">
                             Uscite
                         </button>
+                        <button type="button" class="@TrendToggleClass(TrendKind.Delta)"
+                                aria-pressed="@(_trendKind == TrendKind.Delta)" @onclick="() => SelectTrend(TrendKind.Delta)">
+                            Delta
+                        </button>
                     </div>
                 </div>
 
@@ -180,6 +184,7 @@ else
                                          ShowFooter="false"
                                          ShowDataTable="false"
                                          ShowMarkers="false"
+                                         ColorPointsBySign="@(_trendKind == TrendKind.Delta)"
                                          Height="@("100%")"
                                          XAxisLabelMode="@TrendLabelMode" />
                 }
@@ -661,6 +666,7 @@ else
     {
         Income,
         Expense,
+        Delta,
     }
 
     private enum PieKind
@@ -1202,10 +1208,19 @@ else
         _ => "Nessun movimento",
     };
 
-    private bool TrendHasData => TrendPoints.Any(point =>
-        _trendKind == TrendKind.Income ? point.Income > 0m : point.Expense > 0m);
+    private bool TrendHasData => _trendKind switch
+    {
+        TrendKind.Income => TrendPoints.Any(point => point.Income > 0m),
+        TrendKind.Expense => TrendPoints.Any(point => point.Expense > 0m),
+        _ => TrendPoints.Any(point => point.Income != point.Expense),
+    };
 
-    private string TrendTitle => _trendKind == TrendKind.Income ? "Entrate" : "Uscite";
+    private string TrendTitle => _trendKind switch
+    {
+        TrendKind.Income => "Entrate",
+        TrendKind.Expense => "Uscite",
+        _ => "Delta entrate − uscite",
+    };
 
     private string TrendToggleClass(TrendKind kind) =>
         _trendKind == kind ? "trend-toggle-button active" : "trend-toggle-button";
@@ -1331,12 +1346,19 @@ else
         _ => "year",
     };
 
-    private string TrendSubtitle => _periodMode switch
-    {
-        PeriodMode.Month => $"Andamento giornaliero · {PeriodLabel}",
-        PeriodMode.Year => $"Andamento mensile · {_periodYear}",
-        _ => "Andamento annuale · Tutti i dati",
-    };
+    private string TrendSubtitle => _trendKind == TrendKind.Delta
+        ? _periodMode switch
+        {
+            PeriodMode.Month => $"Differenza giornaliera · {PeriodLabel}",
+            PeriodMode.Year => $"Differenza mensile · {_periodYear}",
+            _ => "Differenza annuale · Tutti i dati",
+        }
+        : _periodMode switch
+        {
+            PeriodMode.Month => $"Andamento giornaliero · {PeriodLabel}",
+            PeriodMode.Year => $"Andamento mensile · {_periodYear}",
+            _ => "Andamento annuale · Tutti i dati",
+        };
 
     private string TrendCardClass => _periodMode == PeriodMode.Year
         ? "card operations-trend-card sparse-labels-mobile"
@@ -1349,6 +1371,21 @@ else
             if (TrendPoints.Count == 0)
             {
                 return [];
+            }
+
+            if (_trendKind == TrendKind.Delta)
+            {
+                var deltaPoints = TrendPoints
+                    .Select(point => new TimeSeriesPoint(point.Date, point.Income - point.Expense))
+                    .ToArray();
+                return
+                [
+                    new TimeSeriesSeries(
+                        "Delta",
+                        deltaPoints,
+                        Color: null,
+                        TimeSeriesSeriesKind.Bar),
+                ];
             }
 
             var isIncome = _trendKind == TrendKind.Income;
