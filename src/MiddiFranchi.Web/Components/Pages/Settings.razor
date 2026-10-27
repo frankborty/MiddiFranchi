@@ -1,17 +1,19 @@
 @page "/settings"
 @rendermode InteractiveServer
+@using System.Reflection
 @inject SectionAppearanceService Appearance
 
 <PageTitle>Configurazione</PageTitle>
 
-<div class="dashboard-header">
-    <div>
-        <h1 class="account-detail-title">
-            <span class="account-avatar sidebar-tone" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Settings).Icon" Size="18" /></span>
-            Configurazione
-        </h1>
+<div class="settings-page">
+    <div class="dashboard-header">
+        <div>
+            <h1 class="account-detail-title">
+                <span class="account-avatar sidebar-tone" aria-hidden="true"><MfIcon Name="@Appearance.Get(AppSection.Settings).Icon" Size="18" /></span>
+                Configurazione
+            </h1>
+        </div>
     </div>
-</div>
 
 <div class="settings-hub-grid">
     <a class="settings-hub-card accounts" href="/settings/accounts">
@@ -68,3 +70,38 @@
         <span class="settings-hub-arrow" aria-hidden="true"><MfIcon Name="arrow-right" Size="16" /></span>
     </a>
 </div>
+
+<footer class="settings-version" aria-label="Informazioni sulla versione">
+    <span>MiddiFranchi @AppVersion</span>
+    <span aria-hidden="true">·</span>
+    <span>Build @BuildDate</span>
+</footer>
+</div>
+
+@code {
+    private static readonly string AppVersion = ResolveAppVersion();
+    private static readonly string BuildDate = ResolveBuildDate();
+
+    private static string ResolveAppVersion()
+    {
+        var assembly = typeof(Settings).Assembly;
+        var informational = assembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            return informational.Split('+')[0];
+        }
+
+        return assembly.GetName().Version?.ToString(3) ?? "n/d";
+    }
+
+    private static string ResolveBuildDate()
+    {
+        var location = typeof(Settings).Assembly.Location;
+        return string.IsNullOrWhiteSpace(location) || !File.Exists(location)
+            ? "n/d"
+            : File.GetLastWriteTime(location).ToString("dd/MM/yyyy");
+    }
+}

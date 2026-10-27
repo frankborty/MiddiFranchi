@@ -84,7 +84,7 @@ else
         </button>
     </section>
 
-    <div class="bento">
+    <div class="bento kpi-bento">
         <div class="sp-4">
             <div class="stat-tile operation-stat income">
                 <span class="stat-label">@IncomeCardLabel</span>
@@ -116,7 +116,7 @@ else
 
     @if (_periodMode != PeriodMode.Month)
     {
-        <div class="bento">
+        <div class="bento kpi-bento">
             <div class="sp-4">
                 <div class="stat-tile operation-stat income">
                     <span class="stat-label">@AverageIncomeLabel</span>
@@ -505,7 +505,7 @@ else
                 else
                 {
                     <div class="table-scroll history-list" tabindex="0">
-                        <table class="data-table operations-history-table">
+                        <table class="data-table operations-history-table mobile-cards mobile-cards--sortable">
                             <colgroup>
                                 <col class="col-date" />
                                 <col class="col-category" />
@@ -542,8 +542,8 @@ else
                                         title="Apri e modifica"
                                         @onclick="() => OpenEdit(row)"
                                         @onkeydown="args => OnRowKeyDown(args, row)">
-                                        <td>@Format.Date(row.OperationDate)</td>
-                                        <td>
+                                        <td data-label="Data">@Format.Date(row.OperationDate)</td>
+                                        <td data-label="Categoria">
                                             @if (!string.IsNullOrWhiteSpace(row.CategoryName))
                                             {
                                                 <span class="category-chip" style="--mf-category-color: @CategoryAppearance.ColorFor(row.CategoryColor)">
@@ -554,15 +554,15 @@ else
                                                 </span>
                                             }
                                         </td>
-                                        <td>@row.Subcategory</td>
-                                        <td>
+                                        <td data-label="Sottocategoria" class="@(string.IsNullOrWhiteSpace(row.Subcategory) ? "is-empty" : null)">@row.Subcategory</td>
+                                        <td data-label="Descrizione" class="@(string.IsNullOrWhiteSpace(row.Description) && row.InstrumentName is null ? "is-empty" : null)">
                                             @row.Description
                                             @if (row.InstrumentName is { } instrumentName)
                                             {
                                                 <span class="table-hint"> · @instrumentName</span>
                                             }
                                         </td>
-                                        <td class="num">
+                                        <td class="num" data-label="Importo">
                                             @if (row.Amount is { } amount)
                                             {
                                                 <AmountValue Value="@amount" Signed="true" Tone="@AmountTone(row.Kind)" />

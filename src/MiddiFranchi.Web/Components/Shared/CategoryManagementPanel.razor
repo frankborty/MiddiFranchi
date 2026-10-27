@@ -38,7 +38,7 @@ else
                         </div>
                     </div>
                     <div class="table-scroll" tabindex="0">
-                        <table class="data-table">
+                        <table class="data-table category-management-table mobile-cards mobile-cards--sortable">
                             <thead>
                                 <tr>
                                     <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="name" Label="Categoria" />
@@ -51,7 +51,7 @@ else
                                 @foreach (var category in SortedCategories)
                                 {
                                     <tr>
-                                        <td>
+                                        <td data-label="Categoria">
                                             <span class="category-name-cell">
                                                 <span class="category-mark" style="--mf-category-color: @CategoryAppearance.ColorFor(AppearanceFor(category).ColorHex)" aria-hidden="true">
                                                     <MfIcon Name="@CategoryAppearance.IconFor(AppearanceFor(category).Icon)" Size="14" />
@@ -64,13 +64,13 @@ else
                                                 </button>
                                             </span>
                                         </td>
-                                        <td>@(string.IsNullOrWhiteSpace(category.Subcategory) ? "-" : category.Subcategory)</td>
-                                        <td>
+                                        <td data-label="Sottocategoria">@(string.IsNullOrWhiteSpace(category.Subcategory) ? "-" : category.Subcategory)</td>
+                                        <td data-label="Tipo">
                                             <StatusBadge Tone="@(category.Type == CategoryType.Income ? "income" : "expense")">
                                                 @Format.CategoryTypeLabel(category.Type)
                                             </StatusBadge>
                                         </td>
-                                        <td>@(string.IsNullOrWhiteSpace(category.Description) ? "-" : category.Description)</td>
+                                        <td data-label="Descrizione">@(string.IsNullOrWhiteSpace(category.Description) ? "-" : category.Description)</td>
                                     </tr>
                                 }
                             </tbody>

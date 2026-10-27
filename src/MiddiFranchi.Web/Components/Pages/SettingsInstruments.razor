@@ -107,19 +107,19 @@ else
                 else
                 {
                     <div class="table-scroll" tabindex="0">
-                        <table class="data-table settings-instruments-table">
+                        <table class="data-table settings-instruments-table mobile-cards mobile-cards--sortable">
                             <thead>
                                 <tr>
                                     <SortableTh OnSort="OnSortChangedAsync" Sort="_sort" Column="name" Label="Strumento" />
                                     <SortableTh OnSort="OnSortChangedAsync" Sort="_sort" Column="status" Label="Stato" />
-                                    <th scope="col"><span class="visually-hidden">Azioni</span></th>
+                                    <th scope="col" class="mobile-sort-hidden"><span class="visually-hidden">Azioni</span></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var asset in SortedAssets)
                                 {
                                     <tr class="investment-row @(asset.IsArchived ? "archived" : "")">
-                                        <td>
+                                        <td data-label="Strumento">
                                             <button type="button"
                                                     class="settings-account-link"
                                                     aria-label="@($"Impostazioni di {asset.Name}")"
@@ -143,12 +143,12 @@ else
                                                 }
                                             </button>
                                         </td>
-                                        <td>
+                                        <td data-label="Stato">
                                             <StatusBadge Tone="@(asset.IsArchived ? "neutral" : "income")">
                                                 @(asset.IsArchived ? "Archiviato" : "Attivo")
                                             </StatusBadge>
                                         </td>
-                                        <td class="num settings-instrument-actions">
+                                        <td class="num settings-instrument-actions" data-label="Azioni">
                                             <button type="button" class="category-icon-action"
                                                     title="Modifica strumento"
                                                     aria-label="Modifica strumento"

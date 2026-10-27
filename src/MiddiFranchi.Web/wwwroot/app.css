@@ -4265,11 +4265,29 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
     margin-bottom: var(--mf-space-3);
     font-size: var(--mf-text-sm);
 }
+.settings-page {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 2 * var(--mf-space-6));
+    min-height: calc(100dvh - 2 * var(--mf-space-6));
+}
 .settings-hub-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--mf-space-4);
 }
+.settings-version {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px 8px;
+    margin-top: auto;
+    padding-top: var(--mf-space-6);
+    border-top: 1px solid var(--mf-border);
+    color: var(--mf-text-muted);
+    font-size: var(--mf-text-xs);
+}
+.settings-version span[aria-hidden="true"] { opacity: .55; }
 .settings-hub-card {
     display: flex;
     align-items: center;
@@ -5560,4 +5578,481 @@ button.expense-pie-row:hover svg { color: var(--mf-text); }
     .data-section-grid { grid-template-columns: 1fr; }
     .import-syntax-grid { grid-template-columns: 1fr; }
     .import-syntax-wide { grid-column: auto; }
+}
+
+/* ============================================================
+   Mobile: tabelle come card e rifiniture delle pagine dense
+   Tutto sotto 640px: desktop e tablet restano invariati.
+   ============================================================ */
+.mobile-app-bar { display: none; }
+
+@media (max-width: 640px) {
+    .mobile-app-bar {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+        border-bottom: 1px solid var(--mf-border);
+        background: var(--mf-bg);
+    }
+    .mobile-app-bar .menu-toggle {
+        position: static;
+        top: auto;
+        left: auto;
+        flex: 0 0 auto;
+    }
+    .mobile-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--mf-text);
+        font-family: var(--mf-font-display);
+        font-size: 1.05rem;
+        font-weight: 800;
+        text-decoration: none;
+    }
+    .page-body:has(.fab-add) {
+        padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    }
+    .settings-page {
+        min-height: calc(100dvh - 64px - var(--mf-space-4) - var(--mf-space-9));
+    }
+    .app-sidebar {
+        height: 100dvh;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    .table-scroll {
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    /* Input a 16px: evita lo zoom automatico di iOS Safari. */
+    .page-body input:not([type="checkbox"]):not([type="radio"]),
+    .page-body select,
+    .page-body textarea {
+        font-size: 1rem;
+    }
+
+    /* KPI: due colonne sul telefono, una sola sui telefoni più stretti. */
+    .kpi-bento {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .kpi-bento > .sp-4 {
+        grid-column: span 1;
+    }
+    .investments-kpi-grid.five-up {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .investments-kpi-grid.five-up > .stat-tile.hero {
+        grid-column: 1 / -1;
+    }
+    .advanced-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Filtri e barra periodo: target touch e pannelli dentro il viewport. */
+    .movement-filter-bar { gap: var(--mf-space-2); }
+    .movement-search {
+        flex-basis: 100%;
+        min-height: 44px;
+        height: auto;
+    }
+    .movement-filter-actions { gap: 6px; }
+    .filter-trigger,
+    .filter-reset {
+        min-height: 44px;
+        padding-inline: 10px;
+    }
+    .filter-panel {
+        width: min(calc(100vw - 24px), 320px);
+        max-height: 70dvh;
+    }
+    .period-months {
+        scroll-snap-type: x proximity;
+    }
+    .period-month {
+        min-height: 48px;
+        scroll-snap-align: center;
+    }
+    .period-month-amount { white-space: nowrap; }
+
+    .library-chart-canvas { min-height: 240px; }
+
+    /* ---- Pattern tabella -> card ---- */
+    .mobile-cards {
+        display: block;
+        width: 100%;
+        min-width: 0 !important;
+        table-layout: auto;
+        border-collapse: separate;
+    }
+    .mobile-cards colgroup { display: none; }
+    .mobile-cards tbody {
+        display: grid;
+        gap: 10px;
+        width: 100%;
+    }
+    .mobile-cards tbody tr {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px 12px;
+        width: 100%;
+        padding: 14px;
+        border: 1px solid var(--mf-border);
+        border-radius: var(--mf-radius-m);
+        background: var(--mf-surface);
+        box-shadow: var(--mf-shadow-sm);
+    }
+    .mobile-cards tbody td {
+        display: block;
+        grid-column: 1 / -1;
+        width: auto !important;
+        min-width: 0;
+        max-width: 100%;
+        padding: 0;
+        border: 0;
+        white-space: normal;
+        text-align: left;
+        overflow-wrap: anywhere;
+    }
+    .mobile-cards tbody td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 2px;
+        color: var(--mf-text-muted);
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        line-height: 1.2;
+        text-transform: uppercase;
+    }
+    .mobile-cards tbody td:not([data-label])::before { display: none; }
+    .mobile-cards tbody td.is-empty { display: none; }
+    .mobile-cards tbody td.num {
+        text-align: left;
+        white-space: normal;
+    }
+    .mobile-cards tbody td[colspan] {
+        grid-column: 1 / -1;
+    }
+
+    /* Le colonne sticky non servono quando la tabella è una card. */
+    .mobile-cards thead th,
+    .mobile-cards thead th:first-child,
+    .mobile-cards thead th:last-child,
+    .mobile-cards thead th.num:last-child,
+    .mobile-cards tbody td:first-child,
+    .mobile-cards tbody td:last-child,
+    .mobile-cards tbody td.num:last-child,
+    .history-list .mobile-cards tbody td:last-child {
+        position: static;
+        background: transparent;
+        box-shadow: none;
+        z-index: auto;
+    }
+    .mobile-cards tbody td:first-child { min-width: 0; }
+
+    /* L'header resta utilizzabile come strip di ordinamento. */
+    .mobile-cards:not(.mobile-cards--sortable) thead { display: none; }
+    .mobile-cards--sortable thead {
+        display: block;
+        margin-bottom: 8px;
+    }
+    .mobile-cards--sortable thead tr {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+    .mobile-cards--sortable thead tr::-webkit-scrollbar { display: none; }
+    .mobile-cards--sortable thead th {
+        display: block;
+        flex: 0 0 auto;
+        padding: 0;
+        border: 0;
+        white-space: nowrap;
+    }
+    .mobile-cards--sortable thead .mobile-sort-hidden { display: none; }
+    .mobile-cards--sortable thead .sort-button,
+    .mobile-cards--sortable thead .investment-sort-button {
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--mf-border);
+        border-radius: 999px;
+        background: var(--mf-surface-muted);
+        color: var(--mf-text-secondary);
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: none;
+    }
+    .mobile-cards--sortable thead .sort-button:hover,
+    .mobile-cards--sortable thead .investment-sort-button:hover {
+        background: var(--mf-surface-inset);
+        color: var(--mf-text);
+    }
+
+    /* ---- Operations ---- */
+    .operations-history-table tbody td:nth-child(1) {
+        grid-column: 1 / 4;
+        grid-row: 1;
+    }
+    .operations-history-table tbody td:nth-child(5) {
+        grid-column: 4 / 7;
+        grid-row: 1;
+        text-align: right;
+    }
+    .operations-history-table tbody td:nth-child(1)::before,
+    .operations-history-table tbody td:nth-child(5)::before {
+        display: none;
+    }
+    .operations-history-table tbody td:nth-child(2),
+    .operations-history-table tbody td:nth-child(3),
+    .operations-history-table tbody td:nth-child(4) {
+        grid-column: 1 / -1;
+    }
+    .operations-history-table tbody td:nth-child(5) .amount {
+        white-space: normal;
+    }
+    .operations-history-table tbody td.filter-empty {
+        grid-column: 1 / -1;
+        text-align: center;
+    }
+    .operations-history-table tbody td.filter-empty::before { display: none; }
+
+    /* ---- Investments: strumenti e cedole ---- */
+    .investments-table {
+        min-width: 0 !important;
+    }
+    .investments-table tbody td:nth-child(1) {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+    .investments-table tbody td:nth-child(1)::before { display: none; }
+    .investments-table tbody td:nth-child(5) {
+        grid-column: 1 / 4;
+        grid-row: 2;
+    }
+    .investments-table tbody td:nth-child(6) {
+        grid-column: 4 / 7;
+        grid-row: 2;
+        text-align: right;
+    }
+    .investments-table tbody td:nth-child(2) {
+        grid-column: 1 / 3;
+        grid-row: 3;
+    }
+    .investments-table tbody td:nth-child(3) {
+        grid-column: 3 / 5;
+        grid-row: 3;
+    }
+    .investments-table tbody td:nth-child(4) {
+        grid-column: 5 / 7;
+        grid-row: 3;
+    }
+    .investments-table tbody td.hide-sm { display: block !important; }
+    .investments-table tbody td:nth-child(2) .amount,
+    .investments-table tbody td:nth-child(3) .amount,
+    .investments-table tbody td:nth-child(4) .amount {
+        white-space: normal;
+    }
+
+    .investments-coupons-table tbody td:nth-child(1) {
+        grid-column: 1 / 4;
+        grid-row: 1;
+    }
+    .investments-coupons-table tbody td:nth-child(1)::before,
+    .investments-coupons-table tbody td:nth-child(4)::before {
+        display: none;
+    }
+    .investments-coupons-table tbody td:nth-child(4) {
+        grid-column: 4 / 7;
+        grid-row: 1;
+        text-align: right;
+    }
+    .investments-coupons-table tbody td:nth-child(2) {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+    .investments-coupons-table tbody td:nth-child(3) {
+        grid-column: 1 / -1;
+        grid-row: 3;
+    }
+
+    /* ---- Dettaglio strumento ---- */
+    .instrument-coupons-table tbody td:nth-child(1) {
+        grid-column: 1 / 4;
+        grid-row: 1;
+    }
+    .instrument-coupons-table tbody td:nth-child(5) {
+        grid-column: 4 / 7;
+        grid-row: 1;
+        text-align: right;
+    }
+    .instrument-coupons-table tbody td:nth-child(1)::before,
+    .instrument-coupons-table tbody td:nth-child(5)::before {
+        display: none;
+    }
+    .instrument-coupons-table tbody td:nth-child(2) {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+    .instrument-coupons-table tbody td:nth-child(3) {
+        grid-column: 1 / 4;
+        grid-row: 3;
+    }
+    .instrument-coupons-table tbody td:nth-child(4) {
+        grid-column: 4 / 7;
+        grid-row: 3;
+        text-align: right;
+    }
+
+    .investment-operations-table tbody td:nth-child(1) {
+        grid-column: 1 / 4;
+        grid-row: 1;
+    }
+    .investment-operations-table tbody td:nth-child(5) {
+        grid-column: 4 / 7;
+        grid-row: 1;
+        text-align: right;
+    }
+    .investment-operations-table tbody td:nth-child(1)::before,
+    .investment-operations-table tbody td:nth-child(5)::before {
+        display: none;
+    }
+    .investment-operations-table tbody td:nth-child(2) {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+    .investment-operations-table tbody td:nth-child(3) {
+        grid-column: 1 / 3;
+        grid-row: 3;
+    }
+    .investment-operations-table tbody td:nth-child(4) {
+        grid-column: 3 / 5;
+        grid-row: 3;
+    }
+    .investment-operations-table tbody td:nth-child(6) {
+        grid-column: 5 / 7;
+        grid-row: 3;
+        text-align: right;
+    }
+
+    /* ---- Storico conto e prestito ---- */
+    .history-table:not(.history-table-loan) tbody td:nth-child(1) {
+        grid-column: 1 / 4;
+        grid-row: 1;
+    }
+    .history-table:not(.history-table-loan) tbody td:nth-child(3) {
+        grid-column: 4 / 7;
+        grid-row: 1;
+        text-align: right;
+    }
+    .history-table:not(.history-table-loan) tbody td:nth-child(1)::before,
+    .history-table:not(.history-table-loan) tbody td:nth-child(3)::before {
+        display: none;
+    }
+    .history-table:not(.history-table-loan) tbody td:nth-child(2) {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+    .history-table-loan tbody td:nth-child(1) {
+        grid-column: 1 / 4;
+        grid-row: 1;
+    }
+    .history-table-loan tbody td:nth-child(2) {
+        grid-column: 4 / 7;
+        grid-row: 1;
+        text-align: right;
+    }
+    .history-table-loan tbody td:nth-child(1)::before,
+    .history-table-loan tbody td:nth-child(2)::before {
+        display: none;
+    }
+    .history-table-loan tbody td:nth-child(3) {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    /* ---- Impostazioni ---- */
+    .settings-instruments-table tbody td:nth-child(1) {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+    .settings-instruments-table tbody td:nth-child(1)::before { display: none; }
+    .settings-instruments-table tbody td:nth-child(2) {
+        grid-column: 1 / 4;
+        grid-row: 2;
+    }
+    .settings-instruments-table tbody td:nth-child(3) {
+        grid-column: 4 / 7;
+        grid-row: 2;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+    }
+    .settings-instruments-table tbody td:nth-child(3)::before { display: none; }
+    .settings-instrument-actions .category-icon-action {
+        min-width: 44px;
+        min-height: 44px;
+        margin-left: 0;
+        place-items: center;
+    }
+
+    .settings-accounts-table tbody td:nth-child(1),
+    .settings-accounts-table tbody td:nth-child(2) {
+        grid-column: 1 / -1;
+    }
+    .settings-accounts-table tbody td:nth-child(1)::before { display: none; }
+
+    /* ---- Categorie e quotazioni obsolete ---- */
+    .category-management-table tbody td:nth-child(1) {
+        grid-column: 1 / 4;
+        grid-row: 1;
+    }
+    .category-management-table tbody td:nth-child(2) {
+        grid-column: 4 / 7;
+        grid-row: 1;
+    }
+    .category-management-table tbody td:nth-child(1)::before { display: none; }
+    .category-management-table tbody td:nth-child(3) {
+        grid-column: 1 / 3;
+        grid-row: 2;
+    }
+    .category-management-table tbody td:nth-child(4) {
+        grid-column: 3 / 7;
+        grid-row: 2;
+    }
+
+    .outdated-quotes-table tbody td:nth-child(1) {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+    .outdated-quotes-table tbody td:nth-child(1)::before { display: none; }
+    .outdated-quotes-table tbody td:nth-child(2) {
+        grid-column: 1 / 4;
+        grid-row: 2;
+    }
+    .outdated-quotes-table tbody td:nth-child(3) {
+        grid-column: 4 / 7;
+        grid-row: 2;
+        text-align: right;
+    }
+}
+
+@media (max-width: 420px) {
+    .kpi-bento,
+    .investments-kpi-grid.five-up,
+    .advanced-stat-grid {
+        grid-template-columns: 1fr;
+    }
+    .investments-kpi-grid.five-up > .stat-tile.hero {
+        grid-column: auto;
+    }
 }

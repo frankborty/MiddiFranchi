@@ -34,10 +34,16 @@
     </aside>
     <button type="button" class="sidebar-backdrop" onclick="mfCloseNav()" aria-label="Chiudi il menu di navigazione"></button>
     <div class="app-main">
-        <button type="button" class="icon-button menu-toggle" onclick="mfToggleNav()"
-                aria-label="Apri il menu di navigazione" aria-expanded="false" aria-controls="mf-sidebar">
-            <MfIcon Name="menu" Size="20" />
-        </button>
+        <div class="mobile-app-bar">
+            <button type="button" class="icon-button menu-toggle" onclick="mfToggleNav()"
+                    aria-label="Apri il menu di navigazione" aria-expanded="false" aria-controls="mf-sidebar">
+                <MfIcon Name="menu" Size="20" />
+            </button>
+            <a class="mobile-brand" href="" aria-label="MiddiFranchi, vai alla dashboard">
+                <MfIcon Name="coin" Size="18" />
+                <span>MiddiFranchi</span>
+            </a>
+        </div>
         <main class="page-body">
             @Body
         </main>

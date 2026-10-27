@@ -20,7 +20,7 @@
             <p class="section-sub">@Summary</p>
 
             <div class="table-scroll" tabindex="0">
-                <table class="data-table outdated-quotes-table">
+                <table class="data-table outdated-quotes-table mobile-cards mobile-cards--sortable">
                     <thead>
                         <tr>
                             <SortableTh OnSort="() => StateHasChanged()" Sort="_sort" Column="name" Label="Strumento" />
@@ -32,7 +32,7 @@
                         @foreach (var item in SortedItems)
                         {
                             <tr>
-                                <td>
+                                <td data-label="Strumento">
                                     <strong>@item.Name</strong>
                                     <div class="outdated-quotes-meta">
                                         @if (item.Symbol is { } symbol)
@@ -45,12 +45,12 @@
                                         }
                                     </div>
                                 </td>
-                                <td>
+                                <td data-label="Classe">
                                     <StatusBadge Tone="@AssetClassPalette.Tone(item.AssetClass)">
                                         @Format.AssetClassLabel(item.AssetClass)
                                     </StatusBadge>
                                 </td>
-                                <td class="outdated-quotes-date">
+                                <td class="outdated-quotes-date" data-label="Ultima quotazione">
                                     @if (item.PriceDate is { } date)
                                     {
                                         <strong>@Format.Date(date)</strong>

@@ -136,7 +136,7 @@ else
         else
         {
             <div class="table-scroll" tabindex="0">
-                <table class="data-table history-table history-table-loan">
+                <table class="data-table history-table history-table-loan mobile-cards mobile-cards--sortable">
                     <thead>
                         <tr>
                             <SortableTh OnSort="OnHistorySortChangedAsync" Sort="_historySort" Column="date" Label="Data" />
@@ -152,9 +152,9 @@ else
                                 title="Clicca per modificare o eliminare"
                                 @onclick="() => OpenEditDialog(reading)"
                                 @onkeydown="e => HandleRowKeyDown(e, reading)">
-                                <td>@Format.Date(reading.ValidAt)</td>
-                                <td class="num"><AmountValue Value="@reading.Amount" /></td>
-                                <td class="history-note">@reading.Note</td>
+                                <td data-label="Data">@Format.Date(reading.ValidAt)</td>
+                                <td class="num" data-label="Importo"><AmountValue Value="@reading.Amount" /></td>
+                                <td class="history-note" data-label="Nota">@reading.Note</td>
                             </tr>
                         }
                     </tbody>

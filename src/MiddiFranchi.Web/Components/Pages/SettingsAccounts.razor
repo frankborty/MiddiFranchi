@@ -50,7 +50,7 @@ else
                 else
                 {
                     <div class="table-scroll" tabindex="0">
-                        <table class="data-table settings-accounts-table">
+                        <table class="data-table settings-accounts-table mobile-cards mobile-cards--sortable">
                             <thead>
                                 <tr>
                                     <SortableTh OnSort="OnSortChangedAsync" Sort="_sort" Column="name" Label="Conto" />
@@ -61,7 +61,7 @@ else
                                 @foreach (var row in SortedRows)
                                 {
                                     <tr>
-                                        <td>
+                                        <td data-label="Conto">
                                             <button type="button"
                                                     class="settings-account-link"
                                                     aria-label="@($"Impostazioni di {row.Name}")"
@@ -75,7 +75,7 @@ else
                                                 }
                                             </button>
                                         </td>
-                                        <td>
+                                        <td data-label="Stato">
                                             <StatusBadge Tone="@(row.Status == AccountStatus.Active ? "income" : "neutral")">
                                                 @Format.AccountStatusLabel(row.Status)
                                             </StatusBadge>

@@ -236,7 +236,7 @@ else if (_workspace is { } workspace)
             else
             {
                 <div class="table-scroll" tabindex="0">
-                    <table class="data-table investments-table">
+                    <table class="data-table investments-table mobile-cards mobile-cards--sortable">
                         <thead>
                             <tr>
                                 <th scope="col">
@@ -275,7 +275,7 @@ else if (_workspace is { } workspace)
                             @foreach (var asset in FilteredAssets)
                             {
                                 <tr class="investment-row @(asset.IsArchived ? "archived" : "")">
-                                    <td>
+                                    <td data-label="Strumento">
                                         <div class="investment-name">
                                             <div class="investment-name-copy">
                                                 <a class="investment-name-link"
@@ -294,8 +294,8 @@ else if (_workspace is { } workspace)
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="num hide-sm">@QuantityText(asset)</td>
-                                    <td class="num hide-sm">
+                                    <td class="num hide-sm" data-label="Quantità">@QuantityText(asset)</td>
+                                    <td class="num hide-sm" data-label="Prezzo attuale">
                                         @if (asset.CurrentUnitPrice is { } currentPrice)
                                         {
                                             <span class="investment-strong">@Format.Money(currentPrice)</span>
@@ -305,7 +305,7 @@ else if (_workspace is { } workspace)
                                             <span class="investment-muted">—</span>
                                         }
                                     </td>
-                                    <td class="num hide-sm">
+                                    <td class="num hide-sm" data-label="Prezzo medio">
                                         @if (asset.AverageCost is { } averageCost)
                                         {
                                             <span class="investment-strong">@Format.Money(averageCost)</span>
@@ -315,7 +315,7 @@ else if (_workspace is { } workspace)
                                             <span class="investment-muted">—</span>
                                         }
                                     </td>
-                                    <td class="num">
+                                    <td class="num" data-label="Valore attuale">
                                         @if (asset.CurrentValue is { } currentValue)
                                         {
                                             <span class="investment-strong">@Format.Money(currentValue)</span>
@@ -329,7 +329,7 @@ else if (_workspace is { } workspace)
                                             <span class="investment-muted">—</span>
                                         }
                                     </td>
-                                    <td class="num">
+                                    <td class="num" data-label="Rendimento">
                                         @if (asset.TotalResult is { } total)
                                         {
                                             <span class="investment-performance @ResultClass(total)">
@@ -393,7 +393,7 @@ else if (_workspace is { } workspace)
                 else
                 {
                     <div class="table-scroll" tabindex="0">
-                        <table class="data-table investments-coupons-table">
+                        <table class="data-table investments-coupons-table mobile-cards mobile-cards--sortable">
                             <thead>
                                 <tr>
                                     <SortableTh OnSort="OnCouponSortChangedAsync" Sort="_couponSort" Column="date" Label="Data" />
@@ -408,10 +408,10 @@ else if (_workspace is { } workspace)
                                 <tr class="movement-row" tabindex="0" title="Apri e modifica"
                                     @onclick="() => OpenCouponAsync(coupon)"
                                     @onkeydown="args => OnCouponKeyDown(args, coupon)">
-                                    <td>@Format.Date(coupon.OperationDate)</td>
-                                    <td>@(coupon.InstrumentName ?? "—")</td>
-                                    <td class="num">@Format.Money(new Money(CouponGross(coupon), Currency.Euro))</td>
-                                    <td class="num">@Format.Money(new Money(CouponNet(coupon), Currency.Euro))</td>
+                                    <td data-label="Data">@Format.Date(coupon.OperationDate)</td>
+                                    <td data-label="Strumento">@(coupon.InstrumentName ?? "—")</td>
+                                    <td class="num" data-label="Lordo">@Format.Money(new Money(CouponGross(coupon), Currency.Euro))</td>
+                                    <td class="num" data-label="Netto">@Format.Money(new Money(CouponNet(coupon), Currency.Euro))</td>
                                 </tr>
                             }
                         </tbody>

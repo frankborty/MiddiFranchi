@@ -251,7 +251,7 @@ else if (_asset is { } asset)
             else
             {
                 <div class="table-scroll" tabindex="0">
-                    <table class="data-table">
+                    <table class="data-table instrument-coupons-table mobile-cards mobile-cards--sortable">
                         <thead>
                             <tr>
                                 <SortableTh OnSort="() => StateHasChanged()" Sort="_couponSort" Column="date" Label="Data" />
@@ -266,11 +266,11 @@ else if (_asset is { } asset)
                             {
                                 <tr class="history-row" tabindex="0" title="Apri e modifica"
                                     @onclick="() => OpenCouponAsync(coupon)">
-                                    <td>@Format.Date(coupon.Date)</td>
-                                    <td>@coupon.Description</td>
-                                    <td class="num">@Format.Money(coupon.Gross)</td>
-                                    <td class="num">@Format.Money(coupon.Tax)</td>
-                                    <td class="num">@Format.Money(coupon.Net)</td>
+                                    <td data-label="Data">@Format.Date(coupon.Date)</td>
+                                    <td data-label="Descrizione">@coupon.Description</td>
+                                    <td class="num" data-label="Lordo">@Format.Money(coupon.Gross)</td>
+                                    <td class="num" data-label="Tasse">@Format.Money(coupon.Tax)</td>
+                                    <td class="num" data-label="Netto">@Format.Money(coupon.Net)</td>
                                 </tr>
                             }
                         </tbody>
@@ -294,7 +294,7 @@ else if (_asset is { } asset)
         else
         {
             <div class="table-scroll" tabindex="0">
-                <table class="data-table investment-operations-table">
+                <table class="data-table investment-operations-table mobile-cards mobile-cards--sortable">
                     <thead>
                         <tr>
                             <SortableTh OnSort="() => StateHasChanged()" Sort="_operationSort" Column="date" Label="Data" />
@@ -313,8 +313,8 @@ else if (_asset is { } asset)
                                 tabindex="@(editable ? 0 : -1)"
                                 title="@(editable ? "Apri e modifica" : null)"
                                 @onclick="() => OpenEditOperation(asset, operation)">
-                                <td>@Format.Date(operation.OperationDate)</td>
-                                <td>
+                                <td data-label="Data">@Format.Date(operation.OperationDate)</td>
+                                <td data-label="Tipo">
                                     <StatusBadge Tone="@OperationTone(operation.Kind)">
                                         @Format.InvestmentOperationKindLabel(operation.Kind)
                                     </StatusBadge>
@@ -323,10 +323,10 @@ else if (_asset is { } asset)
                                         <StatusBadge Tone="warning">Stornata</StatusBadge>
                                     }
                                 </td>
-                                <td class="num">@(operation.Quantity is { } quantity ? Format.Quantity(quantity) : "—")</td>
-                                <td class="num">@OperationPrice(operation, asset)</td>
-                                <td class="num">@OperationAmount(operation)</td>
-                                <td class="num">@(operation.Fees is { } fees ? Format.Money(fees) : "—")</td>
+                                <td class="num" data-label="Quantità">@(operation.Quantity is { } quantity ? Format.Quantity(quantity) : "—")</td>
+                                <td class="num" data-label="Prezzo">@OperationPrice(operation, asset)</td>
+                                <td class="num" data-label="Importo">@OperationAmount(operation)</td>
+                                <td class="num" data-label="Commissioni">@(operation.Fees is { } fees ? Format.Money(fees) : "—")</td>
                             </tr>
                         }
                     </tbody>
