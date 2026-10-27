@@ -11,6 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Onest:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["redesign.css"]" />
     <link rel="stylesheet" href="@Assets["MiddiFranchi.Web.styles.css"]" />
     <ImportMap />
     <HeadOutlet />
@@ -51,6 +52,60 @@
                     window.mfThemeListeners.splice(i, 1);
                 }
             }
+        };
+
+        /* Aggiunge il tooltip nativo ai marker delle annotazioni Apex. */
+        window.mfBindPointAnnotationTitles = function (root, titles) {
+            if (!root || !titles) return;
+
+            function bind() {
+                var tooltip = root.querySelector('.chart-annotation-tooltip');
+                var markers = root.querySelectorAll('.apexcharts-point-annotations > path, .apexcharts-point-annotations > circle');
+
+                markers.forEach(function (marker, index) {
+                    var text = titles[index];
+                    if (!text) return;
+
+                    var title = marker.querySelector('title');
+                    if (!title) {
+                        title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                        marker.appendChild(title);
+                    }
+                    title.textContent = text;
+                    marker.style.cursor = 'pointer';
+
+                    function position(event) {
+                        if (!tooltip) return;
+                        var rect = root.getBoundingClientRect();
+                        var left = event.clientX - rect.left + 12;
+                        var top = event.clientY - rect.top + 12;
+                        if (left + tooltip.offsetWidth > root.clientWidth - 8) {
+                            left = event.clientX - rect.left - tooltip.offsetWidth - 12;
+                        }
+                        if (top + tooltip.offsetHeight > root.clientHeight - 8) {
+                            top = event.clientY - rect.top - tooltip.offsetHeight - 12;
+                        }
+                        tooltip.style.left = Math.max(8, left) + 'px';
+                        tooltip.style.top = Math.max(8, top) + 'px';
+                    }
+
+                    marker.onmouseenter = function (event) {
+                        if (!tooltip) return;
+                        tooltip.textContent = text;
+                        tooltip.hidden = false;
+                        position(event);
+                    };
+                    marker.onmousemove = position;
+                    marker.onmouseleave = function () {
+                        if (tooltip) tooltip.hidden = true;
+                    };
+                });
+            }
+
+            bind();
+            setTimeout(bind, 80);
+            setTimeout(bind, 300);
+            setTimeout(bind, 900);
         };
 
         /* Converte una data locale (senza fuso) nel timestamp usato dall'asse datetime. */

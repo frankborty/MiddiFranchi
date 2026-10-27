@@ -66,7 +66,7 @@ else if (_dashboard is { } dashboard)
                                                 cx="21" cy="21" r="15.9155"
                                                 pathLength="100" transform="rotate(-90 21 21)"
                                                 stroke-dasharray="@DashArray(InvestmentShare)"
-                                                role="link" tabindex="0" aria-label="Vai a Investimenti"
+                                                role="button" tabindex="0" aria-label="Apri dettaglio investimenti"
                                                 @onmouseover="SetAllocationInvestmentsHover"
                                                 @onclick="OpenInvestments"
                                                 @onkeydown="e => HandleAllocationKeyDown(e, true)" />
@@ -75,7 +75,7 @@ else if (_dashboard is { } dashboard)
                                                 pathLength="100" transform="rotate(-90 21 21)"
                                                 stroke-dasharray="@DashArray(AccountsShare)"
                                                 stroke-dashoffset="@DashOffset(InvestmentShare)"
-                                                role="link" tabindex="0" aria-label="Vai a Conti"
+                                                role="button" tabindex="0" aria-label="Apri dettaglio conti"
                                                 @onmouseover="SetAllocationAccountsHover"
                                                 @onclick="OpenAccounts"
                                                 @onkeydown="e => HandleAllocationKeyDown(e, false)" />
@@ -224,8 +224,14 @@ else if (_dashboard is { } dashboard)
             </section>
         </div>
     </div>
-
 }
+
+<InvestmentClassDialog Open="_allocationDialogOpen"
+                       AssetClassName="@_allocationDialogTitle"
+                       AssetClassColor="@_allocationDialogColor"
+                       Items="_allocationDialogItems"
+                       ItemsLabel="@_allocationDialogItemsLabel"
+                       OnClose="CloseAllocationDialog" />
 
 @code {
     private FinancialDashboard? _dashboard;
@@ -233,6 +239,23 @@ else if (_dashboard is { } dashboard)
     private bool _loading = true;
     private string? _loadError;
     private string? _allocationHover;
+    private bool _allocationDialogOpen;
+    private string _allocationDialogTitle = "";
+    private string _allocationDialogColor = "#64748b";
+    private string _allocationDialogItemsLabel = "strumenti";
+    private IReadOnlyList<InvestmentAllocationItem> _allocationDialogItems = [];
+
+    private static readonly string[] AllocationPalette =
+    [
+        "#4f5bd5",
+        "#0ea5e9",
+        "#1d7047",
+        "#b86b35",
+        "#8a8780",
+        "#7d4a7a",
+        "#b34432",
+        "#2f6f7d",
+    ];
 
     private Money? AllocationInvestments => _overview?.Investments.CurrentValue;
 
@@ -301,15 +324,89 @@ else if (_dashboard is { } dashboard)
 
     private void ClearAllocationHover() => _allocationHover = null;
 
-    private void OpenInvestments() => Navigation.NavigateTo("investments");
+    private void OpenInvestments() => OpenAllocationDialog(investments: true);
 
-    private void OpenAccounts() => Navigation.NavigateTo("accounts");
+    private void OpenAccounts() => OpenAllocationDialog(investments: false);
+
+    private void OpenAllocationDialog(bool investments)
+    {
+        if (_dashboard is null)
+        {
+            return;
+        }
+
+        var entries = new List<(string Name, Money Value, string? Color)>();
+        if (investments)
+        {
+            foreach (var position in _dashboard.Investments.Positions)
+            {
+                if (position.Value is { Amount: > 0m } value)
+                {
+                    entries.Add((
+                        string.IsNullOrWhiteSpace(position.Symbol)
+                            ? position.InstrumentName
+                            : position.Symbol!,
+                        value,
+                        null));
+                }
+            }
+        }
+        else
+        {
+            foreach (var account in _dashboard.Accounts)
+            {
+                if (account.ManualBalance is { Amount: > 0m } value)
+                {
+                    entries.Add((account.Name, value, account.ColorHex));
+                }
+            }
+        }
+
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        var ordered = entries
+            .OrderByDescending(entry => entry.Value.Amount)
+            .ToArray();
+        var total = ordered.Sum(entry => entry.Value.Amount);
+        if (total <= 0m)
+        {
+            return;
+        }
+
+        var items = new List<InvestmentAllocationItem>(ordered.Length);
+        var offset = 0m;
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            var entry = ordered[index];
+            var share = entry.Value.Amount / total;
+            items.Add(new InvestmentAllocationItem(
+                entry.Name,
+                entry.Value,
+                share,
+                offset,
+                entry.Color ?? AllocationPalette[index % AllocationPalette.Length],
+                null));
+            offset += share;
+        }
+
+        var appearance = Appearance.Get(investments ? AppSection.Investments : AppSection.Accounts);
+        _allocationDialogTitle = investments ? "Investimenti" : "Conti";
+        _allocationDialogColor = appearance.Color;
+        _allocationDialogItemsLabel = investments ? "strumenti" : "conti";
+        _allocationDialogItems = items;
+        _allocationDialogOpen = true;
+    }
+
+    private void CloseAllocationDialog() => _allocationDialogOpen = false;
 
     private void HandleAllocationKeyDown(KeyboardEventArgs args, bool investments)
     {
         if (args.Key is "Enter" or " ")
         {
-            Navigation.NavigateTo(investments ? "investments" : "accounts");
+            OpenAllocationDialog(investments);
         }
     }
 

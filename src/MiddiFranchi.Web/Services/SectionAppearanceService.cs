@@ -26,11 +26,20 @@ public sealed class SectionAppearanceService
     private static readonly IReadOnlyDictionary<AppSection, SectionAppearance> Defaults =
         new Dictionary<AppSection, SectionAppearance>
         {
-            [AppSection.Dashboard] = new("chart", "#2456c9"),
+            [AppSection.Dashboard] = new("chart", "#8a8780"),
             [AppSection.Accounts] = new("wallet", "#0ea5e9"),
-            [AppSection.Investments] = new("pie", "#8b5cf6"),
-            [AppSection.Operations] = new("receipt", "#f59e0b"),
-            [AppSection.Settings] = new("settings", "#64748b"),
+            [AppSection.Investments] = new("pie", "#4f5bd5"),
+            [AppSection.Operations] = new("receipt", "#b86b35"),
+            [AppSection.Settings] = new("settings", "#6f6b5e"),
+        };
+    private static readonly IReadOnlyDictionary<AppSection, string> LegacyDefaults =
+        new Dictionary<AppSection, string>
+        {
+            [AppSection.Dashboard] = "#2456c9",
+            [AppSection.Accounts] = "#0ea5e9",
+            [AppSection.Investments] = "#8b5cf6",
+            [AppSection.Operations] = "#f59e0b",
+            [AppSection.Settings] = "#64748b",
         };
 
     private readonly IAppMetadataRepository _metadata;
@@ -133,6 +142,7 @@ public sealed class SectionAppearanceService
             var settings = Get(AppSection.Settings).Color;
             var builder = new StringBuilder();
 
+            Append(builder, "--mf-dashboard-color", dashboard);
             Append(builder, "--mf-nav-home", OnDark(dashboard));
             Append(builder, "--mf-link", OnLight(dashboard));
             Append(builder, "--mf-brand-text", OnLight(dashboard));
@@ -151,19 +161,38 @@ public sealed class SectionAppearanceService
             Append(builder, "--mf-amber-100", Tint(operations));
             Append(builder, "--mf-accent-text", OnLight(operations, 55));
             Append(builder, "--mf-nav-operations", OnDark(operations));
+            Append(builder, "--mf-settings-color", settings);
             Append(builder, "--mf-nav-settings", OnDark(settings));
             return builder.ToString();
         }
     }
 
-    private static SectionAppearance Normalize(AppSection section, SectionAppearance appearance) =>
-        new(
+    private static SectionAppearance Normalize(AppSection section, SectionAppearance appearance)
+    {
+        var color = IsHexColor(appearance.Color)
+            ? appearance.Color.ToLowerInvariant()
+            : Defaults[section].Color;
+        if (LegacyDefaults.TryGetValue(section, out var legacyColor) && color == legacyColor)
+        {
+            color = Defaults[section].Color;
+        }
+
+        if (section == AppSection.Dashboard && color == "#6f8f2f")
+        {
+            color = Defaults[section].Color;
+        }
+
+        if (section == AppSection.Accounts && color == "#2f6f7d")
+        {
+            color = Defaults[section].Color;
+        }
+
+        return new SectionAppearance(
             string.IsNullOrWhiteSpace(appearance.Icon)
                 ? Defaults[section].Icon
                 : appearance.Icon.Trim(),
-            IsHexColor(appearance.Color)
-                ? appearance.Color.ToLowerInvariant()
-                : Defaults[section].Color);
+            color);
+    }
 
     private static bool IsHexColor(string? value) =>
         value is { Length: 7 } &&

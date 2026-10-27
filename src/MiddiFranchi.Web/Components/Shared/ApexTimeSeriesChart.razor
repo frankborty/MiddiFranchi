@@ -4,7 +4,7 @@
 @implements IDisposable
 @inject IJSRuntime JS
 
-<figure class="library-chart">
+<figure class="library-chart @CssClass" @ref="_chartRoot">
     @if (ShowHeader)
     {
         <figcaption class="library-chart-header">
@@ -42,8 +42,19 @@
                                  PointColor="@PointColorFor"
                                  Stroke="@StrokeFor(series)" />
             }
+            @if (HighlightZeroLine && _dates.Length >= 2)
+            {
+                <ApexPointSeries TItem="ApexTimePoint"
+                                 Items="@ZeroLinePoints"
+                                 Name="Zero"
+                                 SeriesType="SeriesType.Line"
+                                 XValue="@(point => point.Date)"
+                                 YValue="@(point => point.Value)"
+                                 Stroke="@ZeroLineStroke" />
+            }
         </ApexChart>
     </div>
+    <div class="chart-annotation-tooltip" hidden></div>
 
     @if (ShowFooter)
     {
@@ -99,6 +110,7 @@
 @code {
     private readonly string _listenerId = Guid.NewGuid().ToString("N");
     private ApexChart<ApexTimePoint>? _chart;
+    private ElementReference _chartRoot;
     private DotNetObjectReference<ApexTimeSeriesChart>? _reference;
     private string _theme = "light";
     private DateOnly[] _dates = [];
@@ -107,6 +119,10 @@
     private bool _resyncPending;
     private string? _labelMode;
     private string? _appliedAxisKey;
+    private string? _optionsKey;
+    private double? _yAxisMin;
+    private double? _yAxisMax;
+    private double? _yAxisStep;
 
     private string AxisKey =>
         $"{_theme}|{Stacked}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|{PercentageValues}|" +
@@ -133,6 +149,14 @@
     /// <summary>Bande tra due serie (aree con intervallo), disegnate sotto le linee.</summary>
     [Parameter]
     public IReadOnlyList<TimeSeriesRangeSeries> RangeSeries { get; set; } = [];
+
+    /// <summary>Marker puntuali sopra il grafico, ad esempio acquisti e vendite.</summary>
+    [Parameter]
+    public IReadOnlyList<TimeSeriesPointAnnotation> PointAnnotations { get; set; } = [];
+
+    /// <summary>Classe aggiuntiva sul contenitore, per stati visivi controllati via CSS.</summary>
+    [Parameter]
+    public string? CssClass { get; set; }
 
     /// <summary>Formatta asse Y e tooltip come percentuale invece che come valuta.</summary>
     [Parameter]
@@ -199,13 +223,20 @@
 
     protected override void OnParametersSet()
     {
-        _options = CreateOptions(_theme);
         _dates = Series
             .SelectMany(series => series.Points)
             .Select(point => point.Date)
             .Distinct()
             .OrderBy(date => date)
             .ToArray();
+        (_yAxisMin, _yAxisMax, _yAxisStep) = ComputeYAxisRange();
+
+        var nextOptionsKey = OptionsKey();
+        if (_optionsKey != nextOptionsKey)
+        {
+            _optionsKey = nextOptionsKey;
+            _options = CreateOptions(_theme);
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -233,6 +264,7 @@
         {
             await ApplyLabelModeAsync();
             await ApplyAxisRangeAsync();
+            await ApplyAnnotationTooltipsAsync();
 
             // Blazor-ApexCharts non sincronizza da solo serie rimosse o svuotate e,
             // su dati appena svuotati o riagganciati, a volte applica l'update solo
@@ -293,6 +325,25 @@
         }
     }
 
+    private async Task ApplyAnnotationTooltipsAsync()
+    {
+        if (PointAnnotations.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "mfBindPointAnnotationTitles",
+                _chartRoot,
+                PointAnnotations.Select(annotation => annotation.Tooltip ?? "").ToArray());
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
     private async Task ApplyLabelModeAsync()
     {
         if (_labelMode == XAxisLabelMode)
@@ -319,6 +370,7 @@
         }
 
         _theme = normalized;
+        _optionsKey = null;
         _options = CreateOptions(_theme);
         StateHasChanged();
     }
@@ -378,13 +430,130 @@
         ColorPointsBySign ? SignColor : null;
 
     private static string SignColor(ApexTimePoint point) =>
-        point.Value is >= 0m ? "#22c55e" : "#ef4444";
+        point.Value is >= 0m ? "#1d7047" : "#b34432";
 
     private SeriesStroke StrokeFor(TimeSeriesSeries series) => new()
     {
-        Color = series.Color ?? (_theme == "dark" ? "#2dd4bf" : "#0c8fa5"),
+        Color = series.Color ?? (_theme == "dark" ? "#9aa4ff" : "#4f5bd5"),
         Width = IsBar(series) ? 0 : 2,
     };
+
+    private SeriesStroke ZeroLineStroke => new()
+    {
+        Color = _theme == "dark" ? "#f0f0ed" : "#151515",
+        Width = 2,
+    };
+
+    private List<ApexTimePoint> ZeroLinePoints => _dates.Length < 2
+        ? []
+        :
+        [
+            new(_dates[0].ToDateTime(TimeOnly.MinValue), 0m),
+            new(_dates[^1].ToDateTime(TimeOnly.MinValue), 0m),
+        ];
+
+    private string OptionsKey() =>
+        string.Join(
+            '|',
+            _theme,
+            Stacked,
+            ShowMarkers,
+            Height?.ToString(),
+            ShowStackedTotal,
+            PercentageValues,
+            ColorPointsBySign,
+            TooltipDateMode,
+            XAxisLabelMode,
+            XAxisMin?.ToString("O"),
+            XAxisMax?.ToString("O"),
+            XAxisTickAmount,
+            HighlightZeroLine,
+            _yAxisMin,
+            _yAxisMax,
+            _yAxisStep,
+            Currency.Code,
+            RangeSeries.Count,
+            Series.Count,
+            string.Join(",", Series.Select(series =>
+                $"{series.Label}:{series.Color}:{series.FillColor}:{series.FillOpacity}:{series.Kind}")),
+            string.Join(",", PointAnnotations.Select(annotation =>
+                $"{annotation.Date:O}:{annotation.Value}:{annotation.Color}:{annotation.Label}:{annotation.Tooltip}")));
+
+    private (double? Min, double? Max, double? Step) ComputeYAxisRange()
+    {
+        var values = Series
+            .SelectMany(series => series.Points)
+            .Select(point => point.Value)
+            .Where(value => value is not null)
+            .Select(value => value!.Value)
+            .Concat(RangeSeries
+                .SelectMany(range => range.Points)
+                .SelectMany(point => new[] { point.Bottom, point.Top }))
+            .ToArray();
+
+        if (values.Length == 0)
+        {
+            return (null, null, null);
+        }
+
+        var minimum = values.Min();
+        var maximum = values.Max();
+        var span = maximum - minimum;
+        var basis = span > 0m
+            ? span
+            : Math.Max(Math.Abs(maximum) * 0.25m, PercentageValues ? 0.01m : 1m);
+        var magnitude = Math.Max(Math.Abs(minimum), Math.Abs(maximum));
+        var step = Math.Max(
+            NiceStep(basis, 5),
+            NiceStep(Math.Max(magnitude * 0.1m, PercentageValues ? 0.01m : 1m), 1));
+
+        var niceMin = Math.Floor(minimum / step) * step;
+        if (minimum - niceMin < step * 0.2m)
+        {
+            niceMin -= step;
+        }
+
+        var niceMax = Math.Ceiling(maximum / step) * step;
+        if (niceMax - maximum < step * 0.2m)
+        {
+            niceMax += step;
+        }
+
+        if (minimum >= 0m && niceMin < 0m)
+        {
+            niceMin = 0m;
+        }
+
+        if (niceMax <= niceMin)
+        {
+            niceMax = niceMin + step;
+        }
+
+        return ((double)niceMin, (double)niceMax, (double)step);
+    }
+
+    private static decimal NiceStep(decimal range, int targetIntervals)
+    {
+        if (range <= 0m || targetIntervals <= 0)
+        {
+            return 1m;
+        }
+
+        var rough = range / targetIntervals;
+        var exponent = (decimal)Math.Floor(Math.Log10((double)rough));
+        var magnitude = (decimal)Math.Pow(10d, (double)exponent);
+        var fraction = rough / magnitude;
+        var niceFraction = fraction switch
+        {
+            <= 1m => 1m,
+            <= 2m => 2m,
+            <= 2.5m => 2.5m,
+            <= 5m => 5m,
+            _ => 10m,
+        };
+
+        return niceFraction * magnitude;
+    }
 
     private string SeriesSignature() =>
         string.Join("|", RangeSeries.Select(range =>
@@ -414,13 +583,13 @@
     {
         var dark = theme == "dark";
         var currencyCode = Currency.Code ?? "EUR";
-        var defaultColor = dark ? "#2dd4bf" : "#0c8fa5";
+        var defaultColor = dark ? "#9aa4ff" : "#4f5bd5";
         var colors = RangeSeries
             .Select(range => range.Color)
             .Concat(Series.Select(series => series.Color ?? defaultColor))
             .ToList();
         var currencyFormatter = PercentageValues
-            ? "function(val) { return new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(val); }"
+            ? "function(val) { return new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 0 }).format(val); }"
             : $"function(val) {{ return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
         var showStackedTotal = Stacked && ShowStackedTotal ? "true" : "false";
         var percentageValues = PercentageValues ? "true" : "false";
@@ -477,13 +646,13 @@
                 rangeValue = rangeTop > 0 ? rangeTop : rangeBottom;
               }
               var lineSeries = chartSeries.filter(function (s) {
-                return s.name !== 'Area' && s.type !== 'rangeArea';
+                return s.name !== 'Area' && s.name !== 'Zero' && s.type !== 'rangeArea';
               });
 
               var rows = '';
               var total = 0;
               chartSeries.forEach(function (s, i) {
-                if (s.name === 'Area' || s.type === 'rangeArea') { return; }
+                if (s.name === 'Area' || s.name === 'Zero' || s.type === 'rangeArea') { return; }
                 var y = null;
                 var pointColor = colors[i] || '#999';
                 if (hoveredIsRange && lineSeries.length === 1 && rangeValue !== null) {
@@ -536,7 +705,7 @@
                 DynamicAnimation = new DynamicAnimation { Enabled = true, Speed = 350 },
             },
             Background = "transparent",
-            ForeColor = dark ? "#b6b6bf" : "#45536e",
+            ForeColor = dark ? "#b6bdad" : "#4c534a",
             Stacked = Stacked,
             StackType = Stacked ? ApexCharts.StackType.Normal : null,
         };
@@ -550,21 +719,25 @@
             Debug = false,
             Chart = chart,
             Colors = colors,
-            Annotations = HighlightZeroLine
-                ? new Annotations
+            Annotations = PointAnnotations.Count == 0
+                ? null
+                : new Annotations
                 {
-                    Yaxis =
-                    [
-                        new AnnotationsYAxis
+                    Points = PointAnnotations.Select(annotation => new AnnotationsPoint
+                    {
+                        X = new DateTimeOffset(
+                            annotation.Date.ToDateTime(TimeOnly.MinValue),
+                            TimeSpan.Zero).ToUnixTimeMilliseconds(),
+                        Y = (double)annotation.Value,
+                        Marker = new AnnotationMarker
                         {
-                            Y = 0,
-                            BorderColor = dark ? "#f1f5f9" : "#334155",
-                            BorderWidth = 2,
-                            StrokeDashArray = 0,
+                            Size = 5,
+                            FillColor = annotation.Color,
+                            StrokeColor = annotation.Color,
+                            StrokeWidth = 0,
                         },
-                    ],
-                }
-                : null,
+                    }).ToList(),
+                },
             Fill = new Fill
             {
                 Type = FillType.Solid,
@@ -613,10 +786,15 @@
             [
                 new YAxis
                 {
+                    Min = _yAxisMin,
+                    Max = _yAxisMax,
+                    StepSize = _yAxisStep,
+                    ForceNiceScale = true,
+                    TickAmount = 5,
                     Labels = new YAxisLabels { Formatter = currencyFormatter },
                 },
             ],
-            Grid = new Grid { BorderColor = dark ? "#2a2a31" : "#dfe4ef" },
+            Grid = new Grid { BorderColor = dark ? "#2b3128" : "#ddd8cc" },
             Tooltip = new Tooltip
             {
                 Shared = SharedTooltip,

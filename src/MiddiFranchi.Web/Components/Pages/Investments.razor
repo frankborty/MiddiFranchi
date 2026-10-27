@@ -1076,8 +1076,12 @@ else if (_workspace is { } workspace)
                 var asset = assets[index];
                 var value = asset.CurrentValue!.Value;
                 var share = total > 0m ? value.Amount / total : 0m;
+                var displayName = asset.AssetClass is AssetClass.Equity or AssetClass.MoneyMarket &&
+                                  !string.IsNullOrWhiteSpace(asset.Symbol)
+                    ? asset.Symbol
+                    : asset.Name;
                 items.Add(new InvestmentAllocationItem(
-                    asset.Name,
+                    displayName,
                     value,
                     share,
                     offset,

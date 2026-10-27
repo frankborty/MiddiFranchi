@@ -43,26 +43,28 @@ else if (_workspace is { } workspace)
                 <div>
                     <h2 id="monthly-return-title"><MfIcon Name="chart" Size="18" /> Rendimento mensile</h2>
                 </div>
-                <div class="overview-tabs" role="group" aria-label="Controlli del rendimento mensile">
+                <div class="advanced-chart-controls">
+                    <label class="chart-select">
+                        <span class="visually-hidden">Anno del rendimento mensile</span>
+                        <select class="advanced-chart-select"
+                                value="@(_monthlyYear?.ToString() ?? "")"
+                                aria-label="Periodo del rendimento mensile"
+                                @onchange="OnMonthlyYearChanged">
+                            <option value="">Totale</option>
+                            @foreach (var year in MonthlyYears)
+                            {
+                                <option value="@year">@year</option>
+                            }
+                        </select>
+                    </label>
                     <button type="button"
-                            class="overview-tab investments @(_showMonthlyCumulative ? "active" : "")"
+                            class="chart-switch @(_showMonthlyCumulative ? "active" : "")"
                             aria-pressed="@(_showMonthlyCumulative ? "true" : "false")"
                             title="Mostra o nascondi il rendimento cumulativo"
                             @onclick="ToggleMonthlyCumulative">
-                        <span class="investment-chart-toggle-dot"
-                              style="background:@CumulativeColor"></span>
-                        Cumulato
+                        <span class="chart-switch-track" aria-hidden="true"><span class="chart-switch-thumb"></span></span>
+                        <span>Cumulato</span>
                     </button>
-                    <select class="advanced-chart-select"
-                            value="@(_monthlyYear?.ToString() ?? "")"
-                            aria-label="Periodo del rendimento mensile"
-                            @onchange="OnMonthlyYearChanged">
-                        <option value="">Totale</option>
-                        @foreach (var year in MonthlyYears)
-                        {
-                            <option value="@year">@year</option>
-                        }
-                    </select>
                 </div>
             </div>
             @if (MonthlySeriesPoints.Count > 0)
@@ -70,6 +72,7 @@ else if (_workspace is { } workspace)
                 <ApexTimeSeriesChart Title=""
                                      Currency="@workspace.Overview.History.Currency"
                                      Series="@MonthlySeries"
+                                     CssClass="@(_showMonthlyCumulative ? null : "chart-hide-cumulato")"
                                      Stacked="true"
                                      ShowStackedTotal="false"
                                      PercentageValues="true"
@@ -96,13 +99,12 @@ else if (_workspace is { } workspace)
                     <h2 id="annual-return-title"><MfIcon Name="chart" Size="18" /> Rendimento annuale</h2>
                 </div>
                 <button type="button"
-                        class="overview-tab investments @(_showAnnualCumulative ? "active" : "")"
+                        class="chart-switch @(_showAnnualCumulative ? "active" : "")"
                         aria-pressed="@(_showAnnualCumulative ? "true" : "false")"
                         title="Mostra o nascondi il rendimento cumulativo"
                         @onclick="ToggleAnnualCumulative">
-                    <span class="investment-chart-toggle-dot"
-                          style="background:@CumulativeColor"></span>
-                    Cumulato
+                    <span class="chart-switch-track" aria-hidden="true"><span class="chart-switch-thumb"></span></span>
+                    <span>Cumulato</span>
                 </button>
             </div>
             @if (AnnualSeriesPoints.Count > 0)
@@ -110,6 +112,7 @@ else if (_workspace is { } workspace)
                 <ApexTimeSeriesChart Title=""
                                      Currency="@workspace.Overview.History.Currency"
                                      Series="@AnnualSeries"
+                                     CssClass="@(_showAnnualCumulative ? null : "chart-hide-cumulato")"
                                      Stacked="true"
                                      ShowStackedTotal="false"
                                      PercentageValues="true"
@@ -173,7 +176,7 @@ else if (_workspace is { } workspace)
 @code {
     private const string MonthlyCumulativeKey = "mf.chart.statistics.monthlyCumulative";
     private const string AnnualCumulativeKey = "mf.chart.statistics.annualCumulative";
-    private const string CumulativeColor = "#8b5cf6";
+    private const string CumulativeColor = "#4f5bd5";
 
     private InvestmentWorkspace? _workspace;
     private bool _loading = true;
@@ -305,16 +308,13 @@ else if (_workspace is { } workspace)
                 new(
                     "Rendimento mensile",
                     MonthlySeriesPoints,
-                    Color: "#22c55e",
+                    Color: "#1d7047",
                     Kind: TimeSeriesSeriesKind.Bar),
             };
-            if (_showMonthlyCumulative)
-            {
-                series.Add(new(
-                    "Cumulato",
-                    MonthlyCumulativePoints,
-                    Color: CumulativeColor));
-            }
+            series.Add(new(
+                "Cumulato",
+                MonthlyCumulativePoints,
+                Color: CumulativeColor));
 
             return series;
         }
@@ -351,16 +351,13 @@ else if (_workspace is { } workspace)
                 new(
                     "Rendimento annuale",
                     AnnualSeriesPoints,
-                    Color: "#22c55e",
+                    Color: "#1d7047",
                     Kind: TimeSeriesSeriesKind.Bar),
             };
-            if (_showAnnualCumulative)
-            {
-                series.Add(new(
-                    "Cumulato",
-                    AnnualCumulativePoints,
-                    Color: CumulativeColor));
-            }
+            series.Add(new(
+                "Cumulato",
+                AnnualCumulativePoints,
+                Color: CumulativeColor));
 
             return series;
         }

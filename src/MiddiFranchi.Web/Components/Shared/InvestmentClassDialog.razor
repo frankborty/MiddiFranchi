@@ -13,7 +13,7 @@
                         <span class="modal-category-dot" style="background: @AssetClassColor" aria-hidden="true"></span>
                         @AssetClassName
                     </h2>
-                    <p class="section-sub">@Items.Count strumenti · @Format.Money(Total)</p>
+                    <p class="section-sub">@Items.Count @ItemsLabel · @Format.Money(Total)</p>
                 </div>
                 <button type="button" class="icon-button" aria-label="Chiudi" @onclick="Close">
                     <MfIcon Name="close" Size="18" />
@@ -47,10 +47,12 @@
                     <ul class="expense-pie-legend">
                         @foreach (var item in Items)
                         {
-                            <li class="expense-pie-row">
+                            <li class="expense-pie-row investment-class-row">
                                 <span class="expense-pie-dot" style="background: @item.Color" aria-hidden="true"></span>
-                                <span class="expense-pie-label">@item.Name</span>
-                                <span class="expense-pie-share">@Format.Percent(item.Share)</span>
+                                <span class="expense-pie-label">
+                                    <span class="expense-pie-name">@item.Name</span>
+                                    <span class="expense-pie-share">@Format.Percent(item.Share)</span>
+                                </span>
                                 <strong class="expense-pie-amount">
                                     @Format.Money(item.Value)
                                     @if (item.TotalResultPercent is { } percent)
@@ -77,6 +79,8 @@
     [Parameter] public bool Open { get; set; }
 
     [Parameter] public string AssetClassName { get; set; } = "";
+
+    [Parameter] public string ItemsLabel { get; set; } = "strumenti";
 
     [Parameter] public string AssetClassColor { get; set; } = "#64748b";
 

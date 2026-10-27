@@ -1,5 +1,7 @@
 @namespace MiddiFranchi.Web.Components.Shared
 @using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Financial
+@using MiddiFranchi.Domain.Shared
 @inject ChartPreferences Preferences
 
 <section class="card investment-chart-card" aria-labelledby="investment-chart-title">
@@ -8,8 +10,13 @@
             <h2 id="investment-chart-title"><MfIcon Name="trend" Size="18" /> Valore nel tempo</h2>
         </div>
         <div class="investment-chart-legend" aria-hidden="true">
-            <span><span class="investment-class-dot" style="background:#8b5cf6"></span> Valore attuale</span>
-            <span><span class="investment-class-dot" style="background:#9ca3af"></span> Capitale investito</span>
+            <span><span class="investment-class-dot" style="background:#4f5bd5"></span> Valore attuale</span>
+            <span><span class="investment-class-dot" style="background:#8f9787"></span> Capitale investito</span>
+            @if (OperationAnnotations.Count > 0)
+            {
+                <span><span class="investment-class-dot" style="background:#1d7047"></span> Acquisti</span>
+                <span><span class="investment-class-dot" style="background:#b34432"></span> Vendite</span>
+            }
         </div>
     </div>
     @if (Workspace.Overview.History.Points.Count > 0)
@@ -40,6 +47,7 @@
                              Currency="@Workspace.Overview.History.Currency"
                              Series="@BuildHistorySeries(ChartPoints)"
                              RangeSeries="@BuildHistoryRangeSeries(ChartPoints)"
+                             PointAnnotations="@OperationAnnotations"
                              XAxisMin="@ChartAxisMin"
                              XAxisMax="@ChartAxisMax"
                              XAxisLabelMode="@ChartAxisLabelMode"
@@ -187,6 +195,124 @@
         };
     }
 
+    private IReadOnlyList<TimeSeriesPointAnnotation> OperationAnnotations
+    {
+        get
+        {
+            var points = ChartPoints
+                .Where(point => point.CurrentValue is not null)
+                .ToArray();
+            if (points.Length == 0)
+            {
+                return [];
+            }
+
+            var (from, to) = ChartWindow(Workspace.Overview.ValuationDate);
+            var annotations = new List<TimeSeriesPointAnnotation>();
+
+            foreach (var asset in Workspace.Assets)
+            {
+                var operations = asset.Operations
+                    .Where(operation => !operation.IsReversed &&
+                                        operation.Kind is InvestmentOperationKind.Buy or InvestmentOperationKind.Sell)
+                    .OrderBy(operation => operation.OperationDate)
+                    .ThenBy(operation => operation.RecordedAt)
+                    .ToArray();
+                if (operations.Length == 0)
+                {
+                    continue;
+                }
+
+                var totalBought = operations
+                    .Where(operation => operation.Kind == InvestmentOperationKind.Buy)
+                    .Sum(operation => operation.Quantity?.Value ?? 0m);
+                var realizedByOperation = RealizedResultsByOperation(operations);
+                var ticker = string.IsNullOrWhiteSpace(asset.Symbol) ? asset.Name : asset.Symbol;
+
+                foreach (var group in operations
+                    .Where(operation =>
+                        (from is null || operation.OperationDate >= from.Value) &&
+                        (to is null || operation.OperationDate <= to.Value))
+                    .GroupBy(operation => (operation.OperationDate, operation.Kind)))
+                {
+                    var point = points.LastOrDefault(item => item.Date <= group.Key.OperationDate);
+                    if (point?.CurrentValue is not { } value)
+                    {
+                        continue;
+                    }
+
+                    var quantity = group.Sum(operation => operation.Quantity?.Value ?? 0m);
+                    var gross = group.Sum(operation => operation.GrossAmount?.Amount ?? 0m);
+                    var fees = group.Sum(operation => operation.Fees?.Amount ?? 0m);
+                    var tax = group.Sum(operation => operation.Tax?.Amount ?? 0m);
+                    var quantityText = Format.Quantity(new Quantity(quantity));
+                    var isBuy = group.Key.Kind == InvestmentOperationKind.Buy;
+                    string tooltip;
+
+                    if (isBuy)
+                    {
+                        var spent = new Money(gross + fees + tax, Currency.Euro);
+                        tooltip = $"{ticker} · Acquisto {quantityText} · Speso {Format.Money(spent)}";
+                    }
+                    else
+                    {
+                        var proceeds = new Money(gross - fees - tax, Currency.Euro);
+                        var realized = group.Sum(operation => realizedByOperation.GetValueOrDefault(operation.Id));
+                        var shareText = totalBought > 0m
+                            ? $" ({Format.Percent(quantity / totalBought)} delle azioni acquistate)"
+                            : "";
+                        tooltip =
+                            $"{ticker} · Vendita {quantityText}{shareText} · Incassato {Format.Money(proceeds)} · " +
+                            $"Guadagno/perdita {Format.MoneySigned(new Money(realized, Currency.Euro))}";
+                    }
+
+                    annotations.Add(new TimeSeriesPointAnnotation(
+                        group.Key.OperationDate,
+                        value.Amount,
+                        isBuy ? "#1d7047" : "#b34432",
+                        Tooltip: tooltip));
+                }
+            }
+
+            return annotations;
+        }
+    }
+
+    private static Dictionary<Guid, decimal> RealizedResultsByOperation(
+        IReadOnlyList<InvestmentOperationRow> operations)
+    {
+        var results = new Dictionary<Guid, decimal>();
+        var quantity = 0m;
+        var cost = 0m;
+
+        foreach (var operation in operations)
+        {
+            var operationQuantity = operation.Quantity?.Value ?? 0m;
+            var gross = operation.GrossAmount?.Amount ?? 0m;
+            var fees = operation.Fees?.Amount ?? 0m;
+            var tax = operation.Tax?.Amount ?? 0m;
+
+            if (operation.Kind == InvestmentOperationKind.Buy)
+            {
+                quantity += operationQuantity;
+                cost += gross + fees + tax;
+                continue;
+            }
+
+            if (operation.Kind != InvestmentOperationKind.Sell || quantity <= 0m)
+            {
+                continue;
+            }
+
+            var allocatedCost = cost / quantity * operationQuantity;
+            results[operation.Id] = gross - fees - tax - allocatedCost;
+            quantity -= operationQuantity;
+            cost -= allocatedCost;
+        }
+
+        return results;
+    }
+
     private IReadOnlyList<TimeSeriesSeries> BuildHistorySeries(
         IReadOnlyList<InvestmentHistoryPoint> points) =>
     [
@@ -195,20 +321,20 @@
             points
                 .Select(point => new TimeSeriesPoint(point.Date, point.CurrentValue?.Amount))
                 .ToArray(),
-            Color: "#8b5cf6"),
+            Color: "#4f5bd5"),
         new(
             "Capitale investito",
             points
                 .Select(point => new TimeSeriesPoint(point.Date, point.InvestedCapital?.Amount))
                 .ToArray(),
-            Color: "#9ca3af"),
+            Color: "#8f9787"),
     ];
 
     private IReadOnlyList<TimeSeriesRangeSeries> BuildHistoryRangeSeries(
         IReadOnlyList<InvestmentHistoryPoint> points)
     {
-        const string green = "#22c55e";
-        const string red = "#ef4444";
+        const string green = "#1d7047";
+        const string red = "#b34432";
 
         var values = points
             .Where(point => point.CurrentValue is not null && point.InvestedCapital is not null)

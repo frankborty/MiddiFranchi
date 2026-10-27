@@ -483,24 +483,24 @@
             new TimeSeriesSeries(
                 Data.Investments.ValueLabel,
                 _showInvestments ? ChartPoints(SeriesValues(investmentsCarried)) : [],
-                Color: "#8b5cf6"),
+                Color: "#4f5bd5"),
 
             new TimeSeriesSeries(
                 Data.Accounts.ValueLabel,
                 _showAccounts ? ChartPoints(SeriesValues(accountsCarried)) : [],
-                Color: "#00b2ff"),
+                Color: "#0ea5e9"),
 
             new TimeSeriesSeries(
                 TotalLabel,
                 TotalVisible ? ChartPoints(SeriesValues(totalByDate)) : [],
-                Color: "#e2e8f0"),
+                Color: "#8a8780"),
 
             new TimeSeriesSeries(
                 Data.Investments.ReferenceLabel,
                 _showInvestments && !bothSelected && !noneSelected
                     ? ChartPoints(SeriesValues(referenceCarried))
                     : [],
-                Color: "#94a3b8"),
+                Color: "#8b8b86"),
         ];
     }
 

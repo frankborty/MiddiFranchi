@@ -17,6 +17,13 @@ public sealed record TimeSeriesSeries(
     string? FillColor = null,
     double FillOpacity = 1);
 
+public sealed record TimeSeriesPointAnnotation(
+    DateOnly Date,
+    decimal Value,
+    string Color,
+    string? Label = null,
+    string? Tooltip = null);
+
 public sealed record TimeSeriesRangePoint(DateOnly Date, decimal Top, decimal Bottom);
 
 public sealed record TimeSeriesRangeSeries(

@@ -5,56 +5,71 @@
 @inject NavigationManager Navigation
 @inject SectionAppearanceService Appearance
 
-<div class="page nav-collapsed" id="mf-page" style="@PageStyle">
-    <aside class="app-sidebar" id="mf-sidebar">
-        <div class="sidebar-top">
-            <a class="brand-mark" href="" title="MiddiFranchi" aria-label="MiddiFranchi, vai alla dashboard">
-                <MfIcon Name="coin" Size="20" />
-            </a>
-            <span class="brand-name nav-label">MiddiFranchi</span>
-            <button type="button" class="sidebar-collapse" onclick="mfToggleNavCollapsed()"
-                    title="Espandi o comprimi il menu" aria-label="Espandi o comprimi il menu di navigazione">
-                <MfIcon Name="arrow-right" Size="15" />
-            </button>
-            <button type="button" class="sidebar-close" onclick="mfCloseNav()" aria-label="Chiudi il menu di navigazione">
-                <MfIcon Name="close" Size="18" />
-            </button>
-        </div>
-        <nav class="sidebar-nav" aria-label="Navigazione principale">
-            <div class="sidebar-group">
-                <NavLink href="" class="nav-home" Match="NavLinkMatch.All" title="Dashboard" aria-label="Dashboard"><MfIcon Name="@Appearance.Get(AppSection.Dashboard).Icon" Size="20" /><span class="nav-label">Dashboard</span></NavLink>
-                <NavLink href="accounts" class="nav-accounts" Match="NavLinkMatch.Prefix" title="Conti" aria-label="Conti"><MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="20" /><span class="nav-label">Conti</span></NavLink>
-                <NavLink href="investments" class="nav-investments" Match="NavLinkMatch.All" title="Investimenti" aria-label="Investimenti"><MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="20" /><span class="nav-label">Investimenti</span></NavLink>
-                <NavLink href="operations" class="nav-operations" Match="NavLinkMatch.All" title="Movimenti" aria-label="Movimenti"><MfIcon Name="@Appearance.Get(AppSection.Operations).Icon" Size="20" /><span class="nav-label">Movimenti</span></NavLink>
-            </div>
-            <div class="sidebar-group sidebar-group-bottom">
-                <NavLink href="settings" class="nav-settings" Match="NavLinkMatch.Prefix" title="Configurazione" aria-label="Configurazione"><MfIcon Name="@Appearance.Get(AppSection.Settings).Icon" Size="20" /><span class="nav-label">Configurazione</span></NavLink>
-            </div>
+<div class="page app-shell" id="mf-page" style="@PageStyle">
+    <header class="app-topbar">
+        <a class="app-brand" href="" aria-label="MiddiFranchi, vai alla dashboard">
+            <span class="app-brand-mark" aria-hidden="true"><MfIcon Name="coin" Size="18" /></span>
+            <span class="app-brand-name">MiddiFranchi</span>
+        </a>
+
+        <nav class="app-topnav" aria-label="Navigazione principale">
+            <NavLink href="" class="topnav-link nav-home" Match="NavLinkMatch.All">
+                <MfIcon Name="@Appearance.Get(AppSection.Dashboard).Icon" Size="17" />
+                <span>Dashboard</span>
+            </NavLink>
+            <NavLink href="accounts" class="topnav-link nav-accounts" Match="NavLinkMatch.Prefix">
+                <MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="17" />
+                <span>Conti</span>
+            </NavLink>
+            <NavLink href="investments" class="topnav-link nav-investments" Match="NavLinkMatch.Prefix">
+                <MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="17" />
+                <span>Investimenti</span>
+            </NavLink>
+            <NavLink href="operations" class="topnav-link nav-operations" Match="NavLinkMatch.All">
+                <MfIcon Name="@Appearance.Get(AppSection.Operations).Icon" Size="17" />
+                <span>Movimenti</span>
+            </NavLink>
         </nav>
-    </aside>
-    <button type="button" class="sidebar-backdrop" onclick="mfCloseNav()" aria-label="Chiudi il menu di navigazione"></button>
-    <div class="app-main">
-        <div class="mobile-app-bar">
-            <button type="button" class="icon-button menu-toggle" onclick="mfToggleNav()"
-                    aria-label="Apri il menu di navigazione" aria-expanded="false" aria-controls="mf-sidebar">
-                <MfIcon Name="menu" Size="20" />
-            </button>
-            <a class="mobile-brand" href="" aria-label="MiddiFranchi, vai alla dashboard">
-                <MfIcon Name="coin" Size="18" />
-                <span>MiddiFranchi</span>
-            </a>
+
+        <div class="app-topbar-actions">
+            <NavLink href="settings" class="topbar-icon nav-settings" Match="NavLinkMatch.Prefix"
+                     aria-label="Configurazione" title="Configurazione">
+                <MfIcon Name="@Appearance.Get(AppSection.Settings).Icon" Size="18" />
+            </NavLink>
         </div>
-        <main class="page-body">
-            @Body
-        </main>
-        <div id="mf-toast-host" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
-        @if (!IsAccountsSection && !IsSettingsSection && !IsOperationsSection && !IsInvestmentsSection)
-        {
-            <a class="fab-add" href="operations?new=1" aria-label="Nuova operazione">
-                <MfIcon Name="plus" Size="24" />
-            </a>
-        }
-    </div>
+    </header>
+
+    <main class="page-body">
+        @Body
+    </main>
+
+    <div id="mf-toast-host" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
+
+    @if (!IsAccountsSection && !IsSettingsSection && !IsOperationsSection && !IsInvestmentsSection)
+    {
+        <a class="fab-add" href="operations?new=1" aria-label="Nuova operazione">
+            <MfIcon Name="plus" Size="24" />
+        </a>
+    }
+
+    <nav class="app-bottomnav" aria-label="Navigazione mobile">
+        <NavLink href="" class="bottomnav-link nav-home" Match="NavLinkMatch.All">
+            <MfIcon Name="@Appearance.Get(AppSection.Dashboard).Icon" Size="20" />
+            <span>Dashboard</span>
+        </NavLink>
+        <NavLink href="accounts" class="bottomnav-link nav-accounts" Match="NavLinkMatch.Prefix">
+            <MfIcon Name="@Appearance.Get(AppSection.Accounts).Icon" Size="20" />
+            <span>Conti</span>
+        </NavLink>
+        <NavLink href="investments" class="bottomnav-link nav-investments" Match="NavLinkMatch.Prefix">
+            <MfIcon Name="@Appearance.Get(AppSection.Investments).Icon" Size="20" />
+            <span>Investimenti</span>
+        </NavLink>
+        <NavLink href="operations" class="bottomnav-link nav-operations" Match="NavLinkMatch.All">
+            <MfIcon Name="@Appearance.Get(AppSection.Operations).Icon" Size="20" />
+            <span>Movimenti</span>
+        </NavLink>
+    </nav>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
@@ -160,4 +175,3 @@
         return path.StartsWith("/investments", StringComparison.OrdinalIgnoreCase);
     }
 }
-
