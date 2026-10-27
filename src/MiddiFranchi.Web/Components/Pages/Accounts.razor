@@ -57,11 +57,15 @@ else
                                     <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => SetRangeAsync(option.Key)">@option.Label</button>
                                 }
                             </div>
-                            <div class="overview-ranges" role="group" aria-label="Tipo di grafico">
-                                @foreach (var option in ChartKindOptions)
-                                {
-                                    <button type="button" class="@ChartRanges.Class(option.Key, ChartKindKey)" aria-pressed="@AriaPressed(ChartKindKey == option.Key)" @onclick="() => SetChartKindAsync(option.Kind)">@option.Label</button>
-                                }
+                            <div class="overview-tabs" role="group" aria-label="Elementi del grafico">
+                                <button type="button" class="overview-tab accounts @(_showBars ? "active" : "")"
+                                        aria-pressed="@AriaPressed(_showBars)" @onclick="ToggleBarsAsync">
+                                    Barre
+                                </button>
+                                <button type="button" class="overview-tab accounts @(_showLine ? "active" : "")"
+                                        aria-pressed="@AriaPressed(_showLine)" @onclick="ToggleLineAsync">
+                                    Linea
+                                </button>
                             </div>
                             <details class="filter-menu-wrap accounts-chart-filter">
                                 <summary class="filter-trigger @(HasChartAccountFilter ? "active" : "")">
@@ -119,7 +123,7 @@ else
                         <ApexTimeSeriesChart Title=""
                                              Currency="@_rows[0].Currency"
                                              Series="@ChartSeries"
-                                             Stacked="@(_chartKind != AccountsChartKind.Line)"
+                                             Stacked="@_showBars"
                                              ShowStackedTotal="false"
                                              ShowHeader="false"
                                              ShowFooter="false"
@@ -329,14 +333,9 @@ else
     private IReadOnlyList<AccountOverviewRow>? _rows;
     private IReadOnlyDictionary<Guid, string> _routeKeys = new Dictionary<Guid, string>();
     private IReadOnlyList<ManualBalance> _allReadings = [];
-    private AccountsChartKind _chartKind = AccountsChartKind.Both;
+    private bool _showBars = true;
+    private bool _showLine = true;
     private readonly HashSet<Guid> _chartAccountIds = [];
-    private static readonly (string Key, string Label, AccountsChartKind Kind)[] ChartKindOptions =
-    [
-        ("both", "Barre e linea", AccountsChartKind.Both),
-        ("bars", "Barre", AccountsChartKind.Bars),
-        ("line", "Linea", AccountsChartKind.Line),
-    ];
     private bool _loading = true;
     private bool _hideClosedAccounts = true;
     private string _range = "max";
@@ -459,15 +458,24 @@ else
         get
         {
             var series = BuildChartSeries();
-            return _chartKind == AccountsChartKind.Bars
-                ? series.Where(item => item.Label != "Totale").ToArray()
-                : series;
+            var visible = new List<TimeSeriesSeries>();
+            if (_showBars)
+            {
+                visible.AddRange(series.Where(item => item.Label != "Totale"));
+            }
+
+            if (_showLine)
+            {
+                var total = series.FirstOrDefault(item => item.Label == "Totale");
+                if (total is not null)
+                {
+                    visible.Add(total);
+                }
+            }
+
+            return visible;
         }
     }
-
-    private string ChartKindKey => ChartKindOptions
-        .First(option => option.Kind == _chartKind)
-        .Key;
 
     private bool HasChartAccountFilter => _chartAccountIds.Count > 0;
 
@@ -620,11 +628,22 @@ else
             _range = storedRange;
         }
 
-        var storedKind = await Preferences.GetAsync("mf.chart.accounts.kind");
-        if (Enum.TryParse<AccountsChartKind>(storedKind, ignoreCase: true, out var kind) &&
-            Enum.IsDefined(kind))
+        var storedBars = await Preferences.GetBoolAsync("mf.chart.accounts.bars");
+        var storedLine = await Preferences.GetBoolAsync("mf.chart.accounts.line");
+        if (storedBars is null && storedLine is null)
         {
-            _chartKind = kind;
+            var legacyKind = await Preferences.GetAsync("mf.chart.accounts.kind");
+            _showBars = !string.Equals(legacyKind, "Line", StringComparison.OrdinalIgnoreCase);
+            _showLine = !string.Equals(legacyKind, "Bars", StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            _showBars = storedBars ?? true;
+            _showLine = storedLine ?? true;
+            if (!_showBars && !_showLine)
+            {
+                _showLine = true;
+            }
         }
 
         var storedAccounts = await Preferences.GetAsync("mf.chart.accounts.selected");
@@ -649,10 +668,32 @@ else
         await Preferences.SetAsync("mf.chart.accounts.range", range);
     }
 
-    private async Task SetChartKindAsync(AccountsChartKind kind)
+    private async Task ToggleBarsAsync()
     {
-        _chartKind = kind;
-        await Preferences.SetAsync("mf.chart.accounts.kind", ChartKindKey);
+        if (_showBars && !_showLine)
+        {
+            return;
+        }
+
+        _showBars = !_showBars;
+        await SaveChartLayersAsync();
+    }
+
+    private async Task ToggleLineAsync()
+    {
+        if (_showLine && !_showBars)
+        {
+            return;
+        }
+
+        _showLine = !_showLine;
+        await SaveChartLayersAsync();
+    }
+
+    private async Task SaveChartLayersAsync()
+    {
+        await Preferences.SetBoolAsync("mf.chart.accounts.bars", _showBars);
+        await Preferences.SetBoolAsync("mf.chart.accounts.line", _showLine);
     }
 
     private async Task ToggleChartAccountAsync(Guid accountId, ChangeEventArgs args)
@@ -842,12 +883,6 @@ else
         _ => "neutral",
     };
 
-    private enum AccountsChartKind
-    {
-        Both,
-        Bars,
-        Line,
-    }
 
     private sealed record AccountChartStatistics(
         Money Maximum,

@@ -8,18 +8,8 @@
             <h2 id="investment-chart-title"><MfIcon Name="trend" Size="18" /> Valore nel tempo</h2>
         </div>
         <div class="investment-chart-legend" aria-hidden="true">
-            @if (_showPerformanceLine)
-            {
-                <span>
-                    <span class="investment-class-dot" style="background:@PerformanceColor"></span>
-                    Rendimento @(_performancePercent ? "in %" : "in €")
-                </span>
-            }
-            else
-            {
-                <span><span class="investment-class-dot" style="background:#8b5cf6"></span> Valore attuale</span>
-                <span><span class="investment-class-dot" style="background:#9ca3af"></span> Capitale investito</span>
-            }
+            <span><span class="investment-class-dot" style="background:#8b5cf6"></span> Valore attuale</span>
+            <span><span class="investment-class-dot" style="background:#9ca3af"></span> Capitale investito</span>
         </div>
     </div>
     @if (Workspace.Overview.History.Points.Count > 0)
@@ -28,33 +18,9 @@
             @foreach (var range in ChartRanges)
             {
                 <button type="button"
-                        class="investment-chart-range @(IsChartRange(range.Value) ? "active" : "")"
+                        class="overview-range @(IsChartRange(range.Value) ? "active" : "")"
                         aria-pressed="@(IsChartRange(range.Value) ? "true" : "false")"
                         @onclick="() => SetChartRange(range.Value)">@range.Label</button>
-            }
-            @if (ShowPerformanceToggle)
-            {
-                <button type="button"
-                        class="investment-chart-toggle @(_showPerformanceLine ? "active" : "")"
-                        aria-pressed="@(_showPerformanceLine ? "true" : "false")"
-                        @onclick="TogglePerformanceLine">
-                    <span class="investment-chart-toggle-dot"
-                          style="background:@PerformanceColor"></span>
-                    Rendimento
-                </button>
-                @if (_showPerformanceLine)
-                {
-                    <div class="investment-chart-units" role="group" aria-label="Unità del rendimento">
-                        <button type="button"
-                                class="investment-chart-unit @(_performancePercent ? "active" : "")"
-                                aria-pressed="@(_performancePercent ? "true" : "false")"
-                                @onclick="() => SetPerformancePercent(true)">%</button>
-                        <button type="button"
-                                class="investment-chart-unit @(!_performancePercent ? "active" : "")"
-                                aria-pressed="@(!_performancePercent ? "true" : "false")"
-                                @onclick="() => SetPerformancePercent(false)">€</button>
-                    </div>
-                }
             }
             <label class="investment-chart-year">
                 <span class="visually-hidden">Anno del grafico</span>
@@ -74,7 +40,6 @@
                              Currency="@Workspace.Overview.History.Currency"
                              Series="@BuildHistorySeries(ChartPoints)"
                              RangeSeries="@BuildHistoryRangeSeries(ChartPoints)"
-                             PercentageValues="@(_showPerformanceLine && _performancePercent)"
                              XAxisMin="@ChartAxisMin"
                              XAxisMax="@ChartAxisMax"
                              XAxisLabelMode="@ChartAxisLabelMode"
@@ -93,21 +58,12 @@
     [Parameter, EditorRequired]
     public InvestmentWorkspace Workspace { get; set; } = default!;
 
-    [Parameter]
-    public bool ShowPerformanceToggle { get; set; } = true;
-
     private const string RangeKey = "mf.chart.performance.range";
     private const string YearKey = "mf.chart.performance.year";
-    private const string LineKey = "mf.chart.performance.line";
-    private const string PercentKey = "mf.chart.performance.percent";
 
     private ChartRange _chartRange = ChartRange.Max;
     private int? _chartYear;
-    private bool _showPerformanceLine;
-    private bool _performancePercent = true;
     private bool _preferencesLoaded;
-
-    private const string PerformanceColor = "#8b5cf6";
 
     private static readonly (ChartRange Value, string Label)[] ChartRanges =
     [
@@ -118,14 +74,6 @@
         (ChartRange.OneYear, "1A"),
         (ChartRange.Max, "Max"),
     ];
-
-    protected override void OnParametersSet()
-    {
-        if (!ShowPerformanceToggle)
-        {
-            _showPerformanceLine = false;
-        }
-    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -144,12 +92,6 @@
 
         var year = await Preferences.GetAsync(YearKey);
         _chartYear = int.TryParse(year, out var storedYear) ? storedYear : null;
-
-        if (ShowPerformanceToggle)
-        {
-            _showPerformanceLine = await Preferences.GetBoolAsync(LineKey) ?? _showPerformanceLine;
-            _performancePercent = await Preferences.GetBoolAsync(PercentKey) ?? _performancePercent;
-        }
 
         await InvokeAsync(StateHasChanged);
     }
@@ -246,56 +188,27 @@
     }
 
     private IReadOnlyList<TimeSeriesSeries> BuildHistorySeries(
-        IReadOnlyList<InvestmentHistoryPoint> points)
-    {
-        if (_showPerformanceLine)
-        {
-            return
-            [
-                new(
-                    "Rendimento",
-                    points
-                        .Select(point => new TimeSeriesPoint(point.Date, PerformanceValue(point)))
-                        .ToArray(),
-                    Color: PerformanceColor),
-            ];
-        }
-
-        return
-        [
-            new(
-                "Valore attuale",
-                points
-                    .Select(point => new TimeSeriesPoint(point.Date, point.CurrentValue?.Amount))
-                    .ToArray(),
-                Color: "#8b5cf6"),
-            new(
-                "Capitale investito",
-                points
-                    .Select(point => new TimeSeriesPoint(point.Date, point.InvestedCapital?.Amount))
-                    .ToArray(),
-                Color: "#9ca3af"),
-        ];
-    }
+        IReadOnlyList<InvestmentHistoryPoint> points) =>
+    [
+        new(
+            "Valore attuale",
+            points
+                .Select(point => new TimeSeriesPoint(point.Date, point.CurrentValue?.Amount))
+                .ToArray(),
+            Color: "#8b5cf6"),
+        new(
+            "Capitale investito",
+            points
+                .Select(point => new TimeSeriesPoint(point.Date, point.InvestedCapital?.Amount))
+                .ToArray(),
+            Color: "#9ca3af"),
+    ];
 
     private IReadOnlyList<TimeSeriesRangeSeries> BuildHistoryRangeSeries(
         IReadOnlyList<InvestmentHistoryPoint> points)
     {
         const string green = "#22c55e";
         const string red = "#ef4444";
-
-        if (_showPerformanceLine)
-        {
-            var performance = points
-                .Select(point => (
-                    point.Date,
-                    Value: PerformanceValue(point),
-                    Baseline: 0m))
-                .Where(sample => sample.Value is not null)
-                .Select(sample => (sample.Date, Value: sample.Value!.Value, sample.Baseline))
-                .ToArray();
-            return BuildBandSeries(performance, green, red, 0.16);
-        }
 
         var values = points
             .Where(point => point.CurrentValue is not null && point.InvestedCapital is not null)
@@ -391,34 +304,6 @@
         static TimeSeriesRangePoint ToBandPoint(
             (DateOnly Date, decimal Value, decimal Baseline) sample) =>
             new(sample.Date, Math.Max(sample.Value, sample.Baseline), Math.Min(sample.Value, sample.Baseline));
-    }
-
-    private decimal? PerformanceValue(InvestmentHistoryPoint point)
-    {
-        if (point.CurrentValue is not { } current || point.InvestedCapital is not { } invested)
-        {
-            return null;
-        }
-
-        var result = current.Amount - invested.Amount;
-        if (!_performancePercent)
-        {
-            return result;
-        }
-
-        return invested.Amount > 0m ? result / invested.Amount : null;
-    }
-
-    private async Task SetPerformancePercent(bool percent)
-    {
-        _performancePercent = percent;
-        await Preferences.SetBoolAsync(PercentKey, percent);
-    }
-
-    private async Task TogglePerformanceLine()
-    {
-        _showPerformanceLine = !_showPerformanceLine;
-        await Preferences.SetBoolAsync(LineKey, _showPerformanceLine);
     }
 
     private enum ChartRange

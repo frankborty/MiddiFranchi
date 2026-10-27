@@ -43,16 +43,27 @@ else if (_workspace is { } workspace)
                 <div>
                     <h2 id="monthly-return-title"><MfIcon Name="chart" Size="18" /> Rendimento mensile</h2>
                 </div>
-                <select class="advanced-chart-select"
-                        value="@(_monthlyYear?.ToString() ?? "")"
-                        aria-label="Periodo del rendimento mensile"
-                        @onchange="OnMonthlyYearChanged">
-                    <option value="">Totale</option>
-                    @foreach (var year in MonthlyYears)
-                    {
-                        <option value="@year">@year</option>
-                    }
-                </select>
+                <div class="overview-tabs" role="group" aria-label="Controlli del rendimento mensile">
+                    <button type="button"
+                            class="overview-tab investments @(_showMonthlyCumulative ? "active" : "")"
+                            aria-pressed="@(_showMonthlyCumulative ? "true" : "false")"
+                            title="Mostra o nascondi il rendimento cumulativo"
+                            @onclick="ToggleMonthlyCumulative">
+                        <span class="investment-chart-toggle-dot"
+                              style="background:@CumulativeColor"></span>
+                        Cumulato
+                    </button>
+                    <select class="advanced-chart-select"
+                            value="@(_monthlyYear?.ToString() ?? "")"
+                            aria-label="Periodo del rendimento mensile"
+                            @onchange="OnMonthlyYearChanged">
+                        <option value="">Totale</option>
+                        @foreach (var year in MonthlyYears)
+                        {
+                            <option value="@year">@year</option>
+                        }
+                    </select>
+                </div>
             </div>
             @if (MonthlySeriesPoints.Count > 0)
             {
@@ -63,6 +74,7 @@ else if (_workspace is { } workspace)
                                      ShowStackedTotal="false"
                                      PercentageValues="true"
                                      ColorPointsBySign="true"
+                                     HighlightZeroLine="true"
                                      TooltipDateMode="month"
                                      XAxisLabelMode="month"
                                      XAxisTickAmount="@(8)"
@@ -83,6 +95,15 @@ else if (_workspace is { } workspace)
                 <div>
                     <h2 id="annual-return-title"><MfIcon Name="chart" Size="18" /> Rendimento annuale</h2>
                 </div>
+                <button type="button"
+                        class="overview-tab investments @(_showAnnualCumulative ? "active" : "")"
+                        aria-pressed="@(_showAnnualCumulative ? "true" : "false")"
+                        title="Mostra o nascondi il rendimento cumulativo"
+                        @onclick="ToggleAnnualCumulative">
+                    <span class="investment-chart-toggle-dot"
+                          style="background:@CumulativeColor"></span>
+                    Cumulato
+                </button>
             </div>
             @if (AnnualSeriesPoints.Count > 0)
             {
@@ -93,6 +114,7 @@ else if (_workspace is { } workspace)
                                      ShowStackedTotal="false"
                                      PercentageValues="true"
                                      ColorPointsBySign="true"
+                                     HighlightZeroLine="true"
                                      TooltipDateMode="year"
                                      XAxisLabelMode="year"
                                      XAxisTickAmount="@(5)"
@@ -112,13 +134,16 @@ else if (_workspace is { } workspace)
     <div class="investments-kpi-grid advanced-stat-grid">
         <StatTile Label="Rendimento totale"
                   Value="@SignedPercent(workspace.Overview.TotalResultPercent)"
+                  Hint="@MoneySigned(workspace.Overview.TotalResult)"
                   ValueClass="@ResultClass(workspace.Overview.TotalResultPercent)" />
-        <StatTile Label="Rendimento al netto delle tasse"
+        <StatTile Label="Rendimento netto"
                   Value="@SignedPercent(NetReturn)"
+                  Hint="@MoneySigned(NetResult)"
                   ValueClass="@ResultClass(NetReturn)" />
-        <StatTile Label="Rendimento"
-                  Value="@MoneySigned(workspace.Overview.TotalResult)"
-                  ValueClass="@ResultClass(workspace.Overview.TotalResult)" />
+        <StatTile Label="Gain/Loss"
+                  Value="@MoneySigned(workspace.Overview.Performance)"
+                  Hint="@SignedPercent(workspace.Overview.PerformancePercent)"
+                  ValueClass="@ResultClass(workspace.Overview.Performance)" />
         <StatTile Label="Rendimento annualizzato (CAGR)"
                   Value="@SignedPercent(Cagr)"
                   ValueClass="@ResultClass(Cagr)" />
@@ -146,15 +171,18 @@ else if (_workspace is { } workspace)
 }
 
 @code {
+    private const string MonthlyCumulativeKey = "mf.chart.statistics.monthlyCumulative";
+    private const string AnnualCumulativeKey = "mf.chart.statistics.annualCumulative";
+    private const string CumulativeColor = "#8b5cf6";
+
     private InvestmentWorkspace? _workspace;
     private bool _loading = true;
     private string? _loadError;
     private int? _monthlyYear;
+    private bool _showMonthlyCumulative = true;
+    private bool _showAnnualCumulative = true;
     private bool _preferencesLoaded;
 
-    private IReadOnlyList<MonthSnapshot> _monthlySnapshots = [];
-    private IReadOnlyList<MonthlyReturn> _monthlyReturns = [];
-    private IReadOnlyList<AnnualReturn> _annualReturns = [];
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -170,8 +198,14 @@ else if (_workspace is { } workspace)
         if (int.TryParse(storedYear, out var year))
         {
             _monthlyYear = year;
-            await InvokeAsync(StateHasChanged);
         }
+
+        _showMonthlyCumulative =
+            await Preferences.GetBoolAsync(MonthlyCumulativeKey) ?? _showMonthlyCumulative;
+        _showAnnualCumulative =
+            await Preferences.GetBoolAsync(AnnualCumulativeKey) ?? _showAnnualCumulative;
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadAsync()
@@ -183,7 +217,6 @@ else if (_workspace is { } workspace)
         try
         {
             _workspace = await Workspace.LoadAsync();
-            BuildAnalytics();
         }
         catch (Exception exception)
         {
@@ -195,109 +228,43 @@ else if (_workspace is { } workspace)
         }
     }
 
-    private void BuildAnalytics()
-    {
-        _monthlySnapshots = BuildMonthlySnapshots();
-        _monthlyReturns = BuildMonthlyReturns(_monthlySnapshots);
-        _annualReturns = BuildAnnualReturns(_monthlyReturns);
-    }
+    private IReadOnlyList<InvestmentMonthlyReturn> MonthlyReturns =>
+        _workspace?.MonthlyReturns ?? [];
 
-    private IReadOnlyList<MonthSnapshot> BuildMonthlySnapshots()
-    {
-        if (_workspace is not { } workspace)
-        {
-            return [];
-        }
-
-        var points = workspace.Overview.History.Points
-            .Where(point => point.CurrentValue is not null && point.InvestedCapital is not null)
-            .ToArray();
-        if (points.Length == 0)
-        {
-            return [];
-        }
-
-        var firstMonth = new DateOnly(points[0].Date.Year, points[0].Date.Month, 1);
-        var lastMonth = new DateOnly(
-            workspace.Overview.ValuationDate.Year,
-            workspace.Overview.ValuationDate.Month,
-            1);
-        var snapshots = new List<MonthSnapshot>();
-        var index = 0;
-
-        for (var month = firstMonth; month <= lastMonth; month = month.AddMonths(1))
-        {
-            var monthEnd = month.AddMonths(1).AddDays(-1);
-            while (index + 1 < points.Length && points[index + 1].Date <= monthEnd)
-            {
-                index++;
-            }
-
-            if (points[index].Date > monthEnd)
-            {
-                continue;
-            }
-
-            snapshots.Add(new MonthSnapshot(
-                month,
-                points[index].CurrentValue!.Value.Amount,
-                points[index].InvestedCapital!.Value.Amount));
-        }
-
-        return snapshots;
-    }
-
-    private static IReadOnlyList<MonthlyReturn> BuildMonthlyReturns(
-        IReadOnlyList<MonthSnapshot> snapshots)
-    {
-        var returns = new List<MonthlyReturn>(Math.Max(0, snapshots.Count - 1));
-
-        for (var index = 1; index < snapshots.Count; index++)
-        {
-            var start = snapshots[index - 1];
-            var end = snapshots[index];
-            var startResult = start.Current - start.Invested;
-            var endResult = end.Current - end.Invested;
-            var value = start.Invested > 0m
-                ? (endResult - startResult) / start.Invested
-                : (decimal?)null;
-            returns.Add(new MonthlyReturn(end.Month, value, start, end));
-        }
-
-        return returns;
-    }
+    private IReadOnlyList<AnnualReturn> AnnualReturns =>
+        BuildAnnualReturns(MonthlyReturns);
 
     private static IReadOnlyList<AnnualReturn> BuildAnnualReturns(
-        IReadOnlyList<MonthlyReturn> monthlyReturns)
+        IReadOnlyList<InvestmentMonthlyReturn> monthlyReturns)
     {
-        var annual = new List<AnnualReturn>();
+        return monthlyReturns
+            .Where(item => item.Return is not null)
+            .GroupBy(item => item.Month.Year)
+            .OrderBy(group => group.Key)
+            .Select(group =>
+            {
+                var growth = 1m;
+                foreach (var item in group.OrderBy(item => item.Month))
+                {
+                    growth *= 1m + item.Return!.Value;
+                }
 
-        foreach (var group in monthlyReturns.GroupBy(item => item.Month.Year).OrderBy(group => group.Key))
-        {
-            var first = group.OrderBy(item => item.Month).First();
-            var last = group.OrderBy(item => item.Month).Last();
-            var startResult = first.Start.Current - first.Start.Invested;
-            var endResult = last.End.Current - last.End.Invested;
-            var value = first.Start.Invested > 0m
-                ? (endResult - startResult) / first.Start.Invested
-                : (decimal?)null;
-            annual.Add(new AnnualReturn(group.Key, value));
-        }
-
-        return annual;
+                return new AnnualReturn(group.Key, growth - 1m);
+            })
+            .ToArray();
     }
 
     private IReadOnlyList<int> MonthlyYears =>
-        _monthlyReturns
+        MonthlyReturns
             .Select(item => item.Month.Year)
             .Distinct()
             .OrderByDescending(year => year)
             .ToArray();
 
-    private IReadOnlyList<MonthlyReturn> MonthlyChartReturns =>
+    private IReadOnlyList<InvestmentMonthlyReturn> MonthlyChartReturns =>
         _monthlyYear is { } year
-            ? _monthlyReturns.Where(item => item.Month.Year == year).ToArray()
-            : _monthlyReturns;
+            ? MonthlyReturns.Where(item => item.Month.Year == year).ToArray()
+            : MonthlyReturns;
 
     private IReadOnlyList<TimeSeriesPoint> MonthlySeriesPoints =>
         MonthlyChartReturns
@@ -305,29 +272,99 @@ else if (_workspace is { } workspace)
             .Select(item => new TimeSeriesPoint(item.Month, item.Return))
             .ToArray();
 
-    private IReadOnlyList<TimeSeriesSeries> MonthlySeries =>
-    [
-        new(
-            "Rendimento mensile",
-            MonthlySeriesPoints,
-            Color: "#22c55e",
-            Kind: TimeSeriesSeriesKind.Bar),
-    ];
+    private IReadOnlyList<TimeSeriesPoint> MonthlyCumulativePoints
+    {
+        get
+        {
+            var growth = 1m;
+            var points = new List<TimeSeriesPoint>();
+            foreach (var item in MonthlyReturns)
+            {
+                if (item.Return is null)
+                {
+                    continue;
+                }
+
+                growth *= 1m + item.Return.Value;
+                if (_monthlyYear is null || item.Month.Year == _monthlyYear)
+                {
+                    points.Add(new TimeSeriesPoint(item.Month, growth - 1m));
+                }
+            }
+
+            return points;
+        }
+    }
+
+    private IReadOnlyList<TimeSeriesSeries> MonthlySeries
+    {
+        get
+        {
+            var series = new List<TimeSeriesSeries>
+            {
+                new(
+                    "Rendimento mensile",
+                    MonthlySeriesPoints,
+                    Color: "#22c55e",
+                    Kind: TimeSeriesSeriesKind.Bar),
+            };
+            if (_showMonthlyCumulative)
+            {
+                series.Add(new(
+                    "Cumulato",
+                    MonthlyCumulativePoints,
+                    Color: CumulativeColor));
+            }
+
+            return series;
+        }
+    }
 
     private IReadOnlyList<TimeSeriesPoint> AnnualSeriesPoints =>
-        _annualReturns
+        AnnualReturns
             .Where(item => item.Return is not null)
             .Select(item => new TimeSeriesPoint(new DateOnly(item.Year, 1, 1), item.Return))
             .ToArray();
 
-    private IReadOnlyList<TimeSeriesSeries> AnnualSeries =>
-    [
-        new(
-            "Rendimento annuale",
-            AnnualSeriesPoints,
-            Color: "#22c55e",
-            Kind: TimeSeriesSeriesKind.Bar),
-    ];
+    private IReadOnlyList<TimeSeriesPoint> AnnualCumulativePoints
+    {
+        get
+        {
+            var growth = 1m;
+            return AnnualReturns
+                .Where(item => item.Return is not null)
+                .Select(item =>
+                {
+                    growth *= 1m + item.Return!.Value;
+                    return new TimeSeriesPoint(new DateOnly(item.Year, 1, 1), growth - 1m);
+                })
+                .ToArray();
+        }
+    }
+
+    private IReadOnlyList<TimeSeriesSeries> AnnualSeries
+    {
+        get
+        {
+            var series = new List<TimeSeriesSeries>
+            {
+                new(
+                    "Rendimento annuale",
+                    AnnualSeriesPoints,
+                    Color: "#22c55e",
+                    Kind: TimeSeriesSeriesKind.Bar),
+            };
+            if (_showAnnualCumulative)
+            {
+                series.Add(new(
+                    "Cumulato",
+                    AnnualCumulativePoints,
+                    Color: CumulativeColor));
+            }
+
+            return series;
+        }
+    }
 
     private async Task OnMonthlyYearChanged(ChangeEventArgs args)
     {
@@ -337,8 +374,20 @@ else if (_workspace is { } workspace)
             _monthlyYear?.ToString() ?? "");
     }
 
-    private IReadOnlyList<MonthlyReturn> ValidMonthlyReturns =>
-        _monthlyReturns.Where(item => item.Return is not null).ToArray();
+    private async Task ToggleMonthlyCumulative()
+    {
+        _showMonthlyCumulative = !_showMonthlyCumulative;
+        await Preferences.SetBoolAsync(MonthlyCumulativeKey, _showMonthlyCumulative);
+    }
+
+    private async Task ToggleAnnualCumulative()
+    {
+        _showAnnualCumulative = !_showAnnualCumulative;
+        await Preferences.SetBoolAsync(AnnualCumulativeKey, _showAnnualCumulative);
+    }
+
+    private IReadOnlyList<InvestmentMonthlyReturn> ValidMonthlyReturns =>
+        MonthlyReturns.Where(item => item.Return is not null).ToArray();
 
     private decimal? Volatility
     {
@@ -362,36 +411,34 @@ else if (_workspace is { } workspace)
     {
         get
         {
-            if (_monthlySnapshots.Count == 0)
+            var returns = ValidMonthlyReturns;
+            if (returns.Count == 0)
             {
                 return (null, "");
             }
 
-            decimal peak = 0m;
+            decimal index = 1m;
+            decimal peak = 1m;
             var maxDrawdown = 0m;
-            DateOnly? peakMonth = null;
+            DateOnly? peakMonth = returns[0].Month;
             DateOnly? maxDrawdownPeakMonth = null;
             DateOnly? troughMonth = null;
 
-            foreach (var snapshot in _monthlySnapshots)
+            foreach (var item in returns)
             {
-                if (snapshot.Current > peak)
+                index *= 1m + item.Return!.Value;
+                if (index > peak)
                 {
-                    peak = snapshot.Current;
-                    peakMonth = snapshot.Month;
+                    peak = index;
+                    peakMonth = item.Month;
                 }
 
-                if (peak <= 0m)
-                {
-                    continue;
-                }
-
-                var drawdown = (snapshot.Current - peak) / peak;
+                var drawdown = (index - peak) / peak;
                 if (drawdown < maxDrawdown)
                 {
                     maxDrawdown = drawdown;
                     maxDrawdownPeakMonth = peakMonth;
-                    troughMonth = snapshot.Month;
+                    troughMonth = item.Month;
                 }
             }
 
@@ -549,6 +596,11 @@ else if (_workspace is { } workspace)
             ? current.Amount - TaxTotal
             : null;
 
+    private Money? NetResult =>
+        _workspace?.Overview.TotalResult is { } total
+            ? total - new Money(TaxTotal, total.Currency)
+            : null;
+
     private decimal? NetReturn
     {
         get
@@ -647,14 +699,6 @@ else if (_workspace is { } workspace)
     };
 
     private sealed record CashFlow(DateOnly Date, decimal Amount);
-
-    private sealed record MonthSnapshot(DateOnly Month, decimal Current, decimal Invested);
-
-    private sealed record MonthlyReturn(
-        DateOnly Month,
-        decimal? Return,
-        MonthSnapshot Start,
-        MonthSnapshot End);
 
     private sealed record AnnualReturn(int Year, decimal? Return);
 }

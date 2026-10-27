@@ -180,35 +180,19 @@ public sealed class InvestmentOverviewService
 
         var operationDates = positionOperations
             .Select(operation => operation.OperationDate)
-            .Where(date => date >= from && date <= valuationDate)
-            .ToHashSet();
+            .ToArray();
 
         var observationDates = prices
             .Where(price => relevantInstrumentIds.Contains(price.Instrument.Id))
             .Select(price => price.ValidAt)
-            .Where(date => date >= from && date <= valuationDate)
-            .ToHashSet();
-
-        var dates = operationDates
-            .Concat(observationDates)
-            .Append(valuationDate)
-            .Distinct()
-            .OrderBy(date => date)
             .ToArray();
 
-        if (dates.Length > 60)
-        {
-            var stride = (int)Math.Ceiling(dates.Length / 60d);
-            dates = dates
-                .Where((date, index) => index % stride == 0)
-                .Concat(operationDates)
-                .Append(valuationDate)
-                .Distinct()
-                .OrderBy(date => date)
-                .ToArray();
-        }
+        var dates = InvestmentHistoryDates.Build(
+            operationDates,
+            observationDates,
+            valuationDate);
 
-        var points = new List<InvestmentHistoryPoint>(dates.Length);
+        var points = new List<InvestmentHistoryPoint>(dates.Count);
         var reasons = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var date in dates)

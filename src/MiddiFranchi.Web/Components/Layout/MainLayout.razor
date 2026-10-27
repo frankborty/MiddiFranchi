@@ -5,7 +5,7 @@
 @inject NavigationManager Navigation
 @inject SectionAppearanceService Appearance
 
-<div class="page nav-collapsed" id="mf-page" style="@Appearance.CssVariables">
+<div class="page nav-collapsed" id="mf-page" style="@PageStyle">
     <aside class="app-sidebar" id="mf-sidebar">
         <div class="sidebar-top">
             <a class="brand-mark" href="" title="MiddiFranchi" aria-label="MiddiFranchi, vai alla dashboard">
@@ -62,6 +62,53 @@
     private bool IsSettingsSection => IsSettingsPath(Navigation.Uri);
     private bool IsOperationsSection => IsOperationsPath(Navigation.Uri);
     private bool IsInvestmentsSection => IsInvestmentsPath(Navigation.Uri);
+
+    private string PageStyle => $"{Appearance.CssVariables}--mf-sort-color:{SortColor};";
+
+    private string SortColor
+    {
+        get
+        {
+            var path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+            if (path.StartsWith("/settings/instruments", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/settings/price-updates", StringComparison.OrdinalIgnoreCase))
+            {
+                return "var(--mf-investments)";
+            }
+
+            if (path.StartsWith("/settings/accounts", StringComparison.OrdinalIgnoreCase))
+            {
+                return "var(--mf-accounts)";
+            }
+
+            if (path.StartsWith("/settings/categories", StringComparison.OrdinalIgnoreCase))
+            {
+                return "var(--mf-amber-500)";
+            }
+
+            if (path.StartsWith("/settings", StringComparison.OrdinalIgnoreCase))
+            {
+                return "var(--mf-nav-settings)";
+            }
+
+            if (path.StartsWith("/investments", StringComparison.OrdinalIgnoreCase))
+            {
+                return "var(--mf-investments)";
+            }
+
+            if (path.StartsWith("/operations", StringComparison.OrdinalIgnoreCase))
+            {
+                return "var(--mf-amber-500)";
+            }
+
+            if (path.StartsWith("/accounts", StringComparison.OrdinalIgnoreCase))
+            {
+                return "var(--mf-accounts)";
+            }
+
+            return "var(--mf-link)";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

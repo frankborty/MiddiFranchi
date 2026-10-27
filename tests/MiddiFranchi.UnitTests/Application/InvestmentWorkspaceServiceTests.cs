@@ -238,6 +238,64 @@ public class InvestmentWorkspaceServiceTests
         row.TotalResult.ShouldBe(new Money(30m, Euro));
     }
 
+    [Fact]
+    public async Task LoadAsync_ShouldIncludeRealizedGainInTheMonthlyReturn()
+    {
+        var instrument = AddInstrument("ETF globale");
+        AddBuy(instrument, 100m, QuotedPrice.AtUnitPrice(new UnitPrice(new Money(10m, Euro))),
+            new DateOnly(2026, 9, 10));
+        AddPrice(instrument, 10m, new DateOnly(2026, 9, 30));
+        AddPrice(instrument, 10m, Today);
+        AddSell(instrument, 50m, QuotedPrice.AtUnitPrice(new UnitPrice(new Money(12m, Euro))), Today);
+
+        var workspace = await _service.LoadAsync();
+
+        var monthly = workspace.MonthlyReturns.ShouldHaveSingleItem();
+        monthly.Month.ShouldBe(new DateOnly(2026, 10, 1));
+        monthly.Return.ShouldBe(0.10m);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ShouldIncludeCouponIncomeInTheMonthlyReturn()
+    {
+        var instrument = AddInstrument(
+            "BTP Italia",
+            notional: new Money(100m, Euro),
+            priceUnit: PriceUnit.PercentOfNominal,
+            assetClass: AssetClass.Bond);
+        AddBuy(instrument, 10m, QuotedPrice.AsPercentOfNominal(100m),
+            new DateOnly(2026, 9, 10));
+        AddPrice(instrument, 100m, new DateOnly(2026, 9, 30));
+        AddPrice(instrument, 100m, Today);
+        AddOrdinaryIncome(instrument, 10m, Today);
+
+        var workspace = await _service.LoadAsync();
+
+        var monthly = workspace.MonthlyReturns.ShouldHaveSingleItem();
+        monthly.Return.ShouldBe(0.01m);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ShouldSubtractLinkedSaleTaxFromTheMonthlyReturn()
+    {
+        var instrument = AddInstrument("ETF globale");
+        AddBuy(instrument, 100m, QuotedPrice.AtUnitPrice(new UnitPrice(new Money(10m, Euro))),
+            new DateOnly(2026, 9, 10));
+        AddPrice(instrument, 10m, new DateOnly(2026, 9, 30));
+        AddPrice(instrument, 10m, Today);
+        var saleId = AddSell(
+            instrument,
+            50m,
+            QuotedPrice.AtUnitPrice(new UnitPrice(new Money(12m, Euro))),
+            Today);
+        AddTax(instrument, 20m, Today, saleId);
+
+        var workspace = await _service.LoadAsync();
+
+        var monthly = workspace.MonthlyReturns.ShouldHaveSingleItem();
+        monthly.Return.ShouldBe(0.08m);
+    }
+
     private Instrument AddInstrument(
         string name,
         InstrumentStatus status = InstrumentStatus.Active,
@@ -285,12 +343,63 @@ public class InvestmentWorkspaceServiceTests
             date,
             RecordedAt));
 
-    private void AddPrice(Instrument instrument, decimal price, DateOnly validAt) =>
-        _prices.Observations.Add(PriceObservation.AtUnitPrice(
-            Guid.NewGuid(),
+    private Guid AddSell(
+        Instrument instrument,
+        decimal quantity,
+        QuotedPrice price,
+        DateOnly date)
+    {
+        var id = Guid.NewGuid();
+        _operations.Operations.Add(InvestmentOperation.Sell(
+            id,
             instrument,
-            new UnitPrice(new Money(price, Euro)),
-            validAt,
+            _account,
+            new Quantity(quantity),
+            price,
+            null,
+            date,
+            RecordedAt));
+        return id;
+    }
+
+    private void AddOrdinaryIncome(Instrument instrument, decimal amount, DateOnly date) =>
+        _operations.Operations.Add(new Income(
+            Guid.NewGuid(),
+            account: null,
+            new Category(Guid.NewGuid(), "Cedole", CategoryType.Income),
+            new PositiveMoney(new Money(amount, Euro)),
+            date,
             RecordedAt,
-            "Test"));
+            instrument: instrument));
+
+    private void AddTax(Instrument instrument, decimal amount, DateOnly date, Guid operationId) =>
+        _operations.Operations.Add(new Expense(
+            DeterministicId.From("tax-expense", operationId.ToString("N")),
+            account: null,
+            new Category(Guid.NewGuid(), "Fees", CategoryType.Expense, null, "Tasse Investimenti"),
+            new PositiveMoney(new Money(amount, Euro)),
+            date,
+            RecordedAt,
+            "Tasse su plusvalenze",
+            instrument: instrument));
+
+    private void AddPrice(Instrument instrument, decimal price, DateOnly validAt)
+    {
+        var observation = instrument.PriceUnit == PriceUnit.PercentOfNominal
+            ? PriceObservation.AsPercentOfNominal(
+                Guid.NewGuid(),
+                instrument,
+                price,
+                validAt,
+                RecordedAt,
+                "Test")
+            : PriceObservation.AtUnitPrice(
+                Guid.NewGuid(),
+                instrument,
+                new UnitPrice(new Money(price, Euro)),
+                validAt,
+                RecordedAt,
+                "Test");
+        _prices.Observations.Add(observation);
+    }
 }

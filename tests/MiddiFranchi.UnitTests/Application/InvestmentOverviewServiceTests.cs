@@ -138,6 +138,38 @@ public class InvestmentOverviewServiceTests
         asset.TotalResult.ShouldBe(new Money(35m, Euro));
     }
 
+    [Fact]
+    public async Task LoadAsync_ShouldKeepTheLastQuotationOfEveryMonthWhenHistoryIsDense()
+    {
+        var project = new Project();
+        var instrument = Instrument("ETF globale", Euro);
+        var account = Account("Conto titoli", Euro);
+        var firstBuy = new DateOnly(2024, 1, 15);
+        project.AddBuy(instrument, account, 1m, 100m, firstBuy);
+
+        for (var date = firstBuy; date <= Today; date = date.AddDays(1))
+        {
+            project.AddPrice(instrument, 100m, date);
+        }
+
+        var overview = await project.Build().LoadAsync();
+        var dates = overview.History.Points.Select(point => point.Date).ToHashSet();
+
+        overview.History.Points.Count.ShouldBeLessThan(600);
+        for (var month = new DateOnly(firstBuy.Year, firstBuy.Month, 1);
+             month <= new DateOnly(Today.Year, Today.Month, 1);
+             month = month.AddMonths(1))
+        {
+            var lastObservation = month.AddMonths(1).AddDays(-1);
+            if (lastObservation > Today)
+            {
+                lastObservation = Today;
+            }
+
+            dates.ShouldContain(lastObservation);
+        }
+    }
+
     private static Instrument Instrument(string name, Currency currency, string? symbol = null) =>
         new(Guid.NewGuid(), name, AssetClass.Equity, currency, PriceUnit.PerUnit, symbol: symbol);
 

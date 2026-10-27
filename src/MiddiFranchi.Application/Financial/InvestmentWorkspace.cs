@@ -15,7 +15,14 @@ public sealed record InvestmentWorkspace(
     Money TotalIncome,
     Money NetIncome,
     int ArchivedCount,
-    int CatalogCount);
+    int CatalogCount,
+    IReadOnlyList<InvestmentMonthlyReturn> MonthlyReturns);
+
+/// <summary>
+/// Rendimento di un mese calcolato con i flussi esterni: acquisti e vendite non sono performance,
+/// mentre plusvalenze realizzate, cedole, dividendi e costi sì.
+/// </summary>
+public sealed record InvestmentMonthlyReturn(DateOnly Month, decimal? Return);
 
 public sealed record InvestmentAssetRow(
     Guid InstrumentId,

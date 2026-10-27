@@ -123,7 +123,7 @@ else
                     <span class="operation-stat-value">
                         <AmountValue Value="@_averageIncome" Tone="income" />
                     </span>
-                    <span class="stat-hint">@AverageHint</span>
+                    <span class="stat-hint">@AverageIncomeHint</span>
                 </div>
             </div>
             <div class="sp-4">
@@ -132,7 +132,7 @@ else
                     <span class="operation-stat-value">
                         <AmountValue Value="@_averageExpense" Tone="expense" />
                     </span>
-                    <span class="stat-hint">@AverageHint</span>
+                    <span class="stat-hint">@AverageExpenseHint</span>
                 </div>
             </div>
             <div class="sp-4">
@@ -141,7 +141,7 @@ else
                     <span class="operation-stat-value">
                         <AmountValue Value="@_averageNet" Signed="true" Tone="@Tone(_averageNet)" />
                     </span>
-                    <span class="stat-hint">@AverageHint</span>
+                    <span class="stat-hint">@AverageNetHint</span>
                 </div>
             </div>
         </div>
@@ -157,7 +157,7 @@ else
                         <h2 id="trend-title"><MfIcon Name="chart" Size="18" /> @TrendTitle</h2>
                         <p class="section-sub">@TrendSubtitle</p>
                     </div>
-                    <div class="trend-toggle" role="group" aria-label="Tipo di grafico">
+                    <div class="overview-tabs" role="group" aria-label="Tipo di grafico">
                         <button type="button" class="@TrendToggleClass(TrendKind.Income)"
                                 aria-pressed="@(_trendKind == TrendKind.Income)" @onclick="() => SelectTrend(TrendKind.Income)">
                             Entrate
@@ -168,7 +168,7 @@ else
                         </button>
                         <button type="button" class="@TrendToggleClass(TrendKind.Delta)"
                                 aria-pressed="@(_trendKind == TrendKind.Delta)" @onclick="() => SelectTrend(TrendKind.Delta)">
-                            Delta
+                            Saldo netto
                         </button>
                     </div>
                 </div>
@@ -185,6 +185,7 @@ else
                                          ShowDataTable="false"
                                          ShowMarkers="false"
                                          ColorPointsBySign="@(_trendKind == TrendKind.Delta)"
+                                         HighlightZeroLine="true"
                                          Height="@("100%")"
                                          XAxisLabelMode="@TrendLabelMode" />
                 }
@@ -204,7 +205,7 @@ else
                         <h2 id="pie-title"><MfIcon Name="pie" Size="18" /> @PieTitle</h2>
                         <p class="section-sub">@PeriodLabel</p>
                     </div>
-                    <div class="trend-toggle" role="group" aria-label="Tipo di ripartizione">
+                    <div class="overview-tabs" role="group" aria-label="Tipo di ripartizione">
                         <button type="button" class="@PieToggleClass(PieKind.Income)"
                                 aria-pressed="@(_pieKind == PieKind.Income)" @onclick="() => SelectPie(PieKind.Income)">
                             Entrate
@@ -645,6 +646,7 @@ else
     private const string FilterExpense = "expense";
     private const string IncomeColor = "#14713c";
     private const string ExpenseColor = "#b53a4a";
+    private const decimal AverageOutlierFloor = 0.20m;
 
     private enum PeriodMode
     {
@@ -739,7 +741,9 @@ else
     private Money? _averageIncome;
     private Money? _averageExpense;
     private Money? _averageNet;
-    private int _averageDivisor = 1;
+    private int _averageIncomePeriods;
+    private int _averageExpensePeriods;
+    private int _averageNetPeriods;
     private int _periodIncomeCount;
     private int _periodExpenseCount;
 
@@ -785,9 +789,17 @@ else
     private string AverageBalanceLabel =>
         _periodMode == PeriodMode.Year ? "Media saldo / mese" : "Media saldo / anno";
 
-    private string AverageHint => _periodMode == PeriodMode.Year
-        ? $"Calcolata su {_averageDivisor} {(_averageDivisor == 1 ? "mese" : "mesi")}"
-        : $"Calcolata su {_averageDivisor} {(_averageDivisor == 1 ? "anno" : "anni")}";
+    private string AverageIncomeHint => AverageHintFor(_averageIncomePeriods);
+
+    private string AverageExpenseHint => AverageHintFor(_averageExpensePeriods);
+
+    private string AverageNetHint => AverageHintFor(_averageNetPeriods);
+
+    private string AverageHintFor(int periods) => periods == 0
+        ? "Nessun periodo completo"
+        : _periodMode == PeriodMode.Year
+            ? $"Calcolata su {periods} {(periods == 1 ? "mese valido" : "mesi validi")}"
+            : $"Calcolata su {periods} {(periods == 1 ? "anno valido" : "anni validi")}";
 
     private string PeriodIncomeHint => _periodIncomeCount switch
     {
@@ -1219,11 +1231,18 @@ else
     {
         TrendKind.Income => "Entrate",
         TrendKind.Expense => "Uscite",
-        _ => "Delta entrate − uscite",
+        _ => "Saldo netto",
     };
 
     private string TrendToggleClass(TrendKind kind) =>
-        _trendKind == kind ? "trend-toggle-button active" : "trend-toggle-button";
+        $"overview-tab {TrendTone(kind)}{(_trendKind == kind ? " active" : "")}";
+
+    private static string TrendTone(TrendKind kind) => kind switch
+    {
+        TrendKind.Income => "income",
+        TrendKind.Expense => "expense",
+        _ => "delta",
+    };
 
     private async Task SelectTrend(TrendKind kind)
     {
@@ -1238,7 +1257,7 @@ else
         : "card operations-pie-card expense";
 
     private string PieToggleClass(PieKind kind) =>
-        _pieKind == kind ? "trend-toggle-button active" : "trend-toggle-button";
+        $"overview-tab {(kind == PieKind.Income ? "income" : "expense")}{(_pieKind == kind ? " active" : "")}";
 
     private string PieSliceClass(CategoryBreakdownItem slice)
     {
@@ -1349,9 +1368,9 @@ else
     private string TrendSubtitle => _trendKind == TrendKind.Delta
         ? _periodMode switch
         {
-            PeriodMode.Month => $"Differenza giornaliera · {PeriodLabel}",
-            PeriodMode.Year => $"Differenza mensile · {_periodYear}",
-            _ => "Differenza annuale · Tutti i dati",
+            PeriodMode.Month => $"Saldo netto giornaliero · {PeriodLabel}",
+            PeriodMode.Year => $"Saldo netto mensile · {_periodYear}",
+            _ => "Saldo netto annuale · Tutti i dati",
         }
         : _periodMode switch
         {
@@ -1381,7 +1400,7 @@ else
                 return
                 [
                     new TimeSeriesSeries(
-                        "Delta",
+                        "Saldo netto",
                         deltaPoints,
                         Color: null,
                         TimeSeriesSeriesKind.Bar),
@@ -1732,19 +1751,111 @@ else
         _periodIncomeCount = rows.Count(row => row.Kind == OperationKind.Income);
         _periodExpenseCount = rows.Count(row => row.Kind == OperationKind.Expense);
 
-        _averageDivisor = _periodMode switch
-        {
-            PeriodMode.Year => _periodYear == Today.Year ? Math.Max(1, Today.Month) : 12,
-            PeriodMode.All => Math.Max(1, _visibleHistory
-                .Select(row => row.OperationDate.Year)
-                .Distinct()
-                .Count()),
-            _ => 1,
-        };
-        _averageIncome = new Money(income / _averageDivisor, Currency.Euro);
-        _averageExpense = new Money(expense / _averageDivisor, Currency.Euro);
-        _averageNet = new Money((income - expense) / _averageDivisor, Currency.Euro);
+        ComputeAverages();
     }
+
+    private void ComputeAverages()
+    {
+        _averageIncome = null;
+        _averageExpense = null;
+        _averageNet = null;
+        _averageIncomePeriods = 0;
+        _averageExpensePeriods = 0;
+        _averageNetPeriods = 0;
+
+        if (_periodMode == PeriodMode.Month)
+        {
+            return;
+        }
+
+        var periods = _periodMode == PeriodMode.Year
+            ? BuildMonthlyPeriodTotals()
+            : BuildYearlyPeriodTotals();
+        if (periods.Count == 0)
+        {
+            return;
+        }
+
+        var incomeThreshold = periods.Max(period => period.Income) * AverageOutlierFloor;
+        var expenseThreshold = periods.Max(period => period.Expense) * AverageOutlierFloor;
+        var eligible = periods
+            .Where(IsEligibleForAverage)
+            .ToArray();
+        var minimumPeriods = _periodMode == PeriodMode.Year ? 6 : 1;
+
+        var incomePeriods = eligible
+            .Where(period => period.Income > 0m && period.Income >= incomeThreshold)
+            .ToArray();
+        var expensePeriods = eligible
+            .Where(period => period.Expense > 0m && period.Expense >= expenseThreshold)
+            .ToArray();
+        var netPeriods = eligible
+            .Where(period =>
+                period.Income > 0m &&
+                period.Income >= incomeThreshold &&
+                period.Expense > 0m &&
+                period.Expense >= expenseThreshold)
+            .ToArray();
+
+        if (incomePeriods.Length >= minimumPeriods)
+        {
+            _averageIncomePeriods = incomePeriods.Length;
+            _averageIncome = new Money(
+                incomePeriods.Average(period => period.Income),
+                Currency.Euro);
+        }
+
+        if (expensePeriods.Length >= minimumPeriods)
+        {
+            _averageExpensePeriods = expensePeriods.Length;
+            _averageExpense = new Money(
+                expensePeriods.Average(period => period.Expense),
+                Currency.Euro);
+        }
+
+        if (netPeriods.Length >= minimumPeriods)
+        {
+            _averageNetPeriods = netPeriods.Length;
+            _averageNet = new Money(
+                netPeriods.Average(period => period.Income - period.Expense),
+                Currency.Euro);
+        }
+    }
+
+    private IReadOnlyList<PeriodTotals> BuildMonthlyPeriodTotals()
+    {
+        var rows = _visibleHistory
+            .Where(row => row.OperationDate.Year == _periodYear)
+            .ToArray();
+        var lastMonth = _periodYear == Today.Year ? Today.Month : 12;
+
+        return Enumerable.Range(1, lastMonth)
+            .Select(month =>
+            {
+                var (income, expense) = Totals(
+                    rows.Where(row => row.OperationDate.Month == month));
+                return new PeriodTotals(_periodYear, month, income, expense);
+            })
+            .ToArray();
+    }
+
+    private IReadOnlyList<PeriodTotals> BuildYearlyPeriodTotals() => _visibleHistory
+        .GroupBy(row => row.OperationDate.Year)
+        .OrderBy(group => group.Key)
+        .Select(group =>
+        {
+            var (income, expense) = Totals(group);
+            return new PeriodTotals(group.Key, Month: null, income, expense);
+        })
+        .ToArray();
+
+    private bool IsEligibleForAverage(PeriodTotals period) => _periodMode switch
+    {
+        PeriodMode.Year => period.Year != Today.Year ||
+                           (period.Month is { } month && month < Today.Month),
+        PeriodMode.All => period.Year != Today.Year,
+        _ => false,
+    };
 
     private void SelectMonth(int month)
     {
@@ -1960,5 +2071,7 @@ else
     {
         public decimal Net => Income - Expense;
     }
+
+    private sealed record PeriodTotals(int Year, int? Month, decimal Income, decimal Expense);
 
 }

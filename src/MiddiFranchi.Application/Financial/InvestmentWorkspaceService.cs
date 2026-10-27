@@ -119,6 +119,10 @@ public sealed class InvestmentWorkspaceService
                 .Sum(operation => taxExpenseAmountsById.GetValueOrDefault(
                     InvestmentExpenses.TaxIdForOperation(operation.Id)));
         var netIncome = totalIncome - new Money(incomeTaxes, Euro);
+        var monthlyReturns = InvestmentMonthlyReturns.Calculate(
+            overview.History.Points,
+            allOperations,
+            valuationDate);
         return new InvestmentWorkspace(
             overview,
             rows,
@@ -126,7 +130,8 @@ public sealed class InvestmentWorkspaceService
             totalIncome,
             netIncome,
             rows.Count(row => row.IsArchived),
-            rows.Length);
+            rows.Length,
+            monthlyReturns);
     }
 
     private static InvestmentAssetRow BuildRow(
@@ -249,34 +254,19 @@ public sealed class InvestmentWorkspaceService
             .Where(price => price.Instrument.Id == instrument.Id)
             .ToArray();
         var historyPrices = InvestmentHistoryPrices.WithExecutionPrices(instrumentPrices, positionOperations);
-        var from = positionOperations.Min(operation => operation.OperationDate);
         var operationDates = positionOperations
             .Select(operation => operation.OperationDate)
-            .ToHashSet();
+            .ToArray();
         var observationDates = instrumentPrices
             .Select(price => price.ValidAt)
-            .Where(date => date >= from && date <= valuationDate)
-            .ToHashSet();
-        var dates = operationDates
-            .Concat(observationDates)
-            .Append(valuationDate)
-            .Distinct()
-            .OrderBy(date => date)
             .ToArray();
 
-        if (dates.Length > 60)
-        {
-            var stride = (int)Math.Ceiling(dates.Length / 60d);
-            dates = dates
-                .Where((_, index) => index % stride == 0)
-                .Concat(operationDates)
-                .Append(valuationDate)
-                .Distinct()
-                .OrderBy(date => date)
-                .ToArray();
-        }
+        var dates = InvestmentHistoryDates.Build(
+            operationDates,
+            observationDates,
+            valuationDate);
 
-        var points = new List<InvestmentHistoryPoint>(dates.Length);
+        var points = new List<InvestmentHistoryPoint>(dates.Count);
         foreach (var date in dates)
         {
             var valuation = InvestmentValuationCalculator.Valuate(

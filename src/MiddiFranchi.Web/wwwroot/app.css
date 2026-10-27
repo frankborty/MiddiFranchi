@@ -2630,8 +2630,8 @@ input[type="date"] { font-family: inherit; }
 .sort-button:hover { color: var(--mf-text); }
 .investment-sort-button:focus-visible,
 .sort-button:focus-visible { outline: 2px solid var(--mf-blue-600); outline-offset: 2px; border-radius: 4px; }
-.investment-sort-arrow { color: var(--mf-investments); font-size: 10px; line-height: 1; }
-.sort-arrow { color: var(--mf-investments); font-size: 10px; line-height: 1; }
+.investment-sort-arrow { color: var(--mf-sort-color, var(--mf-investments)); font-size: 10px; line-height: 1; }
+.sort-arrow { color: var(--mf-sort-color, var(--mf-investments)); font-size: 10px; line-height: 1; }
 .investment-chart-legend {
     display: flex;
     align-items: center;
@@ -3171,6 +3171,9 @@ input[type="date"] { font-family: inherit; }
 .overview-tab { --overview-tab-color: var(--mf-text-secondary); }
 .overview-tab.investments { --overview-tab-color: var(--mf-investments); }
 .overview-tab.accounts { --overview-tab-color: var(--mf-accounts); }
+.overview-tab.income { --overview-tab-color: var(--mf-income); }
+.overview-tab.expense { --overview-tab-color: var(--mf-expense); }
+.overview-tab.delta { --overview-tab-color: #0ea5e9; }
 .overview-tab.total { --overview-tab-color: var(--mf-text-secondary); }
 .overview-tab .tab-icon { display: inline-grid; place-items: center; color: var(--overview-tab-color); }
 .overview-tab.active {

@@ -142,6 +142,10 @@
     [Parameter]
     public bool ColorPointsBySign { get; set; }
 
+    /// <summary>Evidenzia la linea orizzontale a y = 0.</summary>
+    [Parameter]
+    public bool HighlightZeroLine { get; set; }
+
     /// <summary>Formato data del tooltip: "month" (mese e anno) o "year" (solo anno).</summary>
     [Parameter]
     public string? TooltipDateMode { get; set; }
@@ -546,6 +550,21 @@
             Debug = false,
             Chart = chart,
             Colors = colors,
+            Annotations = HighlightZeroLine
+                ? new Annotations
+                {
+                    Yaxis =
+                    [
+                        new AnnotationsYAxis
+                        {
+                            Y = 0,
+                            BorderColor = dark ? "#f1f5f9" : "#334155",
+                            BorderWidth = 2,
+                            StrokeDashArray = 0,
+                        },
+                    ],
+                }
+                : null,
             Fill = new Fill
             {
                 Type = FillType.Solid,

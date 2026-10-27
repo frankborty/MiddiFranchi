@@ -100,7 +100,7 @@ else if (_workspace is { } workspace)
         }
 
         <div class="bento compact-pie-row">
-            <InvestmentPerformanceChart Workspace="workspace" ShowPerformanceToggle="false" />
+            <InvestmentPerformanceChart Workspace="workspace" />
 
             <section class="card investment-allocation-card" aria-labelledby="investment-allocation-title">
                 <div class="section-head">
@@ -241,32 +241,32 @@ else if (_workspace is { } workspace)
                             <tr>
                                 <th scope="col">
                                     <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.Name)">
-                                        Strumento @SortArrow(SortColumn.Name)
+                                        Strumento <span class="sort-arrow">@SortArrow(SortColumn.Name)</span>
                                     </button>
                                 </th>
                                 <th scope="col" class="num hide-sm">
                                     <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.Quantity)">
-                                        Quantità @SortArrow(SortColumn.Quantity)
+                                        Quantità <span class="sort-arrow">@SortArrow(SortColumn.Quantity)</span>
                                     </button>
                                 </th>
                                 <th scope="col" class="num hide-sm">
                                     <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.CurrentPrice)">
-                                        Prezzo attuale @SortArrow(SortColumn.CurrentPrice)
+                                        Prezzo attuale <span class="sort-arrow">@SortArrow(SortColumn.CurrentPrice)</span>
                                     </button>
                                 </th>
                                 <th scope="col" class="num hide-sm">
                                     <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.AverageCost)">
-                                        Prezzo medio @SortArrow(SortColumn.AverageCost)
+                                        Prezzo medio <span class="sort-arrow">@SortArrow(SortColumn.AverageCost)</span>
                                     </button>
                                 </th>
                                 <th scope="col" class="num">
                                     <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.CurrentValue)">
-                                        Valore attuale @SortArrow(SortColumn.CurrentValue)
+                                        Valore attuale <span class="sort-arrow">@SortArrow(SortColumn.CurrentValue)</span>
                                     </button>
                                 </th>
                                 <th scope="col" class="num">
                                     <button type="button" class="investment-sort-button" @onclick="() => ToggleSort(SortColumn.TotalResult)">
-                                        Rendimento @SortArrow(SortColumn.TotalResult)
+                                        Rendimento <span class="sort-arrow">@SortArrow(SortColumn.TotalResult)</span>
                                     </button>
                                 </th>
                             </tr>
