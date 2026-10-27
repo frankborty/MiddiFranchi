@@ -158,6 +158,45 @@ public class InvestmentWorkspaceServiceTests
     }
 
     [Fact]
+    public async Task LoadAsync_ShouldExposeUnitPriceHistoryForPerUnitInstruments()
+    {
+        var instrument = AddInstrument("ETF globale");
+        AddBuy(instrument, 2m, QuotedPrice.AtUnitPrice(new UnitPrice(new Money(80m, Euro))),
+            new DateOnly(2026, 10, 5));
+        AddPrice(instrument, 85m, new DateOnly(2026, 10, 10));
+        AddPrice(instrument, 90m, new DateOnly(2026, 10, 15));
+
+        var workspace = await _service.LoadAsync();
+
+        var row = workspace.Assets.ShouldHaveSingleItem();
+        row.PriceHistory.ShouldNotBeNull();
+        row.PriceHistory!.Select(point => point.Date).ShouldBe(
+        [
+            new DateOnly(2026, 10, 5),
+            new DateOnly(2026, 10, 10),
+            new DateOnly(2026, 10, 15),
+        ]);
+        row.PriceHistory.Select(point => point.Price).ShouldBe([80m, 85m, 90m]);
+        row.PriceHistory.ShouldAllBe(point => point.Currency == Euro);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ShouldNotExposeUnitPriceHistoryForNominalBonds()
+    {
+        var bond = AddInstrument(
+            "BTP 2030",
+            notional: new Money(1000m, Euro),
+            priceUnit: PriceUnit.PercentOfNominal,
+            assetClass: AssetClass.Bond);
+        AddBuy(bond, 2m, QuotedPrice.AsPercentOfNominal(98.5m), new DateOnly(2026, 10, 5));
+        AddPrice(bond, 100m, new DateOnly(2026, 10, 15));
+
+        var workspace = await _service.LoadAsync();
+
+        workspace.Assets.ShouldHaveSingleItem().PriceHistory.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task LoadAsync_ShouldNotTreatAMissingQuotationAsZero()
     {
         var instrument = AddInstrument("ETF globale");

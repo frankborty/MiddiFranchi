@@ -194,6 +194,11 @@ public sealed class InvestmentWorkspaceService
             operations,
             prices,
             valuationDate);
+        var priceHistory = BuildInstrumentPriceHistory(
+            instrument,
+            operations,
+            prices,
+            valuationDate);
 
         return new InvestmentAssetRow(
             instrument.Id,
@@ -230,7 +235,43 @@ public sealed class InvestmentWorkspaceService
             operations.Count > 0,
             operationRows,
             warnings,
-            history);
+            history,
+            priceHistory);
+    }
+
+    private static IReadOnlyList<InvestmentPricePoint> BuildInstrumentPriceHistory(
+        Instrument instrument,
+        IReadOnlyList<InvestmentOperation> operations,
+        IReadOnlyList<PriceObservation> prices,
+        DateOnly valuationDate)
+    {
+        if (instrument.PriceUnit != PriceUnit.PerUnit)
+        {
+            return [];
+        }
+
+        var positionOperations = operations
+            .Where(operation => operation.Status == OperationStatus.Registered)
+            .Where(operation => operation.InvestmentKind is
+                InvestmentOperationKind.Buy or InvestmentOperationKind.Sell)
+            .Where(operation => operation.OperationDate <= valuationDate)
+            .ToArray();
+        var instrumentPrices = prices
+            .Where(price => price.Instrument.Id == instrument.Id)
+            .ToArray();
+
+        return InvestmentHistoryPrices
+            .WithExecutionPrices(instrumentPrices, positionOperations)
+            .Where(price => price.Instrument.Id == instrument.Id && price.ValidAt <= valuationDate)
+            .OrderBy(price => price.ValidAt)
+            .ThenBy(price => price.ObservedAt)
+            .GroupBy(price => price.ValidAt)
+            .Select(group => group.Last())
+            .Select(price => new InvestmentPricePoint(
+                price.ValidAt,
+                price.Price,
+                price.PriceCurrency ?? instrument.QuoteCurrency))
+            .ToArray();
     }
 
     private static IReadOnlyList<InvestmentHistoryPoint> BuildInstrumentHistory(

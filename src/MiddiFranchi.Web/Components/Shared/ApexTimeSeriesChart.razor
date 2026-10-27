@@ -42,16 +42,6 @@
                                  PointColor="@PointColorFor"
                                  Stroke="@StrokeFor(series)" />
             }
-            @if (HighlightZeroLine && _dates.Length >= 2)
-            {
-                <ApexPointSeries TItem="ApexTimePoint"
-                                 Items="@ZeroLinePoints"
-                                 Name="Zero"
-                                 SeriesType="SeriesType.Line"
-                                 XValue="@(point => point.Date)"
-                                 YValue="@(point => point.Value)"
-                                 Stroke="@ZeroLineStroke" />
-            }
         </ApexChart>
     </div>
     <div class="chart-annotation-tooltip" hidden></div>
@@ -119,6 +109,7 @@
     private bool _resyncPending;
     private string? _labelMode;
     private string? _appliedAxisKey;
+    private string? _appliedYAxisKey;
     private string? _optionsKey;
     private double? _yAxisMin;
     private double? _yAxisMax;
@@ -162,13 +153,13 @@
     [Parameter]
     public bool PercentageValues { get; set; }
 
+    /// <summary>Decimali mostrati nelle etichette dell'asse Y quando i valori sono valuta.</summary>
+    [Parameter]
+    public int AxisLabelDecimals { get; set; }
+
     /// <summary>Colora ogni punto/barra di verde se non negativo, di rosso se negativo.</summary>
     [Parameter]
     public bool ColorPointsBySign { get; set; }
-
-    /// <summary>Evidenzia la linea orizzontale a y = 0.</summary>
-    [Parameter]
-    public bool HighlightZeroLine { get; set; }
 
     /// <summary>Formato data del tooltip: "month" (mese e anno) o "year" (solo anno).</summary>
     [Parameter]
@@ -201,6 +192,10 @@
 
     [Parameter]
     public bool ShowMarkers { get; set; } = true;
+
+    /// <summary>Serie da non considerare nel calcolo dell'asse Y, ad esempio una linea nascosta via CSS.</summary>
+    [Parameter]
+    public string? YAxisExcludedSeries { get; set; }
 
     [Parameter]
     public bool SharedTooltip { get; set; } = true;
@@ -264,6 +259,7 @@
         {
             await ApplyLabelModeAsync();
             await ApplyAxisRangeAsync();
+            await ApplyYAxisRangeAsync();
             await ApplyAnnotationTooltipsAsync();
 
             // Blazor-ApexCharts non sincronizza da solo serie rimosse o svuotate e,
@@ -325,6 +321,25 @@
         }
     }
 
+    /// <summary>
+    /// La scala Y dipende anche dalle serie escluse (ad esempio il cumulato nascosto):
+    /// quando cambia va applicata esplicitamente, altrimenti Apex mantiene quella precedente.
+    /// </summary>
+    private async Task ApplyYAxisRangeAsync()
+    {
+        var key = $"{AxisKey}|{YAxisExcludedSeries}|{_yAxisMin}|{_yAxisMax}|{_yAxisStep}";
+        if (_appliedYAxisKey == key)
+        {
+            return;
+        }
+
+        _appliedYAxisKey = key;
+        if (_chart is not null)
+        {
+            await _chart.UpdateOptionsAsync(true, true, true);
+        }
+    }
+
     private async Task ApplyAnnotationTooltipsAsync()
     {
         if (PointAnnotations.Count == 0)
@@ -371,6 +386,7 @@
 
         _theme = normalized;
         _optionsKey = null;
+        _appliedYAxisKey = null;
         _options = CreateOptions(_theme);
         StateHasChanged();
     }
@@ -438,19 +454,31 @@
         Width = IsBar(series) ? 0 : 2,
     };
 
-    private SeriesStroke ZeroLineStroke => new()
+    private Annotations? BuildAnnotations()
     {
-        Color = _theme == "dark" ? "#f0f0ed" : "#151515",
-        Width = 2,
-    };
+        if (PointAnnotations.Count == 0)
+        {
+            return null;
+        }
 
-    private List<ApexTimePoint> ZeroLinePoints => _dates.Length < 2
-        ? []
-        :
-        [
-            new(_dates[0].ToDateTime(TimeOnly.MinValue), 0m),
-            new(_dates[^1].ToDateTime(TimeOnly.MinValue), 0m),
-        ];
+        return new Annotations
+        {
+            Points = PointAnnotations.Select(annotation => new AnnotationsPoint
+            {
+                X = new DateTimeOffset(
+                    annotation.Date.ToDateTime(TimeOnly.MinValue),
+                    TimeSpan.Zero).ToUnixTimeMilliseconds(),
+                Y = (double)annotation.Value,
+                Marker = new AnnotationMarker
+                {
+                    Size = 5,
+                    FillColor = annotation.Color,
+                    StrokeColor = annotation.Color,
+                    StrokeWidth = 0,
+                },
+            }).ToList(),
+        };
+    }
 
     private string OptionsKey() =>
         string.Join(
@@ -461,13 +489,14 @@
             Height?.ToString(),
             ShowStackedTotal,
             PercentageValues,
+            AxisLabelDecimals,
             ColorPointsBySign,
             TooltipDateMode,
             XAxisLabelMode,
+            YAxisExcludedSeries,
             XAxisMin?.ToString("O"),
             XAxisMax?.ToString("O"),
             XAxisTickAmount,
-            HighlightZeroLine,
             _yAxisMin,
             _yAxisMax,
             _yAxisStep,
@@ -482,6 +511,8 @@
     private (double? Min, double? Max, double? Step) ComputeYAxisRange()
     {
         var values = Series
+            .Where(series => string.IsNullOrWhiteSpace(YAxisExcludedSeries) ||
+                             !string.Equals(series.Label, YAxisExcludedSeries, StringComparison.Ordinal))
             .SelectMany(series => series.Points)
             .Select(point => point.Value)
             .Where(value => value is not null)
@@ -502,22 +533,10 @@
         var basis = span > 0m
             ? span
             : Math.Max(Math.Abs(maximum) * 0.25m, PercentageValues ? 0.01m : 1m);
-        var magnitude = Math.Max(Math.Abs(minimum), Math.Abs(maximum));
-        var step = Math.Max(
-            NiceStep(basis, 5),
-            NiceStep(Math.Max(magnitude * 0.1m, PercentageValues ? 0.01m : 1m), 1));
+        var step = Math.Max(NiceStep(basis, 6), 0.01m);
 
         var niceMin = Math.Floor(minimum / step) * step;
-        if (minimum - niceMin < step * 0.2m)
-        {
-            niceMin -= step;
-        }
-
         var niceMax = Math.Ceiling(maximum / step) * step;
-        if (niceMax - maximum < step * 0.2m)
-        {
-            niceMax += step;
-        }
 
         if (minimum >= 0m && niceMin < 0m)
         {
@@ -589,13 +608,15 @@
             .Concat(Series.Select(series => series.Color ?? defaultColor))
             .ToList();
         var currencySymbol = currencyCode == "EUR" ? "€" : currencyCode;
+        var axisDecimals = Math.Clamp(AxisLabelDecimals, 0, 4);
         var currencyFormatter = PercentageValues
-            ? "function(val) { return new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 0 }).format(val); }"
+            ? "function(val) { var v = Math.abs(val) < 0.000001 ? 0 : val; return new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 0 }).format(v); }"
             : $"function(val) {{ " +
+              "if (Math.abs(val) < 0.000001) { val = 0; } " +
               "var abs = Math.abs(val); " +
-              "if (abs >= 1000000) { return new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(val / 1000000) + 'M " + currencySymbol + "'; } " +
-              "if (abs >= 1000) { return new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(val / 1000) + 'k " + currencySymbol + "'; } " +
-              $"return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
+              $"if (abs >= 1000000) {{ return new Intl.NumberFormat('it-IT', {{ maximumFractionDigits: {axisDecimals} }}).format(val / 1000000) + 'M {currencySymbol}'; }} " +
+              $"if (abs >= 1000) {{ return new Intl.NumberFormat('it-IT', {{ maximumFractionDigits: {axisDecimals} }}).format(val / 1000) + 'k {currencySymbol}'; }} " +
+              $"return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: {axisDecimals}, useGrouping: true }}).format(val); }}";
         var showStackedTotal = Stacked && ShowStackedTotal ? "true" : "false";
         var percentageValues = PercentageValues ? "true" : "false";
         var tooltipDateOptions = TooltipDateMode switch
@@ -724,25 +745,7 @@
             Debug = false,
             Chart = chart,
             Colors = colors,
-            Annotations = PointAnnotations.Count == 0
-                ? null
-                : new Annotations
-                {
-                    Points = PointAnnotations.Select(annotation => new AnnotationsPoint
-                    {
-                        X = new DateTimeOffset(
-                            annotation.Date.ToDateTime(TimeOnly.MinValue),
-                            TimeSpan.Zero).ToUnixTimeMilliseconds(),
-                        Y = (double)annotation.Value,
-                        Marker = new AnnotationMarker
-                        {
-                            Size = 5,
-                            FillColor = annotation.Color,
-                            StrokeColor = annotation.Color,
-                            StrokeWidth = 0,
-                        },
-                    }).ToList(),
-                },
+            Annotations = BuildAnnotations(),
             Fill = new Fill
             {
                 Type = FillType.Solid,
@@ -761,8 +764,8 @@
                 {
                     Bar = new PlotOptionsBar
                     {
-                        ColumnWidth = "64%",
-                        BorderRadius = 4,
+                        ColumnWidth = "95%",
+                        BorderRadius = 3,
                         BorderRadiusApplication = ApexCharts.BorderRadiusApplication.End,
                         BorderRadiusWhenStacked = ApexCharts.BorderRadiusWhenStacked.Last,
                     },
@@ -794,8 +797,7 @@
                     Min = _yAxisMin,
                     Max = _yAxisMax,
                     StepSize = _yAxisStep,
-                    ForceNiceScale = true,
-                    TickAmount = 5,
+                    ForceNiceScale = false,
                     Labels = new YAxisLabels { Formatter = currencyFormatter },
                 },
             ],

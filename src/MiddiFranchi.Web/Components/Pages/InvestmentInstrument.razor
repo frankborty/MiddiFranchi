@@ -144,16 +144,39 @@ else if (_asset is { } asset)
                 <div>
                     <h2 id="instrument-value-title"><MfIcon Name="trend" Size="18" /> Valore nel tempo</h2>
                 </div>
-                <div class="investment-chart-legend" aria-hidden="true">
-                    <span><span class="investment-class-dot" style="background:#8b5cf6"></span> Valore attuale</span>
-                    <span><span class="investment-class-dot" style="background:#9ca3af"></span> Capitale investito</span>
+                <div class="instrument-value-head">
+                    @if (CanShowUnitPrice)
+                    {
+                        <div class="investment-chart-units" role="group" aria-label="Vista del valore">
+                            <button type="button"
+                                    class="investment-chart-unit @(ShowUnitPriceView ? "" : "active")"
+                                    aria-pressed="@(ShowUnitPriceView ? "false" : "true")"
+                                    @onclick="() => SetValueView(ValueView.Value)">Valore</button>
+                            <button type="button"
+                                    class="investment-chart-unit @(ShowUnitPriceView ? "active" : "")"
+                                    aria-pressed="@(ShowUnitPriceView ? "true" : "false")"
+                                    @onclick="() => SetValueView(ValueView.UnitPrice)">Unitario</button>
+                        </div>
+                    }
+                    <div class="investment-chart-legend" aria-hidden="true">
+                        @if (ShowUnitPriceView)
+                        {
+                            <span><span class="investment-class-dot" style="background:#4f5bd5"></span> Prezzo unitario</span>
+                        }
+                        else
+                        {
+                            <span><span class="investment-class-dot" style="background:#8b5cf6"></span> Valore attuale</span>
+                            <span><span class="investment-class-dot" style="background:#9ca3af"></span> Capitale investito</span>
+                        }
+                    </div>
                 </div>
             </div>
-            @if (ValueSeries.Count > 0)
+            @if (ValueChartSeries.Count > 0)
             {
                 <ApexTimeSeriesChart Title=""
-                                     Currency="@Currency.Euro"
-                                     Series="@ValueSeries"
+                                     Currency="@ValueChartCurrency"
+                                     Series="@ValueChartSeries"
+                                     AxisLabelDecimals="@(ShowUnitPriceView ? 2 : 0)"
                                      XAxisMin="@ChartAxisMin"
                                      XAxisMax="@ChartAxisMax"
                                      XAxisLabelMode="@ChartAxisLabelMode"
@@ -603,6 +626,7 @@ else if (_asset is { } asset)
     private ChartRange _chartRange = ChartRange.Max;
     private int? _chartYear;
     private ReturnView _returnView = ReturnView.Cumulative;
+    private ValueView _valueView = ValueView.Value;
     private bool _preferencesLoaded;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -627,6 +651,12 @@ else if (_asset is { } asset)
         if (Enum.TryParse<ReturnView>(view, out var storedView))
         {
             _returnView = storedView;
+        }
+
+        var valueView = await Preferences.GetAsync("mf.chart.instrument.value-view");
+        if (Enum.TryParse<ValueView>(valueView, out var storedValueView))
+        {
+            _valueView = storedValueView;
         }
 
         await InvokeAsync(StateHasChanged);
@@ -942,6 +972,46 @@ else if (_asset is { } asset)
         }
     }
 
+    private IReadOnlyList<InvestmentPricePoint> FilteredUnitPrices
+    {
+        get
+        {
+            var all = _asset?.PriceHistory ?? [];
+            if (all.Count == 0)
+            {
+                return all;
+            }
+
+            var (from, to) = ChartWindow();
+            if (from is null && to is null)
+            {
+                return all;
+            }
+
+            var points = all
+                .Where(point => (from is null || point.Date > from) && (to is null || point.Date <= to))
+                .ToList();
+
+            if (from is { } start)
+            {
+                var last = all.LastOrDefault(point => point.Date <= start);
+                if (last is not null)
+                {
+                    points.Insert(0, last);
+                }
+            }
+
+            return points;
+        }
+    }
+
+    private bool CanShowUnitPrice =>
+        _asset is { PriceUnit: PriceUnit.PerUnit } &&
+        (_asset.PriceHistory?.Count ?? 0) >= 2;
+
+    private bool ShowUnitPriceView =>
+        _valueView == ValueView.UnitPrice && CanShowUnitPrice;
+
     private IReadOnlyList<TimeSeriesSeries> ValueSeries =>
         FilteredHistory.Count < 2
             ? []
@@ -959,6 +1029,24 @@ else if (_asset is { } asset)
                         .ToArray(),
                     Color: "#9ca3af"),
             ];
+
+    private IReadOnlyList<TimeSeriesSeries> UnitPriceSeries =>
+        FilteredUnitPrices.Count < 2
+            ? []
+            : [
+                new(
+                    "Prezzo unitario",
+                    FilteredUnitPrices
+                        .Select(point => new TimeSeriesPoint(point.Date, point.Price))
+                        .ToArray(),
+                    Color: "#4f5bd5"),
+            ];
+
+    private IReadOnlyList<TimeSeriesSeries> ValueChartSeries =>
+        ShowUnitPriceView ? UnitPriceSeries : ValueSeries;
+
+    private Currency ValueChartCurrency =>
+        ShowUnitPriceView ? _asset?.QuoteCurrency ?? Currency.Euro : Currency.Euro;
 
     private IReadOnlyList<TimeSeriesSeries> ReturnSeries =>
         FilteredHistory.Count < 2
@@ -1059,6 +1147,12 @@ else if (_asset is { } asset)
     {
         _returnView = view;
         await Preferences.SetAsync("mf.chart.instrument.view", view.ToString());
+    }
+
+    private async Task SetValueView(ValueView view)
+    {
+        _valueView = view;
+        await Preferences.SetAsync("mf.chart.instrument.value-view", view.ToString());
     }
 
     private string PeriodTooltipMode => ReturnGranularity switch
@@ -1519,5 +1613,11 @@ else if (_asset is { } asset)
     {
         Cumulative,
         Period,
+    }
+
+    private enum ValueView
+    {
+        Value,
+        UnitPrice,
     }
 }

@@ -58,7 +58,8 @@ public sealed record InvestmentAssetRow(
     bool HasOperations,
     IReadOnlyList<InvestmentOperationRow> Operations,
     IReadOnlyList<string> Warnings,
-    IReadOnlyList<InvestmentHistoryPoint>? History = null)
+    IReadOnlyList<InvestmentHistoryPoint>? History = null,
+    IReadOnlyList<InvestmentPricePoint>? PriceHistory = null)
 {
     public bool IsOpen => Quantity is { Value: > 0m };
 
@@ -66,6 +67,8 @@ public sealed record InvestmentAssetRow(
 
     public bool IsValuationComplete => Quantity is null || CurrentValue is not null;
 }
+
+public sealed record InvestmentPricePoint(DateOnly Date, decimal Price, Currency Currency);
 
 public sealed record InvestmentOperationRow(
     Guid Id,
