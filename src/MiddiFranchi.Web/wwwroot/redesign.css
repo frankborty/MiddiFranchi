@@ -581,6 +581,36 @@ h1.account-detail-title {
 .page-body label > span:first-child { color: var(--mf-text-muted); font-size: .7rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .form-actions { gap: 10px; }
 
+/* Il wrapper della ricerca possiede già bordo e sfondo: l'input interno non ne aggiunge altri. */
+.page-body .category-search input,
+.page-body .movement-search input,
+.page-body .investment-search input {
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+.page-body .category-search input:focus,
+.page-body .movement-search input:focus,
+.page-body .investment-search input:focus,
+.page-body .category-search input:focus-visible,
+.page-body .movement-search input:focus-visible,
+.page-body .investment-search input:focus-visible {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+.category-search:focus-within,
+.movement-search:focus-within,
+.investment-search:focus-within {
+    border-color: var(--mf-focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--mf-focus) 14%, transparent);
+}
+
 /* ---- Segmented controls, chip e badge ---- */
 .overview-tabs,
 .overview-ranges {
@@ -697,6 +727,7 @@ h1.account-detail-title {
     pointer-events: none;
 }
 .chart-annotation-tooltip[hidden] { display: none; }
+.library-chart.annotation-tooltip-active .apexcharts-tooltip { display: none !important; }
 
 .library-chart .apexcharts-tooltip {
     border: 1px solid var(--mf-border);
@@ -1185,9 +1216,15 @@ h1.account-detail-title {
         gap: 2px;
         padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
         border-top: 1px solid var(--mf-border);
-        background: color-mix(in srgb, var(--mf-surface) 94%, transparent);
-        backdrop-filter: blur(18px);
+        background: var(--mf-surface);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         overflow: hidden;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        will-change: transform;
     }
     .bottomnav-link {
         min-width: 0;

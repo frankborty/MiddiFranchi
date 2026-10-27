@@ -66,12 +66,6 @@
                     var text = titles[index];
                     if (!text) return;
 
-                    var title = marker.querySelector('title');
-                    if (!title) {
-                        title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-                        marker.appendChild(title);
-                    }
-                    title.textContent = text;
                     marker.style.cursor = 'pointer';
 
                     function position(event) {
@@ -91,12 +85,14 @@
 
                     marker.onmouseenter = function (event) {
                         if (!tooltip) return;
+                        root.classList.add('annotation-tooltip-active');
                         tooltip.textContent = text;
                         tooltip.hidden = false;
                         position(event);
                     };
                     marker.onmousemove = position;
                     marker.onmouseleave = function () {
+                        root.classList.remove('annotation-tooltip-active');
                         if (tooltip) tooltip.hidden = true;
                     };
                 });

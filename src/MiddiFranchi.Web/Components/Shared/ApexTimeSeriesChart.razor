@@ -588,9 +588,14 @@
             .Select(range => range.Color)
             .Concat(Series.Select(series => series.Color ?? defaultColor))
             .ToList();
+        var currencySymbol = currencyCode == "EUR" ? "€" : currencyCode;
         var currencyFormatter = PercentageValues
             ? "function(val) { return new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 0 }).format(val); }"
-            : $"function(val) {{ return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
+            : $"function(val) {{ " +
+              "var abs = Math.abs(val); " +
+              "if (abs >= 1000000) { return new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(val / 1000000) + 'M " + currencySymbol + "'; } " +
+              "if (abs >= 1000) { return new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(val / 1000) + 'k " + currencySymbol + "'; } " +
+              $"return new Intl.NumberFormat('it-IT', {{ style: 'currency', currency: '{currencyCode}', maximumFractionDigits: 0, useGrouping: true }}).format(val); }}";
         var showStackedTotal = Stacked && ShowStackedTotal ? "true" : "false";
         var percentageValues = PercentageValues ? "true" : "false";
         var tooltipDateOptions = TooltipDateMode switch
