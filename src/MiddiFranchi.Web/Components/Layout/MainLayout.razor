@@ -4,6 +4,7 @@
 @using MiddiFranchi.Web.Components.Shared
 @inject NavigationManager Navigation
 @inject SectionAppearanceService Appearance
+@inject IJSRuntime JS
 
 <div class="page app-shell" id="mf-page" style="@PageStyle">
     <header class="app-topbar">
@@ -139,7 +140,21 @@
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
-        _ = InvokeAsync(StateHasChanged);
+        _ = ResetPageScrollAfterNavigationAsync();
+
+    private async Task ResetPageScrollAfterNavigationAsync()
+    {
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+
+        try
+        {
+            await InvokeAsync(() => JS.InvokeVoidAsync("mfResetPageScroll"));
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
 
     private void OnAppearanceChanged() => _ = InvokeAsync(StateHasChanged);
 

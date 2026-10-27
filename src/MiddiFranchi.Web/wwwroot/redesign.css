@@ -1192,7 +1192,15 @@ h1.account-detail-title {
 
 /* ---- Mobile ---- */
 @media (max-width: 900px) {
+    .page.app-shell {
+        height: 100dvh;
+        min-height: 0;
+        overflow: hidden;
+    }
     .app-topbar {
+        position: relative;
+        top: auto;
+        flex: 0 0 auto;
         grid-template-columns: 1fr auto;
         min-height: 66px;
         padding: 0 20px;
@@ -1203,13 +1211,22 @@ h1.account-detail-title {
     .app-topbar-actions { gap: 8px; }
     .app-shell > .fab-add { display: none; }
     .page-body {
-        padding: 24px 20px calc(96px + env(safe-area-inset-bottom));
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+        padding: 24px 20px 24px;
+    }
+    .page-body:has(.fab-add) {
+        padding-bottom: calc(92px + env(safe-area-inset-bottom));
     }
     .app-bottomnav {
-        position: fixed;
-        right: 0;
-        bottom: 0;
-        left: 0;
+        position: relative;
+        right: auto;
+        bottom: auto;
+        left: auto;
+        flex: 0 0 auto;
         z-index: 90;
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1217,14 +1234,7 @@ h1.account-detail-title {
         padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
         border-top: 1px solid var(--mf-border);
         background: var(--mf-surface);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
         overflow: hidden;
-        transform: translateZ(0);
-        -webkit-transform: translateZ(0);
-        backface-visibility: hidden;
-        -webkit-backface-visibility: hidden;
-        will-change: transform;
     }
     .bottomnav-link {
         min-width: 0;
@@ -1260,7 +1270,7 @@ h1.account-detail-title {
     .dashboard-header h1,
     h1.account-detail-title { font-size: clamp(2rem, 9vw, 2.8rem); }
     .card { padding: 20px; border-radius: 20px; }
-    .settings-page { min-height: calc(100dvh - 66px - 24px - 96px); }
+    .settings-page { min-height: 100%; }
     .settings-hub-grid { grid-template-columns: 1fr; }
     .chart-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .chart-stats > div { border-right: 0; border-bottom: 1px solid var(--mf-border); }
@@ -1271,7 +1281,7 @@ h1.account-detail-title {
     .app-brand-name { font-size: 1rem; }
     .app-brand-mark { width: 32px; height: 32px; border-radius: 10px; }
     .topbar-icon { width: 40px; height: 40px; }
-    .page-body { padding: 20px 14px calc(96px + env(safe-area-inset-bottom)); }
+    .page-body { padding: 20px 14px 24px; }
     .dashboard-header h1,
     h1.account-detail-title { gap: 10px; }
     .account-detail-title .account-avatar { width: 38px; height: 38px; flex-basis: 38px; border-radius: 12px; }
