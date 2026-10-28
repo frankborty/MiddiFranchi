@@ -116,7 +116,7 @@
     private double? _yAxisStep;
 
     private string AxisKey =>
-        $"{_theme}|{Stacked}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|{PercentageValues}|" +
+        $"{_theme}|{Stacked}|{EnableSelectionZoom}|{XAxisMin:O}|{XAxisMax:O}|{XAxisTickAmount}|{XAxisLabelMode}|{PercentageValues}|" +
         $"{ColorPointsBySign}|{TooltipDateMode}|" +
         $"{string.Join(",", RangeSeries.Select(range => $"{range.Color}:{range.FillOpacity}:{range.Points.Count}"))}|" +
         $"{string.Join(",", Series.Select(series => $"{series.Color}:{series.FillColor}:{series.FillOpacity}"))}";
@@ -153,7 +153,7 @@
     [Parameter]
     public bool PercentageValues { get; set; }
 
-    /// <summary>Decimali mostrati nelle etichette dell'asse Y quando i valori sono valuta.</summary>
+    /// <summary>Decimali mostrati per i valori in valuta, sia sull'asse Y sia nel tooltip.</summary>
     [Parameter]
     public int AxisLabelDecimals { get; set; }
 
@@ -207,6 +207,14 @@
     /// <summary>Impila le serie marcate come barre; le serie di linea restano sovrapposte.</summary>
     [Parameter]
     public bool Stacked { get; set; }
+
+    /// <summary>Consente di zoomare trascinando un rettangolo sul grafico.</summary>
+    [Parameter]
+    public bool EnableSelectionZoom { get; set; }
+
+    /// <summary>Nasconde la toolbar Apex quando il pulsante zoom è fornito dall'esterno.</summary>
+    [Parameter]
+    public bool HideZoomToolbar { get; set; }
 
     /// <summary>Mostra la riga «Totale» nel tooltip delle barre impilate.</summary>
     [Parameter]
@@ -485,6 +493,8 @@
             '|',
             _theme,
             Stacked,
+            EnableSelectionZoom,
+            HideZoomToolbar,
             ShowMarkers,
             Height?.ToString(),
             ShowStackedTotal,
@@ -636,7 +646,7 @@
               var colors = w.globals.colors || [];
               var fmt = {{percentageValues}}
                 ? new Intl.NumberFormat('it-IT', { style: 'percent', maximumFractionDigits: 1, minimumFractionDigits: 1 })
-                : new Intl.NumberFormat('it-IT', { style: 'currency', currency: '{{currencyCode}}', maximumFractionDigits: 0, useGrouping: true });
+                : new Intl.NumberFormat('it-IT', { style: 'currency', currency: '{{currencyCode}}', minimumFractionDigits: {{axisDecimals}}, maximumFractionDigits: {{axisDecimals}}, useGrouping: true });
               // Il formato del titolo dipende dal tipo di grafico: mese/anno o solo anno.
               var dateFmt = new Intl.DateTimeFormat('it-IT', {{tooltipDateOptions}});
               // Le x arrivano come stringa ISO o numerico: normalizziamo a millisecondi.
@@ -721,8 +731,43 @@
         {
             Height = Height,
             Width = "100%",
-            Toolbar = new Toolbar { Show = false },
-            Zoom = new Zoom { Enabled = false },
+            // La toolbar Apex resta nascosta quando il pulsante zoom arriva dall'esterno;
+            // Tools.Zoom deve comunque restare attivo perché Apex ne ricava lo zoom a trascinamento.
+            Toolbar = new Toolbar
+            {
+                Show = EnableSelectionZoom && !HideZoomToolbar,
+                Tools = new Tools
+                {
+                    Download = false,
+                    Pan = false,
+                    Reset = false,
+                    Selection = false,
+                    Zoom = true,
+                    Zoomin = false,
+                    Zoomout = false,
+                    Measure = false,
+                },
+            },
+            Zoom = new Zoom
+            {
+                Enabled = EnableSelectionZoom,
+                Type = AxisType.Xy,
+                AllowMouseWheelZoom = false,
+                ZoomedArea = new ZoomedArea
+                {
+                    Fill = new ZoomedAreaFill
+                    {
+                        Color = dark ? "#9aa4ff" : "#4f5bd5",
+                        Opacity = 0.15,
+                    },
+                    Stroke = new ZoomedAreaStroke
+                    {
+                        Color = dark ? "#9aa4ff" : "#4f5bd5",
+                        Opacity = 0.6,
+                        Width = 1,
+                    },
+                },
+            },
             Animations = new Animations
             {
                 Enabled = true,
@@ -781,8 +826,11 @@
             Xaxis = new XAxis
             {
                 // Le barre usano un asse categoria: con l'asse datetime due rilevazioni ravvicinate
-                // ridurrebbero la larghezza delle colonne a pochi pixel.
+                // ridurrebbero la larghezza delle colonne a pochi pixel. "Between" evita che Apex
+                // converta la categoria in numerico, conversione che aggiungerebbe padding ai lati.
+                // Serve però l'asse numerico quando lo zoom è attivo, altrimenti il drag non funziona.
                 Type = Stacked ? XAxisType.Category : XAxisType.Datetime,
+                TickPlacement = Stacked && !EnableSelectionZoom ? TickPlacement.Between : TickPlacement.On,
                 TickAmount = XAxisTickAmount,
                 Labels = new XAxisLabels
                 {

@@ -45,8 +45,20 @@ public sealed class PriceUpdateService
                 return PriceUpdateResult.Failure(instrumentId, "", "Strumento non trovato.");
             }
 
-            return await UpdateAssetAsync(asset, _store.GetSettings(), cancellationToken)
+            var result = await UpdateAssetAsync(asset, _store.GetSettings(), cancellationToken)
                 .ConfigureAwait(false);
+            _store.RecordRun(new PriceUpdateRun(
+                DateTimeOffset.Now,
+                PriceUpdateTrigger.Manual,
+                PriceUpdateScope.Instrument,
+                asset.InstrumentId,
+                asset.Name,
+                result.Success ? 1 : 0,
+                result.Success ? 0 : 1,
+                result.Success ? null : result.Error,
+                [result]));
+
+            return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -54,6 +66,16 @@ public sealed class PriceUpdateService
         }
         catch (Exception exception)
         {
+            _store.RecordRun(new PriceUpdateRun(
+                DateTimeOffset.Now,
+                PriceUpdateTrigger.Manual,
+                PriceUpdateScope.Instrument,
+                instrumentId,
+                null,
+                0,
+                1,
+                exception.Message));
+
             return PriceUpdateResult.Failure(instrumentId, "", exception.Message);
         }
         finally
@@ -63,6 +85,7 @@ public sealed class PriceUpdateService
     }
 
     public async Task<IReadOnlyList<PriceUpdateResult>> UpdateAllAsync(
+        PriceUpdateTrigger trigger = PriceUpdateTrigger.Manual,
         CancellationToken cancellationToken = default)
     {
         if (!_gate.TryEnter(out var handle))
@@ -111,6 +134,16 @@ public sealed class PriceUpdateService
                 IsRunning: false,
                 LastError: lastError,
                 Results: results));
+            _store.RecordRun(new PriceUpdateRun(
+                finishedAt,
+                trigger,
+                PriceUpdateScope.All,
+                null,
+                null,
+                results.Count(result => result.Success),
+                results.Count(result => !result.Success),
+                lastError,
+                results));
 
             return results;
         }
@@ -121,13 +154,23 @@ public sealed class PriceUpdateService
         }
         catch (Exception exception)
         {
+            var failedAt = DateTimeOffset.Now;
             _store.SaveStatus(previous with
             {
-                LastRunAt = DateTimeOffset.Now,
+                LastRunAt = failedAt,
                 IsRunning = false,
                 LastError = exception.Message,
                 Results = [],
             });
+            _store.RecordRun(new PriceUpdateRun(
+                failedAt,
+                trigger,
+                PriceUpdateScope.All,
+                null,
+                null,
+                0,
+                0,
+                exception.Message));
 
             return
             [
@@ -162,7 +205,8 @@ public sealed class PriceUpdateService
                     asset.InstrumentId,
                     quote.Price,
                     validAt,
-                    "Borsa Italiana"),
+                    "Borsa Italiana",
+                    quote.LastTradeTime),
                 cancellationToken).ConfigureAwait(false);
 
             return new PriceUpdateResult(
@@ -171,7 +215,10 @@ public sealed class PriceUpdateService
                 Success: true,
                 quote.Price,
                 validAt,
-                Error: null);
+                Error: null,
+                asset.PriceUnit,
+                asset.Symbol,
+                quote.LastTradeTime);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

@@ -184,6 +184,12 @@ public class DataManagementServiceTests : PostgresTestBase
         {
         }
 
+        public IReadOnlyList<PriceUpdateRun> GetHistory() => [];
+
+        public void RecordRun(PriceUpdateRun run)
+        {
+        }
+
         public string ExportDocument() => "{\"Settings\":null,\"Status\":null}";
 
         public void ImportDocument(string json) => ImportedDocument = json;

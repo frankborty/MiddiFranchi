@@ -35,6 +35,7 @@
                     @option.Label
                 </button>
             }
+            <ChartZoomToggle Active="_zoomEnabled" OnToggle="ToggleZoom" />
         </div>
     </div>
 
@@ -130,6 +131,8 @@
                              ShowFooter="false"
                              ShowDataTable="false"
                              ShowMarkers="false"
+                             EnableSelectionZoom="@_zoomEnabled"
+                             HideZoomToolbar="true"
                              SharedTooltip="true" />
     }
     else
@@ -173,6 +176,7 @@
     private bool _showAccounts = true;
     private bool _showTotal = true;
     private DashboardOverviewRange _range = DashboardOverviewRange.Max;
+    private bool _zoomEnabled = true;
     private bool _preferencesLoaded;
 
     [Parameter, EditorRequired]
@@ -352,6 +356,8 @@
         _range = range;
         await Preferences.SetAsync(RangeKey, range.ToString());
     }
+
+    private void ToggleZoom() => _zoomEnabled = !_zoomEnabled;
 
     private async Task ToggleTotal()
     {

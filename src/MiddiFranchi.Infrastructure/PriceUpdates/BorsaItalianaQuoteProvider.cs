@@ -102,13 +102,90 @@ public sealed class BorsaItalianaQuoteProvider : IInvestmentQuoteProvider, IDisp
         var currency = string.IsNullOrEmpty(data.History?.Currency)
             ? "EUR"
             : data.History!.Currency!;
+        var lastTradeTime = await TryGetLastTradeTimeAsync(isin, exchange, cancellationToken)
+            .ConfigureAwait(false);
 
         return new InvestmentQuote(
             Isin: isin,
             Price: price.Value,
             Currency: currency,
             AsOf: ParseDate(last.Date),
-            Source: "Borsa Italiana");
+            Source: "Borsa Italiana",
+            LastTradeTime: lastTradeTime);
+    }
+
+    /// <summary>
+    /// L'endpoint giornaliero non espone l'orario: lo ricaviamo dai punti intraday, senza
+    /// rendere fallibile l'aggiornamento se il servizio non li restituisce.
+    /// </summary>
+    private async Task<TimeOnly?> TryGetLastTradeTimeAsync(
+        string isin,
+        string exchange,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var url = $"{ApiRoot}/{isin},{exchange},ISIN/intraday";
+            using var response = await SendAsync(
+                () => new HttpRequestMessage(HttpMethod.Get, url),
+                authenticated: true,
+                cancellationToken).ConfigureAwait(false);
+
+            await using var stream = await response.Content
+                .ReadAsStreamAsync(cancellationToken)
+                .ConfigureAwait(false);
+            var data = await JsonSerializer
+                .DeserializeAsync<IntradayResponse>(stream, JsonOptions, cancellationToken)
+                .ConfigureAwait(false);
+
+            return LastTradeTime(data);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static TimeOnly? LastTradeTime(IntradayResponse? data)
+    {
+        var points = data?.Points;
+        if (points is null || points.Count == 0)
+        {
+            return null;
+        }
+
+        for (var index = points.Count - 1; index >= 0; index--)
+        {
+            var point = points[index];
+
+            if (!string.IsNullOrWhiteSpace(point.EndTime) &&
+                TimeOnly.TryParseExact(
+                    point.EndTime,
+                    ["HH:mm:ss", "HH:mm"],
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var endTime))
+            {
+                return endTime;
+            }
+
+            if (!string.IsNullOrWhiteSpace(point.Time) &&
+                DateTime.TryParseExact(
+                    point.Time,
+                    ["yyyyMMdd-HH:mm:ss", "yyyyMMdd-HH:mm"],
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var bucket))
+            {
+                return TimeOnly.FromDateTime(bucket);
+            }
+        }
+
+        return null;
     }
 
     private async Task<HistoryResponse> DownloadHistoryAsync(
@@ -332,5 +409,20 @@ public sealed class BorsaItalianaQuoteProvider : IInvestmentQuoteProvider, IDisp
 
         [JsonPropertyName("lastPx")]
         public decimal? LastPx { get; set; }
+    }
+
+    private sealed class IntradayResponse
+    {
+        [JsonPropertyName("intradayPoint")]
+        public List<IntradayPoint>? Points { get; set; }
+    }
+
+    private sealed class IntradayPoint
+    {
+        [JsonPropertyName("time")]
+        public string? Time { get; set; }
+
+        [JsonPropertyName("endTime")]
+        public string? EndTime { get; set; }
     }
 }

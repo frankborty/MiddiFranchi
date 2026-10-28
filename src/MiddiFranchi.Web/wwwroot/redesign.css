@@ -468,14 +468,6 @@ h1.account-detail-title {
     transition: border-color var(--mf-speed) ease, transform var(--mf-speed) ease;
 }
 .stat-tile:hover { border-color: var(--mf-border-strong); transform: translateY(-1px); }
-.stat-tile.hero {
-    background: var(--mf-brand);
-    border-color: transparent;
-    color: var(--mf-brand-ink);
-}
-.stat-tile.hero .stat-label,
-.stat-tile.hero .stat-hint { color: color-mix(in srgb, var(--mf-brand-ink) 68%, transparent); }
-.stat-tile.hero strong { color: var(--mf-brand-ink); }
 .stat-label {
     color: var(--mf-text-muted);
     font-size: .68rem;
@@ -639,6 +631,13 @@ h1.account-detail-title {
 }
 .overview-tab.active .tab-icon { color: var(--mf-text); }
 .overview-range { min-width: 34px; text-align: center; }
+.chart-zoom-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+}
+.chart-zoom-toggle svg { display: block; }
 .status-chip {
     min-height: 24px;
     padding: 3px 8px;
@@ -1584,16 +1583,3 @@ h1.account-detail-title {
 /* Superfici piatte, senza alone verde. */
 .page.app-shell { background: var(--mf-bg); }
 .dashboard-overview { background: var(--mf-surface); }
-
-/* La card hero dentro la strip KPI deve restare leggibile in entrambi i temi. */
-.investments-kpi-grid.five-up > .stat-tile.hero {
-    background: var(--mf-surface-muted);
-    color: var(--mf-text);
-}
-.investments-kpi-grid.five-up > .stat-tile.hero .stat-label,
-.investments-kpi-grid.five-up > .stat-tile.hero .stat-hint {
-    color: var(--mf-text-muted);
-}
-.investments-kpi-grid.five-up > .stat-tile.hero strong {
-    color: var(--mf-text);
-}

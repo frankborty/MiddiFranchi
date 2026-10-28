@@ -21,14 +21,17 @@
     </div>
     @if (Workspace.Overview.History.Points.Count > 0)
     {
-        <div class="investment-chart-controls" role="group" aria-label="Intervallo del grafico">
-            @foreach (var range in ChartRanges)
-            {
-                <button type="button"
-                        class="overview-range @(IsChartRange(range.Value) ? "active" : "")"
-                        aria-pressed="@(IsChartRange(range.Value) ? "true" : "false")"
-                        @onclick="() => SetChartRange(range.Value)">@range.Label</button>
-            }
+        <div class="investment-chart-controls">
+            <div class="overview-ranges" role="group" aria-label="Intervallo del grafico">
+                @foreach (var range in ChartRanges)
+                {
+                    <button type="button"
+                            class="overview-range @(IsChartRange(range.Value) ? "active" : "")"
+                            aria-pressed="@(IsChartRange(range.Value) ? "true" : "false")"
+                            @onclick="() => SetChartRange(range.Value)">@range.Label</button>
+                }
+                <ChartZoomToggle Active="_zoomEnabled" OnToggle="ToggleZoom" />
+            </div>
             <label class="investment-chart-year">
                 <span class="visually-hidden">Anno del grafico</span>
                 <select value="@(_chartYear?.ToString() ?? "")" @onchange="OnChartYearChanged">
@@ -51,6 +54,8 @@
                              XAxisMin="@ChartAxisMin"
                              XAxisMax="@ChartAxisMax"
                              XAxisLabelMode="@ChartAxisLabelMode"
+                             EnableSelectionZoom="@_zoomEnabled"
+                             HideZoomToolbar="true"
                              ShowMarkers="false"
                              ShowHeader="false"
                              ShowFooter="false"
@@ -71,6 +76,7 @@
 
     private ChartRange _chartRange = ChartRange.Max;
     private int? _chartYear;
+    private bool _zoomEnabled = true;
     private bool _preferencesLoaded;
 
     private static readonly (ChartRange Value, string Label)[] ChartRanges =
@@ -161,6 +167,8 @@
             };
 
     private bool IsChartRange(ChartRange range) => _chartYear is null && _chartRange == range;
+
+    private void ToggleZoom() => _zoomEnabled = !_zoomEnabled;
 
     private async Task SetChartRange(ChartRange range)
     {

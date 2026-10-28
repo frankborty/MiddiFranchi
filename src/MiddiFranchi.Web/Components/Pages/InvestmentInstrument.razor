@@ -11,6 +11,7 @@
 @inject SectionAppearanceService Appearance
 @inject CategoryService CategoriesService
 @inject PriceUpdateService PriceUpdates
+@inject IPriceUpdateStore PriceUpdateStore
 @inject NavigationManager Navigation
 @inject NotificationService Notifications
 @inject ChartPreferences Preferences
@@ -145,9 +146,9 @@ else if (_asset is { } asset)
                     <h2 id="instrument-value-title"><MfIcon Name="trend" Size="18" /> Valore nel tempo</h2>
                 </div>
                 <div class="instrument-value-head">
-                    @if (CanShowUnitPrice)
-                    {
-                        <div class="investment-chart-units" role="group" aria-label="Vista del valore">
+                    <div class="investment-chart-units" role="group" aria-label="Vista del valore">
+                        @if (CanShowUnitPrice)
+                        {
                             <button type="button"
                                     class="investment-chart-unit @(ShowUnitPriceView ? "" : "active")"
                                     aria-pressed="@(ShowUnitPriceView ? "false" : "true")"
@@ -156,8 +157,9 @@ else if (_asset is { } asset)
                                     class="investment-chart-unit @(ShowUnitPriceView ? "active" : "")"
                                     aria-pressed="@(ShowUnitPriceView ? "true" : "false")"
                                     @onclick="() => SetValueView(ValueView.UnitPrice)">Unitario</button>
-                        </div>
-                    }
+                        }
+                        <ChartZoomToggle Class="investment-chart-unit" Active="_valueZoomEnabled" OnToggle="ToggleValueZoom" />
+                    </div>
                     <div class="investment-chart-legend" aria-hidden="true">
                         @if (ShowUnitPriceView)
                         {
@@ -177,6 +179,8 @@ else if (_asset is { } asset)
                                      Currency="@ValueChartCurrency"
                                      Series="@ValueChartSeries"
                                      AxisLabelDecimals="@(ShowUnitPriceView ? 2 : 0)"
+                                     EnableSelectionZoom="@_valueZoomEnabled"
+                                     HideZoomToolbar="true"
                                      XAxisMin="@ChartAxisMin"
                                      XAxisMax="@ChartAxisMax"
                                      XAxisLabelMode="@ChartAxisLabelMode"
@@ -206,6 +210,10 @@ else if (_asset is { } asset)
                             class="investment-chart-unit @(_returnView == ReturnView.Period ? "active" : "")"
                             aria-pressed="@(_returnView == ReturnView.Period ? "true" : "false")"
                             @onclick="() => SetReturnView(ReturnView.Period)">Periodo</button>
+                    @if (_returnView == ReturnView.Cumulative)
+                    {
+                        <ChartZoomToggle Class="investment-chart-unit" Active="_returnZoomEnabled" OnToggle="ToggleReturnZoom" />
+                    }
                 </div>
             </div>
             @if (_returnView == ReturnView.Cumulative)
@@ -216,6 +224,8 @@ else if (_asset is { } asset)
                                          Currency="@Currency.Euro"
                                          Series="@ReturnSeries"
                                          PercentageValues="true"
+                                         EnableSelectionZoom="@_returnZoomEnabled"
+                                         HideZoomToolbar="true"
                                          XAxisMin="@ChartAxisMin"
                                          XAxisMax="@ChartAxisMax"
                                          XAxisLabelMode="@ChartAxisLabelMode"
@@ -376,6 +386,33 @@ else if (_asset is { } asset)
                 <div class="instrument-info-row">
                     <dt><MfIcon Name="coin" Size="15" /> Unità di prezzo</dt>
                     <dd>@Format.PriceUnitLabel(asset.PriceUnit)</dd>
+                </div>
+                <div class="instrument-info-row">
+                    <dt><MfIcon Name="refresh" Size="15" /> Ultimo aggiornamento</dt>
+                    <dd>
+                        @if (asset.PriceObservedAt is { } observedAt)
+                        {
+                            <LocalTimestamp Value="observedAt" />
+                        }
+                        else
+                        {
+                            <span class="investment-muted">Mai aggiornata</span>
+                        }
+                    </dd>
+                </div>
+                <div class="instrument-info-row">
+                    <dt><MfIcon Name="calendar" Size="15" /> Ultima rilevazione</dt>
+                    <dd>
+                        @if (asset.PriceDate is { } priceDate)
+                        {
+                            <span>@Format.Date(priceDate)@PriceTimeText(asset.PriceTime)</span>
+                            <span class="investment-muted">· @(asset.PriceSource ?? "fonte non indicata")</span>
+                        }
+                        else
+                        {
+                            <span class="investment-muted">Nessuna quotazione registrata</span>
+                        }
+                    </dd>
                 </div>
                 <div class="instrument-info-row">
                     <dt><MfIcon Name="percent" Size="15" /> Tassazione</dt>
@@ -627,6 +664,8 @@ else if (_asset is { } asset)
     private int? _chartYear;
     private ReturnView _returnView = ReturnView.Cumulative;
     private ValueView _valueView = ValueView.Value;
+    private bool _valueZoomEnabled = true;
+    private bool _returnZoomEnabled = true;
     private bool _preferencesLoaded;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1149,6 +1188,10 @@ else if (_asset is { } asset)
         await Preferences.SetAsync("mf.chart.instrument.view", view.ToString());
     }
 
+    private void ToggleValueZoom() => _valueZoomEnabled = !_valueZoomEnabled;
+
+    private void ToggleReturnZoom() => _returnZoomEnabled = !_returnZoomEnabled;
+
     private async Task SetValueView(ValueView view)
     {
         _valueView = view;
@@ -1409,7 +1452,16 @@ else if (_asset is { } asset)
             var result = await PriceUpdates.UpdateInstrumentAsync(asset.InstrumentId);
             if (result.Success)
             {
-                await Notifications.Success("Quotazione aggiornata da Borsa Italiana.");
+                var acquiredAt = PriceUpdateScheduler
+                    .ResolveNow(PriceUpdateStore.GetSettings())
+                    .ToString("HH:mm", CultureInfo.InvariantCulture);
+                var priceText = UpdatedPriceText(result);
+                var tradeTime = result.PriceTime is { } time
+                    ? $" (ultima variazione {time.ToString("HH:mm", CultureInfo.InvariantCulture)})"
+                    : "";
+                await Notifications.Success(result.PriceDate is { } quoteDate
+                    ? $"Quotazione del {Format.Date(quoteDate)} {acquiredAt}: {priceText}{tradeTime}"
+                    : $"Quotazione aggiornata: {priceText}{tradeTime}");
                 await ReloadAsync();
             }
             else
@@ -1565,6 +1617,16 @@ else if (_asset is { } asset)
 
     private static string QuoteValue(InvestmentAssetRow asset) =>
         asset.CurrentUnitPrice is { } unitPrice ? Format.Money(unitPrice) : "—";
+
+    private static string PriceTimeText(TimeOnly? time) =>
+        time is { } value ? $" {value.ToString("HH:mm", CultureInfo.InvariantCulture)}" : "";
+
+    private static string UpdatedPriceText(PriceUpdateResult result) =>
+        result.Price is not { } price
+            ? "—"
+            : result.PriceUnit == PriceUnit.PercentOfNominal
+                ? $"{price.ToString("N2", CultureInfo.GetCultureInfo("it-IT"))} %"
+                : Format.Money(new Money(price, Currency.Euro));
 
     private static string MoneySigned(Money? value) =>
         value is { } money ? Format.MoneySigned(money) : "—";

@@ -53,6 +53,8 @@ public sealed record InvestmentAssetRow(
     Money? CurrentUnitPrice,
     decimal? LatestPrice,
     DateOnly? PriceDate,
+    TimeOnly? PriceTime,
+    DateTimeOffset? PriceObservedAt,
     string? PriceSource,
     bool IsPriceStale,
     bool HasOperations,

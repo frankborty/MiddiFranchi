@@ -98,14 +98,17 @@ else if (_workspace is { } workspace)
                 <div>
                     <h2 id="annual-return-title"><MfIcon Name="chart" Size="18" /> Rendimento annuale</h2>
                 </div>
-                <button type="button"
-                        class="chart-switch @(_showAnnualCumulative ? "active" : "")"
-                        aria-pressed="@(_showAnnualCumulative ? "true" : "false")"
-                        title="Mostra o nascondi il rendimento cumulativo"
-                        @onclick="ToggleAnnualCumulative">
-                    <span class="chart-switch-track" aria-hidden="true"><span class="chart-switch-thumb"></span></span>
-                    <span>Cumulato</span>
-                </button>
+                <div class="advanced-chart-controls">
+                    <div class="overview-ranges" role="group" aria-label="Controlli del rendimento annuale">
+                        <button type="button"
+                                class="overview-range @(_showAnnualCumulative ? "active" : "")"
+                                aria-pressed="@(_showAnnualCumulative ? "true" : "false")"
+                                title="Mostra o nascondi il rendimento cumulativo"
+                                @onclick="ToggleAnnualCumulative">
+                            Cumulato
+                        </button>
+                    </div>
+                </div>
             </div>
             @if (AnnualSeriesPoints.Count > 0)
             {

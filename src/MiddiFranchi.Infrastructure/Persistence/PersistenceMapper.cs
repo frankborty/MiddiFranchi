@@ -102,6 +102,7 @@ internal static class PersistenceMapper
         PriceCurrencyCode = observation.PriceCurrency?.Code,
         ValidAt = observation.ValidAt,
         ObservedAt = observation.ObservedAt,
+        TradeTime = observation.TradeTime,
         Source = observation.Source,
     };
 
@@ -118,14 +119,16 @@ internal static class PersistenceMapper
                             $"La quotazione {record.Id} è per unità ma non ha valuta.")))),
                 record.ValidAt,
                 record.ObservedAt,
-                record.Source),
+                record.Source,
+                record.TradeTime),
             PriceUnit.PercentOfNominal => PriceObservation.AsPercentOfNominal(
                 record.Id,
                 instrument,
                 record.Price,
                 record.ValidAt,
                 record.ObservedAt,
-                record.Source),
+                record.Source,
+                record.TradeTime),
             _ => throw new InvalidOperationException(
                 $"La quotazione {record.Id} ha un'unità di prezzo non supportata: {record.Unit}."),
         };

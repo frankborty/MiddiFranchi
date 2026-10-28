@@ -1,0 +1,21 @@
+@namespace MiddiFranchi.Web.Components.Shared
+
+<button type="button"
+        class="chart-zoom-toggle @Class @(Active ? "active" : "")"
+        aria-pressed="@(Active ? "true" : "false")"
+        title="Selezione zoom: trascina un rettangolo sul grafico"
+        aria-label="Selezione zoom"
+        @onclick="OnToggle">
+    <MfIcon Name="search" Size="14" />
+</button>
+
+@code {
+    [Parameter]
+    public string Class { get; set; } = "overview-range";
+
+    [Parameter]
+    public bool Active { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggle { get; set; }
+}

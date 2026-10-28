@@ -56,6 +56,10 @@ else
                                 {
                                     <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => SetRangeAsync(option.Key)">@option.Label</button>
                                 }
+                                @if (!_showBars)
+                                {
+                                    <ChartZoomToggle Active="_zoomEnabled" OnToggle="ToggleZoom" />
+                                }
                             </div>
                             <div class="overview-tabs" role="group" aria-label="Elementi del grafico">
                                 <button type="button" class="overview-tab accounts @(_showBars ? "active" : "")"
@@ -124,6 +128,8 @@ else
                                              Currency="@_rows[0].Currency"
                                              Series="@ChartSeries"
                                              Stacked="@_showBars"
+                                             EnableSelectionZoom="@(_zoomEnabled && !_showBars)"
+                                             HideZoomToolbar="true"
                                              ShowStackedTotal="false"
                                              ShowHeader="false"
                                              ShowFooter="false"
@@ -339,6 +345,7 @@ else
     private bool _loading = true;
     private bool _hideClosedAccounts = true;
     private string _range = "max";
+    private bool _zoomEnabled = true;
     private bool _preferencesLoaded;
     private bool _readingDialogOpen;
     private string? _loadError;
@@ -667,6 +674,8 @@ else
         _range = range;
         await Preferences.SetAsync("mf.chart.accounts.range", range);
     }
+
+    private void ToggleZoom() => _zoomEnabled = !_zoomEnabled;
 
     private async Task ToggleBarsAsync()
     {

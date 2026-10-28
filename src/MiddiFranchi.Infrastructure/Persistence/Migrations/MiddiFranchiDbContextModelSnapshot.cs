@@ -575,6 +575,9 @@ namespace MiddiFranchi.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<TimeOnly?>("TradeTime")
+                        .HasColumnType("time without time zone");
+
                     b.Property<string>("Unit")
                         .IsRequired()
                         .HasMaxLength(32)

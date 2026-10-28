@@ -7,6 +7,8 @@ namespace MiddiFranchi.Infrastructure.PriceUpdates;
 
 public sealed class JsonPriceUpdateStore : IPriceUpdateStore, IPriceUpdateBackupParticipant
 {
+    private const int HistoryLimit = 10;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -54,6 +56,32 @@ public sealed class JsonPriceUpdateStore : IPriceUpdateStore, IPriceUpdateBackup
         }
     }
 
+    public IReadOnlyList<PriceUpdateRun> GetHistory()
+    {
+        lock (_sync)
+        {
+            return (_document.History ?? []).Take(HistoryLimit).ToArray();
+        }
+    }
+
+    public void RecordRun(PriceUpdateRun run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+
+        lock (_sync)
+        {
+            var history = _document.History ?? [];
+            history.Insert(0, run);
+            if (history.Count > HistoryLimit)
+            {
+                history.RemoveRange(HistoryLimit, history.Count - HistoryLimit);
+            }
+
+            _document.History = history;
+            Save();
+        }
+    }
+
     public string ExportDocument()
     {
         lock (_sync)
@@ -75,6 +103,9 @@ public sealed class JsonPriceUpdateStore : IPriceUpdateStore, IPriceUpdateBackup
                 Settings = document.Settings,
                 Status = document.Status is { } status
                     ? status with { IsRunning = false }
+                    : null,
+                History = document.History is { } history
+                    ? history.Take(HistoryLimit).ToList()
                     : null,
             };
             Save();
@@ -136,5 +167,7 @@ public sealed class JsonPriceUpdateStore : IPriceUpdateStore, IPriceUpdateBackup
         public PriceUpdateSettings? Settings { get; set; }
 
         public PriceUpdateStatus? Status { get; set; }
+
+        public List<PriceUpdateRun>? History { get; set; }
     }
 }

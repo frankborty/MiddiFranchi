@@ -31,6 +31,7 @@ internal sealed class PriceObservationRecordConfiguration : IEntityTypeConfigura
         builder.Property(observation => observation.PriceCurrencyCode).IsOptionalCurrencyCode();
         builder.Property(observation => observation.ValidAt).HasColumnType("date").IsRequired();
         builder.Property(observation => observation.ObservedAt).HasColumnType("timestamptz").IsRequired();
+        builder.Property(observation => observation.TradeTime).HasColumnType("time without time zone");
         builder.Property(observation => observation.Source).IsRequiredText();
 
         builder.HasOne(observation => observation.Instrument)

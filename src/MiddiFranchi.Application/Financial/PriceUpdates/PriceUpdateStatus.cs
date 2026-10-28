@@ -1,3 +1,5 @@
+using MiddiFranchi.Domain.Portfolio;
+
 namespace MiddiFranchi.Application.Financial;
 
 public sealed record PriceUpdateResult(
@@ -6,7 +8,10 @@ public sealed record PriceUpdateResult(
     bool Success,
     decimal? Price,
     DateOnly? PriceDate,
-    string? Error)
+    string? Error,
+    PriceUnit? PriceUnit = null,
+    string? Symbol = null,
+    TimeOnly? PriceTime = null)
 {
     public static PriceUpdateResult Failure(Guid instrumentId, string name, string error) =>
         new(instrumentId, name, false, null, null, error);
@@ -25,4 +30,30 @@ public sealed record PriceUpdateStatus(
         IsRunning: false,
         LastError: null,
         Results: []);
+}
+
+public enum PriceUpdateTrigger
+{
+    Manual,
+    Automatic,
+}
+
+public enum PriceUpdateScope
+{
+    All,
+    Instrument,
+}
+
+public sealed record PriceUpdateRun(
+    DateTimeOffset RunAt,
+    PriceUpdateTrigger Trigger,
+    PriceUpdateScope Scope,
+    Guid? InstrumentId,
+    string? InstrumentName,
+    int SuccessCount,
+    int FailureCount,
+    string? Error,
+    IReadOnlyList<PriceUpdateResult>? Results = null)
+{
+    public bool HasErrors => Error is not null || FailureCount > 0;
 }

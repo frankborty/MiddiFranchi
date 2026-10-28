@@ -4,4 +4,5 @@ public sealed record RecordPriceRequest(
     Guid InstrumentId,
     decimal Price,
     DateOnly ValidAt,
-    string? Source = null);
+    string? Source = null,
+    TimeOnly? TradeTime = null);

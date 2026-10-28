@@ -442,6 +442,22 @@ public class InvestmentAssetServiceTests
     }
 
     [Fact]
+    public async Task RecordPrice_ShouldPersistTheLastTradeTime()
+    {
+        var instrument = await CreateAsync();
+
+        var observation = await _service.RecordPriceAsync(
+            new RecordPriceRequest(
+                instrument.Id,
+                10.5m,
+                Today,
+                "Borsa Italiana",
+                new TimeOnly(10, 23)));
+
+        observation.TradeTime.ShouldBe(new TimeOnly(10, 23));
+    }
+
+    [Fact]
     public async Task RecordPrice_ShouldRejectAFutureDate()
     {
         var instrument = await CreateAsync();

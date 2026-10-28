@@ -9,4 +9,8 @@ public interface IPriceUpdateStore
     PriceUpdateStatus GetStatus();
 
     void SaveStatus(PriceUpdateStatus status);
+
+    IReadOnlyList<PriceUpdateRun> GetHistory();
+
+    void RecordRun(PriceUpdateRun run);
 }

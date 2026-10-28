@@ -230,6 +230,8 @@ public sealed class InvestmentWorkspaceService
             currentUnitPrice,
             observation?.Price,
             observation?.ValidAt,
+            observation?.TradeTime,
+            observation?.ObservedAt,
             observation?.Source,
             isStale,
             operations.Count > 0,

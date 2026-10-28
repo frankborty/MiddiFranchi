@@ -5,4 +5,5 @@ public sealed record InvestmentQuote(
     decimal Price,
     string Currency,
     DateOnly? AsOf,
-    string Source);
+    string Source,
+    TimeOnly? LastTradeTime = null);

@@ -567,14 +567,16 @@ public sealed class InvestmentAssetService
                 new UnitPrice(new Money(request.Price, instrument.QuoteCurrency)),
                 request.ValidAt,
                 observedAt,
-                source),
+                source,
+                request.TradeTime),
             PriceUnit.PercentOfNominal => PriceObservation.AsPercentOfNominal(
                 Guid.NewGuid(),
                 instrument,
                 request.Price,
                 request.ValidAt,
                 observedAt,
-                source),
+                source,
+                request.TradeTime),
             _ => throw new InvalidOperationException(
                 $"L'unità di prezzo {instrument.PriceUnit} non è supportata."),
         };

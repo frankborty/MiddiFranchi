@@ -1,0 +1,40 @@
+@namespace MiddiFranchi.Web.Components.Shared
+@inject IJSRuntime JS
+
+<span>@(_formatted ?? Fallback)</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public DateTimeOffset Value { get; set; }
+
+    private string? _formatted;
+    private DateTimeOffset? _formattedValue;
+
+    private string Fallback => Format.UtcTimestamp(Value) + " UTC";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_formattedValue == Value)
+        {
+            return;
+        }
+
+        _formattedValue = Value;
+
+        try
+        {
+            var formatted = await JS.InvokeAsync<string?>(
+                "mfFormatLocalDateTime",
+                Value.ToUniversalTime().ToString("O"));
+
+            if (!string.IsNullOrWhiteSpace(formatted))
+            {
+                _formatted = formatted;
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

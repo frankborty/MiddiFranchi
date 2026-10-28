@@ -1,10 +1,14 @@
 @page "/settings/price-updates"
 @rendermode InteractiveServer
+@using System.Globalization
 @using MiddiFranchi.Application.Financial
+@using MiddiFranchi.Domain.Portfolio
+@using MiddiFranchi.Domain.Shared
 @inject IPriceUpdateStore PriceUpdateStore
 @inject PriceUpdateService PriceUpdates
 @inject InvestmentWorkspaceService Workspace
 @inject NotificationService Notifications
+@inject IJSRuntime JS
 
 <PageTitle>Aggiornamento prezzi</PageTitle>
 
@@ -35,7 +39,9 @@ else
         @{
             var updateSettings = PriceUpdateStore.GetSettings();
             var updateStatus = PriceUpdateStore.GetStatus();
-            var nextRun = PriceUpdateScheduler.GetNextScheduledTime(updateSettings, DateTimeOffset.Now);
+            var nextRun = PriceUpdateScheduler.GetNextScheduledTime(
+                updateSettings,
+                PriceUpdateScheduler.ResolveNow(updateSettings));
             var failures = updateStatus.Results.Where(result => !result.Success).ToArray();
             var successCount = updateStatus.Results.Count - failures.Length;
             var statusIcon = updateStatus.IsRunning
@@ -52,9 +58,6 @@ else
                     : updateStatus.LastError is null
                         ? "Servizio operativo"
                         : "Ultimo aggiornamento con errori";
-            var statusDetail = updateStatus.LastRunAt is null
-                ? "Nessuna esecuzione registrata."
-                : $"Ultima esecuzione {FormatPriceTimestamp(updateStatus.LastRunAt)} · Ultimo successo {FormatPriceTimestamp(updateStatus.LastSuccessAt)} · Prossima {FormatPriceTimestamp(nextRun)}";
             var activeAssets = AllAssets.Count(asset => !asset.IsArchived);
             var activeWithIsin = AllAssets.Count(asset =>
                 !asset.IsArchived && !string.IsNullOrWhiteSpace(asset.Isin));
@@ -67,7 +70,33 @@ else
         <span class="settings-status-copy">
             <span class="settings-status-eyebrow">Aggiornamento prezzi</span>
             <strong id="price-status-title">@statusTitle</strong>
-            <span class="settings-status-detail">@statusDetail</span>
+            <span class="settings-status-detail">
+                @if (updateStatus.LastRunAt is null)
+                {
+                    <span>Nessuna esecuzione registrata.</span>
+                }
+                else
+                {
+                    <span>Ultima esecuzione <LocalTimestamp Value="updateStatus.LastRunAt.Value" /> · Ultimo successo </span>
+                    @if (updateStatus.LastSuccessAt is { } lastSuccess)
+                    {
+                        <LocalTimestamp Value="lastSuccess" />
+                    }
+                    else
+                    {
+                        <span>Mai</span>
+                    }
+                    <span> · Prossima </span>
+                    @if (nextRun is { } next)
+                    {
+                        <LocalTimestamp Value="next" />
+                    }
+                    else
+                    {
+                        <span>—</span>
+                    }
+                }
+            </span>
         </span>
         <span class="settings-status-metrics">
             <span class="settings-status-metric">
@@ -129,10 +158,6 @@ else
         </div>
 
         <form class="form-grid settings-price-form" @onsubmit="SavePriceSettings">
-            <label class="settings-price-enabled">
-                <input type="checkbox" @bind="_updateEnabled" />
-                <span>Aggiornamento automatico</span>
-            </label>
             <label>
                 <span>Ora (locale)</span>
                 <input type="time" @bind="_updateTime" />
@@ -146,6 +171,10 @@ else
                     }
                 </select>
             </label>
+            <label class="settings-price-enabled">
+                <input type="checkbox" @bind="_updateEnabled" />
+                <span>Aggiornamento automatico</span>
+            </label>
             <div class="form-actions">
                 <button type="submit" class="primary-button">
                     <MfIcon Name="check" Size="16" /> Salva impostazioni
@@ -153,6 +182,144 @@ else
             </div>
         </form>
     </section>
+
+    <section class="card settings-price-history" aria-labelledby="price-history-title">
+        <div class="section-head">
+            <div>
+                <h2 id="price-history-title"><MfIcon Name="clock" Size="18" /> Ultime rilevazioni</h2>
+                <p class="section-sub">Le ultime 10 esecuzioni, manuali e automatiche.</p>
+            </div>
+        </div>
+
+        @if (History.Count == 0)
+        {
+            <p class="page-status">Nessuna rilevazione registrata.</p>
+        }
+        else
+        {
+            <div class="table-scroll" tabindex="0">
+                <table class="data-table settings-price-history-table mobile-cards">
+                    <thead>
+                        <tr>
+                            <th scope="col">Data e ora</th>
+                            <th scope="col">Tipo</th>
+                            <th scope="col">Ambito</th>
+                            <th scope="col" class="num">Prezzo</th>
+                            <th scope="col">Esito</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in History)
+                        {
+                            var singleResult = RunInstrumentResult(run);
+                            <tr>
+                                <td data-label="Data e ora"><LocalTimestamp Value="run.RunAt" /></td>
+                                <td data-label="Tipo">
+                                    <StatusBadge Tone="neutral">
+                                        @(run.Trigger == PriceUpdateTrigger.Automatic ? "Automatica" : "Manuale")
+                                    </StatusBadge>
+                                </td>
+                                <td data-label="Ambito">@RunScopeLabel(run)</td>
+                                <td data-label="Prezzo" class="num">
+                                    @if (run.Scope == PriceUpdateScope.All)
+                                    {
+                                        @if (run.Results is { Count: > 0 })
+                                        {
+                                            <button type="button" class="price-run-details-button"
+                                                    title="Dettagli" aria-label="Dettagli"
+                                                    @onclick="() => OpenRunDetails(run)">
+                                                <MfIcon Name="list" Size="16" />
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="investment-muted">—</span>
+                                        }
+                                    }
+                                    else if (singleResult is { Price: not null })
+                                    {
+                                        <span class="price-run-price">@PriceText(singleResult)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="investment-muted">—</span>
+                                    }
+                                </td>
+                                <td data-label="Esito">
+                                    <StatusBadge Tone="@RunTone(run)" Title="@RunTitle(run)">
+                                        @RunResultLabel(run)
+                                    </StatusBadge>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@if (_detailRun is { } detail)
+{
+    <div class="modal-backdrop" @onclick="CloseRunDetails">
+        <div class="modal-card price-run-details-modal" role="dialog" aria-modal="true"
+             aria-labelledby="price-run-details-title" @onclick:stopPropagation="true">
+            <div class="section-head">
+                <div>
+                    <h2 id="price-run-details-title">Rilevazioni di tutti gli strumenti</h2>
+                    <p class="section-sub">
+                        <LocalTimestamp Value="detail.RunAt" /> ·
+                        @(detail.Trigger == PriceUpdateTrigger.Automatic ? "Automatica" : "Manuale") ·
+                        @RunResultLabel(detail)
+                    </p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Chiudi" @onclick="CloseRunDetails">
+                    <MfIcon Name="close" Size="18" />
+                </button>
+            </div>
+
+            @if (detail.Results is { Count: > 0 } results)
+            {
+                <div class="table-scroll" tabindex="0">
+                    <table class="data-table price-run-details-table mobile-cards">
+                        <thead>
+                            <tr>
+                                <th scope="col">Strumento</th>
+                                <th scope="col" class="num">Prezzo</th>
+                                <th scope="col">Rilevazione</th>
+                                <th scope="col">Esito</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var result in results)
+                            {
+                                <tr>
+                                    <td data-label="Strumento" title="@result.Name">
+                                        @InstrumentLabel(result)
+                                    </td>
+                                    <td data-label="Prezzo" class="num">@(result.Price is null ? "—" : PriceText(result))</td>
+                                    <td data-label="Rilevazione">@(result.PriceDate is { } priceDate ? Format.Date(priceDate) : "—")</td>
+                                    <td data-label="Esito">
+                                        <StatusBadge Tone="@(result.Success ? "income" : "expense")">
+                                            @(result.Success ? "OK" : "Errore")
+                                        </StatusBadge>
+                                        @if (!result.Success && !string.IsNullOrWhiteSpace(result.Error))
+                                        {
+                                            <span class="investment-muted"> @result.Error</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="page-status">Dettaglio non disponibile per questa esecuzione.</p>
+            }
+        </div>
+    </div>
 }
 
 @code {
@@ -164,9 +331,12 @@ else
     private TimeOnly _updateTime = new(12, 0);
     private PriceUpdateFrequency _updateFrequency = PriceUpdateFrequency.Daily;
     private bool _updatingAll;
+    private PriceUpdateRun? _detailRun;
 
     private IReadOnlyList<InvestmentAssetRow> AllAssets =>
         _workspace?.Assets ?? [];
+
+    private IReadOnlyList<PriceUpdateRun> History => PriceUpdateStore.GetHistory();
 
     private string PriceStatusTone
     {
@@ -188,6 +358,35 @@ else
     {
         await LoadAsync();
         LoadPriceSettings();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = PriceUpdateStore.GetSettings();
+            if (!string.IsNullOrWhiteSpace(settings.TimeZoneId))
+            {
+                return;
+            }
+
+            var timeZoneId = await JS.InvokeAsync<string>("mfGetTimeZone");
+            if (string.IsNullOrWhiteSpace(timeZoneId))
+            {
+                return;
+            }
+
+            PriceUpdateStore.SaveSettings(settings with { TimeZoneId = timeZoneId });
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
     }
 
     private async Task LoadAsync()
@@ -238,12 +437,31 @@ else
 
     private async Task SavePriceSettings()
     {
+        var timeZoneId = await ResolveTimeZoneAsync();
         PriceUpdateStore.SaveSettings(new PriceUpdateSettings(
             _updateEnabled,
             _updateTime,
             _updateFrequency,
-            "XMIL"));
+            "XMIL",
+            timeZoneId));
         await Notifications.Success("Impostazioni di aggiornamento salvate.");
+    }
+
+    private async Task<string> ResolveTimeZoneAsync()
+    {
+        try
+        {
+            var timeZoneId = await JS.InvokeAsync<string>("mfGetTimeZone");
+            if (!string.IsNullOrWhiteSpace(timeZoneId))
+            {
+                return timeZoneId;
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        return PriceUpdateStore.GetSettings().TimeZoneId;
     }
 
     private async Task UpdateAllNowAsync()
@@ -277,10 +495,80 @@ else
         }
     }
 
-    private static string FormatPriceTimestamp(DateTimeOffset? value) =>
-        value is { } timestamp
-            ? timestamp.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-            : "Mai";
+    private static string RunScopeLabel(PriceUpdateRun run) =>
+        run.Scope == PriceUpdateScope.All
+            ? "Tutti gli strumenti"
+            : string.IsNullOrWhiteSpace(run.InstrumentName)
+                ? "Singolo strumento"
+                : run.InstrumentName;
+
+    private static PriceUpdateResult? RunInstrumentResult(PriceUpdateRun run) =>
+        run.Scope == PriceUpdateScope.Instrument
+            ? run.Results?.FirstOrDefault(result => result.InstrumentId == run.InstrumentId)
+              ?? run.Results?.FirstOrDefault()
+            : null;
+
+    private static string PriceText(PriceUpdateResult result) =>
+        result.Price is not { } price
+            ? "—"
+            : result.PriceUnit == PriceUnit.PercentOfNominal
+                ? $"{price.ToString("N2", CultureInfo.GetCultureInfo("it-IT"))} %"
+                : Format.Money(new Money(price, Currency.Euro));
+
+    private string InstrumentLabel(PriceUpdateResult result)
+    {
+        var symbol = result.Symbol;
+        if (string.IsNullOrWhiteSpace(symbol))
+        {
+            symbol = AllAssets
+                .FirstOrDefault(asset => asset.InstrumentId == result.InstrumentId)
+                ?.Symbol;
+        }
+
+        if (!string.IsNullOrWhiteSpace(symbol))
+        {
+            return symbol;
+        }
+
+        return string.IsNullOrWhiteSpace(result.Name) ? "—" : result.Name;
+    }
+
+    private void OpenRunDetails(PriceUpdateRun run) => _detailRun = run;
+
+    private void CloseRunDetails() => _detailRun = null;
+
+    private static string RunResultLabel(PriceUpdateRun run) =>
+        run.Error is not null
+            ? "Errore"
+            : run.FailureCount > 0
+                ? run.FailureCount == 1 ? "1 errore" : $"{run.FailureCount} errori"
+                : run.SuccessCount > 0
+                    ? "OK"
+                    : "Nessuno strumento";
+
+    private static string RunTone(PriceUpdateRun run) =>
+        run.HasErrors ? "expense" : run.SuccessCount > 0 ? "income" : "neutral";
+
+    private static string RunTitle(PriceUpdateRun run)
+    {
+        if (run.Error is not null)
+        {
+            return run.Error;
+        }
+
+        var parts = new List<string>(2);
+        if (run.SuccessCount > 0)
+        {
+            parts.Add($"{run.SuccessCount} aggiornati");
+        }
+
+        if (run.FailureCount > 0)
+        {
+            parts.Add(run.FailureCount == 1 ? "1 errore" : $"{run.FailureCount} errori");
+        }
+
+        return string.Join(", ", parts);
+    }
 
     private static string FrequencyLabel(PriceUpdateFrequency frequency) => frequency switch
     {

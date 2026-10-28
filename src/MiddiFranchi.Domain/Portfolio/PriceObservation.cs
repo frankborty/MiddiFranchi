@@ -12,7 +12,8 @@ public sealed record PriceObservation
         Currency? priceCurrency,
         DateOnly validAt,
         DateTimeOffset observedAt,
-        string source)
+        string source,
+        TimeOnly? tradeTime)
     {
         Id = id;
         Instrument = instrument;
@@ -22,6 +23,7 @@ public sealed record PriceObservation
         ValidAt = validAt;
         ObservedAt = observedAt;
         Source = source;
+        TradeTime = tradeTime;
     }
 
     public Guid Id { get; }
@@ -40,13 +42,16 @@ public sealed record PriceObservation
 
     public string Source { get; }
 
+    public TimeOnly? TradeTime { get; }
+
     public static PriceObservation AtUnitPrice(
         Guid id,
         Instrument instrument,
         UnitPrice price,
         DateOnly validAt,
         DateTimeOffset observedAt,
-        string source)
+        string source,
+        TimeOnly? tradeTime = null)
     {
         Validate(id, instrument, source);
 
@@ -72,7 +77,8 @@ public sealed record PriceObservation
             price.Price.Currency,
             validAt,
             observedAt,
-            source);
+            source,
+            tradeTime);
     }
 
     public static PriceObservation AsPercentOfNominal(
@@ -81,7 +87,8 @@ public sealed record PriceObservation
         decimal price,
         DateOnly validAt,
         DateTimeOffset observedAt,
-        string source)
+        string source,
+        TimeOnly? tradeTime = null)
     {
         Validate(id, instrument, source);
 
@@ -107,7 +114,8 @@ public sealed record PriceObservation
             null,
             validAt,
             observedAt,
-            source);
+            source,
+            tradeTime);
     }
 
     private static void Validate(Guid id, Instrument instrument, string source)

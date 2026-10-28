@@ -12,7 +12,8 @@ public sealed record PriceUpdateSettings(
     bool Enabled,
     TimeOnly TimeOfDay,
     PriceUpdateFrequency Frequency,
-    string Exchange)
+    string Exchange,
+    string TimeZoneId = "")
 {
     public static PriceUpdateSettings Default { get; } = new(
         Enabled: true,

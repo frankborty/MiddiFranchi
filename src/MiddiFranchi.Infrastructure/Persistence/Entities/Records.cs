@@ -195,6 +195,8 @@ public sealed class PriceObservationRecord
 
     public DateTimeOffset ObservedAt { get; set; }
 
+    public TimeOnly? TradeTime { get; set; }
+
     public string Source { get; set; } = null!;
 }
 

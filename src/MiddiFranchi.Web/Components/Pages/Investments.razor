@@ -58,7 +58,6 @@ else if (_workspace is { } workspace)
     {
         <div class="investments-kpi-grid five-up investment-summary-grid">
             <StatTile Label="Valore attuale"
-                      Hero="@true"
                       Value="@ValueOrUnavailable(workspace.Overview.CurrentValue)" />
             <StatTile Label="Prezzo di carico"
                       Value="@ValueOrUnavailable(workspace.Overview.InvestedCapital)" />
@@ -229,6 +228,22 @@ else if (_workspace is { } workspace)
                 </button>
             </div>
 
+            @if (FilteredAssets.Count > 0)
+            {
+                <div class="movement-filter-summary">
+                    <span class="movement-summary-count">Totali su <strong>@FilteredAssets.Count</strong> strumenti</span>
+                    <span class="movement-summary-item">
+                        Investito <strong>@Format.Money(new Money(FilteredInvestedTotal, Currency.Euro))</strong>
+                    </span>
+                    <span class="movement-summary-item">
+                        Valore attuale <strong>@Format.Money(new Money(FilteredCurrentValueTotal, Currency.Euro))</strong>
+                    </span>
+                    <span class="movement-summary-item net @ResultPercentClass(FilteredResultTotal)">
+                        Rendimento <strong>@Format.MoneySigned(new Money(FilteredResultTotal, Currency.Euro))</strong>
+                    </span>
+                </div>
+            }
+
             @if (FilteredAssets.Count == 0)
             {
                 <EmptyState Title="Nessuno strumento corrisponde ai filtri" Icon="filter" />
@@ -370,6 +385,11 @@ else if (_workspace is { } workspace)
             }
             else
             {
+                @if (_openCouponFilter is not null)
+                {
+                    <div class="filter-scrim" @onclick="CloseCouponFilters"></div>
+                }
+
                 <div class="investment-toolbar coupons-toolbar">
                     <div class="category-search investment-search-compact">
                         <MfIcon Name="search" Size="16" />
@@ -384,6 +404,94 @@ else if (_workspace is { } workspace)
                             </button>
                         }
                     </div>
+
+                    <div class="movement-filter-actions">
+                        <div class="filter-menu-wrap">
+                            <button type="button" class="filter-trigger @(HasCouponDateFilter ? "active" : "")"
+                                    @onclick="() => ToggleCouponFilter(CouponFilterMenu.Period)"
+                                    aria-expanded="@(_openCouponFilter == CouponFilterMenu.Period)">
+                                <MfIcon Name="calendar" Size="15" />
+                                <span>@CouponDateLabel</span>
+                                <MfIcon Name="chevron-down" Size="13" />
+                            </button>
+                            @if (_openCouponFilter == CouponFilterMenu.Period)
+                            {
+                                <div class="filter-panel period-panel">
+                                    <p class="filter-panel-title">Periodo delle cedole</p>
+                                    <div class="filter-range-grid">
+                                        <label>
+                                            <span>Da</span>
+                                            <input type="date" @bind="_couponFrom" @bind:after="OnCouponDateChanged" />
+                                        </label>
+                                        <label>
+                                            <span>A</span>
+                                            <input type="date" @bind="_couponTo" @bind:after="OnCouponDateChanged" />
+                                        </label>
+                                    </div>
+                                    <div class="filter-panel-separator"></div>
+                                    <button type="button" class="filter-option" @onclick="ClearCouponDates">
+                                        Tutto il periodo
+                                    </button>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="filter-menu-wrap">
+                            <button type="button" class="filter-trigger @(_couponInstrumentKeys.Count > 0 ? "active" : "")"
+                                    @onclick="() => ToggleCouponFilter(CouponFilterMenu.Instruments)"
+                                    aria-expanded="@(_openCouponFilter == CouponFilterMenu.Instruments)">
+                                <MfIcon Name="filter" Size="15" />
+                                <span>Strumenti</span>
+                                @if (_couponInstrumentKeys.Count > 0)
+                                {
+                                    <span class="filter-count">@_couponInstrumentKeys.Count</span>
+                                }
+                                <MfIcon Name="chevron-down" Size="13" />
+                            </button>
+                            @if (_openCouponFilter == CouponFilterMenu.Instruments)
+                            {
+                                <div class="filter-panel categories-panel">
+                                    <div class="filter-panel-head">
+                                        <p class="filter-panel-title">Strumenti</p>
+                                        @if (_couponInstrumentKeys.Count > 0)
+                                        {
+                                            <button type="button" class="filter-link" @onclick="ClearCouponInstruments">
+                                                Azzera
+                                            </button>
+                                        }
+                                    </div>
+                                    <div class="filter-check-list">
+                                        @foreach (var option in CouponInstrumentOptions)
+                                        {
+                                            <label class="filter-check">
+                                                <input type="checkbox"
+                                                       checked="@_couponInstrumentKeys.Contains(option.Key)"
+                                                       @onchange="args => ToggleCouponInstrument(option.Key, args)" />
+                                                <span>@option.Name</span>
+                                            </label>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @if (HasCouponFilters)
+                        {
+                            <button type="button" class="filter-reset" @onclick="ResetCouponFilters">
+                                Azzera filtri
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="movement-filter-summary">
+                    <span class="movement-summary-count">Totali su <strong>@FilteredCoupons.Count</strong> cedole</span>
+                    <span class="movement-summary-item">
+                        Lordo <strong>@Format.Money(new Money(FilteredCouponGross, Currency.Euro))</strong>
+                    </span>
+                    <span class="movement-summary-item">
+                        Netto <strong>@Format.Money(new Money(FilteredCouponNet, Currency.Euro))</strong>
+                    </span>
                 </div>
 
                 @if (FilteredCoupons.Count == 0)
@@ -481,6 +589,10 @@ else if (_workspace is { } workspace)
 
     private IReadOnlyList<OperationHistoryRow> _coupons = [];
     private string _couponSearch = "";
+    private readonly HashSet<string> _couponInstrumentKeys = new(StringComparer.Ordinal);
+    private DateOnly? _couponFrom;
+    private DateOnly? _couponTo;
+    private CouponFilterMenu? _openCouponFilter;
     private TableSort _couponSort = new("date", descending: true);
     private IReadOnlyList<Category> _categories = [];
     private IReadOnlyList<InvestmentOption> _instrumentOptions = [];
@@ -499,6 +611,14 @@ else if (_workspace is { } workspace)
         CurrentValue,
         TotalResult,
     }
+
+    private enum CouponFilterMenu
+    {
+        Period,
+        Instruments,
+    }
+
+    private sealed record CouponInstrumentOption(string Key, string Name);
 
     private sealed record AllocationSegment(
         string Label,
@@ -519,6 +639,9 @@ else if (_workspace is { } workspace)
         public string CouponSearch { get; set; } = "";
         public string CouponSortColumn { get; set; } = "date";
         public bool CouponSortDescending { get; set; } = true;
+        public string[] CouponInstruments { get; set; } = [];
+        public string CouponFrom { get; set; } = "";
+        public string CouponTo { get; set; } = "";
     }
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
@@ -558,6 +681,14 @@ else if (_workspace is { } workspace)
         _couponSort = new TableSort(
             string.IsNullOrWhiteSpace(state.CouponSortColumn) ? "date" : state.CouponSortColumn,
             state.CouponSortDescending);
+        _couponFrom = DateOnly.TryParse(state.CouponFrom, out var couponFrom) ? couponFrom : null;
+        _couponTo = DateOnly.TryParse(state.CouponTo, out var couponTo) ? couponTo : null;
+        _couponInstrumentKeys.Clear();
+        foreach (var key in state.CouponInstruments ?? [])
+        {
+            _couponInstrumentKeys.Add(key);
+        }
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -573,6 +704,9 @@ else if (_workspace is { } workspace)
             CouponSearch = _couponSearch,
             CouponSortColumn = _couponSort.Column,
             CouponSortDescending = _couponSort.Descending,
+            CouponInstruments = _couponInstrumentKeys.ToArray(),
+            CouponFrom = _couponFrom?.ToString("yyyy-MM-dd") ?? "",
+            CouponTo = _couponTo?.ToString("yyyy-MM-dd") ?? "",
         });
 
     private async Task LoadAsync()
@@ -627,11 +761,114 @@ else if (_workspace is { } workspace)
     private static decimal CouponNet(OperationHistoryRow coupon) =>
         CouponGross(coupon) - (coupon.Tax?.Amount ?? 0m);
 
+    private static string CouponInstrumentKey(OperationHistoryRow coupon) =>
+        coupon.InstrumentId?.ToString() ?? "none";
+
+    private IReadOnlyList<CouponInstrumentOption> CouponInstrumentOptions =>
+        _coupons
+            .Select(coupon => new CouponInstrumentOption(
+                CouponInstrumentKey(coupon),
+                string.IsNullOrWhiteSpace(coupon.InstrumentName) ? "Senza strumento" : coupon.InstrumentName!))
+            .DistinctBy(option => option.Key)
+            .OrderBy(option => option.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+    private decimal FilteredCouponGross =>
+        FilteredCoupons.Sum(CouponGross);
+
+    private decimal FilteredCouponNet =>
+        FilteredCoupons.Sum(CouponNet);
+
+    private bool HasCouponDateFilter => _couponFrom is not null || _couponTo is not null;
+
+    private bool HasCouponFilters => HasCouponDateFilter || _couponInstrumentKeys.Count > 0;
+
+    private string CouponDateLabel => (_couponFrom, _couponTo) switch
+    {
+        ({ } from, { } to) => $"{Format.Date(from)} – {Format.Date(to)}",
+        ({ } from, null) => $"Dal {Format.Date(from)}",
+        (null, { } to) => $"Fino al {Format.Date(to)}",
+        _ => "Periodo",
+    };
+
+    private void ToggleCouponFilter(CouponFilterMenu menu) =>
+        _openCouponFilter = _openCouponFilter == menu ? null : menu;
+
+    private void CloseCouponFilters() => _openCouponFilter = null;
+
+    private void ToggleCouponInstrument(string key, ChangeEventArgs args)
+    {
+        if (args.Value is bool selected && selected)
+        {
+            _couponInstrumentKeys.Add(key);
+        }
+        else
+        {
+            _couponInstrumentKeys.Remove(key);
+        }
+
+        _ = PersistFiltersAsync();
+    }
+
+    private void OnCouponDateChanged()
+    {
+        _ = PersistFiltersAsync();
+    }
+
+    private void ClearCouponDates()
+    {
+        _couponFrom = null;
+        _couponTo = null;
+        _openCouponFilter = null;
+        _ = PersistFiltersAsync();
+    }
+
+    private void ClearCouponInstruments()
+    {
+        _couponInstrumentKeys.Clear();
+        _openCouponFilter = null;
+        _ = PersistFiltersAsync();
+    }
+
+    private void ResetCouponFilters()
+    {
+        _couponFrom = null;
+        _couponTo = null;
+        _couponInstrumentKeys.Clear();
+        _openCouponFilter = null;
+        _ = PersistFiltersAsync();
+    }
+
+    private decimal FilteredInvestedTotal =>
+        FilteredAssets.Sum(asset => asset.InvestedCapital?.Amount ?? 0m);
+
+    private decimal FilteredCurrentValueTotal =>
+        FilteredAssets.Sum(asset => asset.CurrentValue?.Amount ?? 0m);
+
+    private decimal FilteredResultTotal =>
+        FilteredAssets.Sum(asset => asset.TotalResult?.Amount ?? 0m);
+
     private IReadOnlyList<OperationHistoryRow> FilteredCoupons
     {
         get
         {
             IEnumerable<OperationHistoryRow> rows = _coupons;
+            if (_couponInstrumentKeys.Count > 0)
+            {
+                rows = rows.Where(coupon =>
+                    _couponInstrumentKeys.Contains(CouponInstrumentKey(coupon)));
+            }
+
+            if (_couponFrom is { } from)
+            {
+                rows = rows.Where(coupon => coupon.OperationDate >= from);
+            }
+
+            if (_couponTo is { } to)
+            {
+                rows = rows.Where(coupon => coupon.OperationDate <= to);
+            }
+
             var term = _couponSearch.Trim();
             if (term.Length > 0)
             {

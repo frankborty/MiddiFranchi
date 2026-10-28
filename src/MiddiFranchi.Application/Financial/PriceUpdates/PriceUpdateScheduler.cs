@@ -6,6 +6,21 @@ namespace MiddiFranchi.Application.Financial;
 /// </summary>
 public static class PriceUpdateScheduler
 {
+    /// <summary>
+    /// "Adesso" nel fuso orario scelto dall'utente: l'orario pianificato è locale all'utente,
+    /// non al server (che in Docker spesso gira in UTC).
+    /// </summary>
+    public static DateTimeOffset ResolveNow(PriceUpdateSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(settings.TimeZoneId) ||
+            !TimeZoneInfo.TryFindSystemTimeZoneById(settings.TimeZoneId, out var zone))
+        {
+            return DateTimeOffset.Now;
+        }
+
+        return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone);
+    }
+
     public static DateTimeOffset? GetMostRecentScheduledTime(
         PriceUpdateSettings settings,
         DateTimeOffset now)

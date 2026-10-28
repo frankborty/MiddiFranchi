@@ -103,6 +103,7 @@ public sealed class PriceObservationRepository : IPriceObservationRepository
         record.PriceCurrencyCode = observation.PriceCurrency?.Code;
         record.ValidAt = observation.ValidAt;
         record.ObservedAt = observation.ObservedAt;
+        record.TradeTime = observation.TradeTime;
         record.Source = observation.Source;
 
         await _context.SaveChangesAsync(cancellationToken);

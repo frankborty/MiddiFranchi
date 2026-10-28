@@ -86,6 +86,7 @@ else
                 {
                     <button type="button" class="@ChartRanges.Class(option.Key, _range)" aria-pressed="@AriaPressed(_range == option.Key)" @onclick="() => SetRangeAsync(option.Key)">@option.Label</button>
                 }
+                <ChartZoomToggle Active="_zoomEnabled" OnToggle="ToggleZoom" />
             </div>
         </div>
 
@@ -107,6 +108,8 @@ else
             <ApexTimeSeriesChart Title=""
                                  Currency="@_loan.Loan.Account.Currency"
                                  Series="@Series"
+                                 EnableSelectionZoom="@_zoomEnabled"
+                                 HideZoomToolbar="true"
                                  XAxisLabelMode="month"
                                  ShowHeader="false"
                                  ShowFooter="false"
@@ -229,6 +232,7 @@ else
     private bool _loading = true;
     private string? _loadError;
     private string _range = "max";
+    private bool _zoomEnabled = true;
     private bool _preferencesLoaded;
     private bool _readingDialogOpen;
     private bool _repaymentDialogOpen;
@@ -295,6 +299,8 @@ else
         _range = range;
         await Preferences.SetAsync("mf.chart.loan.range", range);
     }
+
+    private void ToggleZoom() => _zoomEnabled = !_zoomEnabled;
 
     private async Task OnHistorySortChangedAsync()
     {

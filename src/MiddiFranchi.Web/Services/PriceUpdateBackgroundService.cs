@@ -75,13 +75,13 @@ public sealed class PriceUpdateBackgroundService : BackgroundService
             return;
         }
 
-        if (!PriceUpdateScheduler.IsDue(settings, status, DateTimeOffset.Now))
+        if (!PriceUpdateScheduler.IsDue(settings, status, PriceUpdateScheduler.ResolveNow(settings)))
         {
             return;
         }
 
         using var scope = _scopeFactory.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<PriceUpdateService>();
-        await service.UpdateAllAsync(cancellationToken).ConfigureAwait(false);
+        await service.UpdateAllAsync(PriceUpdateTrigger.Automatic, cancellationToken).ConfigureAwait(false);
     }
 }
