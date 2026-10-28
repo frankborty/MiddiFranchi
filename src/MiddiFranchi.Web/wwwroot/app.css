@@ -2776,6 +2776,9 @@ input[type="date"] { font-family: inherit; }
     margin-top: 4px;
 }
 .instrument-header-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+.instrument-header-actions > .primary-button,
+.instrument-header-actions > .secondary-button,
+.instrument-header-actions > .icon-button { min-height: 44px; }
 .instrument-header-actions > .icon-button { height: auto; }
 .instrument-charts { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
 .instrument-charts > .card { min-width: 0; }

@@ -551,6 +551,45 @@ h1.account-detail-title {
 }
 .fab-add:hover { background: var(--mf-brand-strong); }
 
+/* ---- Pull to refresh (mobile) ---- */
+.mf-pull-indicator {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: 50%;
+    z-index: 300;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid var(--mf-border);
+    border-radius: 999px;
+    background: var(--mf-surface);
+    color: var(--mf-text-secondary);
+    box-shadow: var(--mf-shadow-md);
+    font-size: .72rem;
+    font-weight: 700;
+    opacity: 0;
+    transform: translate(-50%, -52px);
+    transition: opacity 140ms ease, transform 140ms ease;
+    pointer-events: none;
+}
+.mf-pull-indicator.visible { opacity: 1; transform: translate(-50%, 0); }
+.mf-pull-indicator.ready { color: var(--mf-text); }
+.mf-pull-spinner {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    transform: rotate(calc(var(--mf-pull-progress, 0) * 180deg));
+    transition: transform 80ms linear;
+}
+.mf-pull-indicator.releasing .mf-pull-spinner {
+    animation: mf-pull-spin .7s linear infinite;
+    transform: none;
+}
+@keyframes mf-pull-spin { to { transform: rotate(360deg); } }
+
 /* ---- Form ---- */
 .page-body input:not([type="checkbox"]):not([type="radio"]),
 .page-body select,
@@ -1181,10 +1220,10 @@ h1.account-detail-title {
     color: var(--mf-text);
     box-shadow: var(--mf-shadow-md);
 }
-.toast-success { border-color: var(--mf-income-border); background: var(--mf-income-bg); color: var(--mf-income); }
-.toast-error { border-color: var(--mf-expense-border); background: var(--mf-expense-bg); color: var(--mf-expense); }
-.toast-warning { border-color: var(--mf-warning-border); background: var(--mf-warning-bg); color: var(--mf-warning); }
-.toast-info { border-color: var(--mf-info-border); background: var(--mf-info-bg); color: var(--mf-info); }
+.toast-success { border-color: var(--mf-income-border); background: color-mix(in srgb, var(--mf-income) 14%, var(--mf-surface)); color: var(--mf-income); }
+.toast-error { border-color: var(--mf-expense-border); background: color-mix(in srgb, var(--mf-expense) 14%, var(--mf-surface)); color: var(--mf-expense); }
+.toast-warning { border-color: var(--mf-warning-border); background: color-mix(in srgb, var(--mf-warning) 14%, var(--mf-surface)); color: var(--mf-warning); }
+.toast-info { border-color: var(--mf-info-border); background: color-mix(in srgb, var(--mf-info) 14%, var(--mf-surface)); color: var(--mf-info); }
 .empty-state {
     padding: 20px 14px;
     border: 1px dashed var(--mf-border-strong);
@@ -1215,7 +1254,6 @@ h1.account-detail-title {
     .app-topnav { display: none; }
     .topbar-cta { display: none; }
     .app-topbar-actions { gap: 6px; }
-    .app-shell > .fab-add { display: none; }
     .page-body {
         flex: 1 1 auto;
         min-height: 0;
@@ -1349,7 +1387,6 @@ h1.account-detail-title {
     .overview-ranges::-webkit-scrollbar { display: none; }
     .overview-tab,
     .overview-range { flex: 0 0 auto; }
-    .app-shell > .fab-add { display: none; }
     .allocation-figure { max-width: 100%; }
     .allocation-donut.home-allocation-donut {
         width: min(100%, 280px);

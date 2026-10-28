@@ -46,13 +46,6 @@
 
     <div id="mf-toast-host" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
 
-    @if (!IsAccountsSection && !IsSettingsSection && !IsOperationsSection && !IsInvestmentsSection)
-    {
-        <a class="fab-add" href="operations?new=1" aria-label="Nuova operazione">
-            <MfIcon Name="plus" Size="24" />
-        </a>
-    }
-
     <nav class="app-bottomnav" aria-label="Navigazione mobile">
         <NavLink href="" class="bottomnav-link nav-home" Match="NavLinkMatch.All">
             <MfIcon Name="@Appearance.Get(AppSection.Dashboard).Icon" Size="20" />
@@ -80,11 +73,6 @@
 </div>
 
 @code {
-    private bool IsAccountsSection => IsAccountsPath(Navigation.Uri);
-    private bool IsSettingsSection => IsSettingsPath(Navigation.Uri);
-    private bool IsOperationsSection => IsOperationsPath(Navigation.Uri);
-    private bool IsInvestmentsSection => IsInvestmentsPath(Navigation.Uri);
-
     private string PageStyle => $"{Appearance.CssVariables}--mf-sort-color:{SortColor};";
 
     private string SortColor
@@ -162,31 +150,5 @@
     {
         Appearance.Changed -= OnAppearanceChanged;
         Navigation.LocationChanged -= OnLocationChanged;
-    }
-
-    private static bool IsAccountsPath(string uri)
-    {
-        var path = new Uri(uri).AbsolutePath.TrimEnd('/');
-        return path.Equals("/accounts", StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith("/accounts/", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsSettingsPath(string uri)
-    {
-        var path = new Uri(uri).AbsolutePath.TrimEnd('/');
-        return path.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith("/settings/", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsOperationsPath(string uri)
-    {
-        var path = new Uri(uri).AbsolutePath.TrimEnd('/');
-        return path.Equals("/operations", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsInvestmentsPath(string uri)
-    {
-        var path = new Uri(uri).AbsolutePath.TrimEnd('/');
-        return path.StartsWith("/investments", StringComparison.OrdinalIgnoreCase);
     }
 }

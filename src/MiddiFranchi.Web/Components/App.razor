@@ -283,6 +283,117 @@
         document.addEventListener("keydown", function (e) {
             if (e.key === "Escape") mfCloseNav();
         });
+
+        /* Pull-to-refresh su mobile: trascina verso il basso dalla cima della pagina. */
+        (function () {
+            if (window.mfPullRefreshBound) return;
+            window.mfPullRefreshBound = true;
+
+            var indicator = null;
+            var label = null;
+            var startX = 0;
+            var startY = 0;
+            var active = false;
+            var pulling = false;
+            var distance = 0;
+            var threshold = 72;
+            var maxDistance = 110;
+
+            function isMobile() {
+                return window.matchMedia("(max-width: 820px)").matches;
+            }
+
+            function hasDialog() {
+                return !!document.querySelector(".modal-backdrop, [role='dialog'], dialog[open]");
+            }
+
+            function blockedTarget(target) {
+                if (!target || !target.closest) return true;
+                return !!target.closest(
+                    "input, textarea, select, button, a, .app-topbar, .app-bottomnav, " +
+                    ".library-chart, .apexcharts-canvas, .table-scroll, .overview-ranges, .overview-tabs");
+            }
+
+            function ensureIndicator() {
+                if (indicator) return;
+                indicator = document.createElement("div");
+                indicator.className = "mf-pull-indicator";
+                indicator.setAttribute("aria-hidden", "true");
+                var spinner = document.createElement("span");
+                spinner.className = "mf-pull-spinner";
+                label = document.createElement("span");
+                label.className = "mf-pull-label";
+                indicator.appendChild(spinner);
+                indicator.appendChild(label);
+                document.body.appendChild(indicator);
+            }
+
+            function reset() {
+                active = false;
+                pulling = false;
+                distance = 0;
+                if (indicator) {
+                    indicator.classList.remove("visible", "ready", "releasing");
+                    indicator.style.removeProperty("--mf-pull-progress");
+                }
+            }
+
+            function update(dy) {
+                ensureIndicator();
+                distance = Math.min(maxDistance, dy);
+                var progress = Math.min(1, distance / threshold);
+                indicator.style.setProperty("--mf-pull-progress", progress.toFixed(3));
+                indicator.classList.toggle("visible", distance > 4);
+                indicator.classList.toggle("ready", distance >= threshold);
+                label.textContent = distance >= threshold
+                    ? "Rilascia per aggiornare"
+                    : "Trascina per aggiornare";
+            }
+
+            document.addEventListener("touchstart", function (e) {
+                if (!isMobile() || e.touches.length !== 1 || hasDialog()) { active = false; return; }
+                var body = e.target && e.target.closest ? e.target.closest(".page-body") : null;
+                if (!body || body.scrollTop > 0 || blockedTarget(e.target)) { active = false; return; }
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                active = true;
+                pulling = false;
+                distance = 0;
+            }, { passive: true });
+
+            document.addEventListener("touchmove", function (e) {
+                if (!active || e.touches.length !== 1) return;
+                var dx = e.touches[0].clientX - startX;
+                var dy = e.touches[0].clientY - startY;
+                if (!pulling) {
+                    if (dy < 0 || Math.abs(dx) > Math.abs(dy)) { active = false; return; }
+                    if (dy < 6) return;
+                    pulling = true;
+                }
+                var body = e.target && e.target.closest ? e.target.closest(".page-body") : null;
+                if (!body || body.scrollTop > 0) { reset(); return; }
+                if (e.cancelable) e.preventDefault();
+                update(dy);
+            }, { passive: false });
+
+            document.addEventListener("touchend", function () {
+                if (!active) return;
+                if (pulling && distance >= threshold) {
+                    ensureIndicator();
+                    indicator.classList.add("releasing", "visible");
+                    indicator.classList.remove("ready");
+                    label.textContent = "Aggiornamento…";
+                    window.setTimeout(function () { window.location.reload(); }, 220);
+                } else {
+                    reset();
+                }
+                active = false;
+                pulling = false;
+                distance = 0;
+            }, { passive: true });
+
+            document.addEventListener("touchcancel", reset, { passive: true });
+        })();
     </script>
 </head>
 

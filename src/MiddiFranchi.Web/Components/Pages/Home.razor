@@ -6,6 +6,9 @@
 @using MiddiFranchi.Domain.Shared
 @inject FinancialDashboardService DashboardService
 @inject DashboardOverviewService OverviewService
+@inject CategoryService CategoriesService
+@inject InvestmentWorkspaceService Investments
+@inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject SectionAppearanceService Appearance
 
@@ -226,6 +229,16 @@ else if (_dashboard is { } dashboard)
     </div>
 }
 
+<button type="button" class="fab-add" aria-label="Nuova operazione" @onclick="OpenOperationDialog">
+    <MfIcon Name="plus" Size="24" />
+</button>
+
+<OperationDialog Open="_operationDialogOpen"
+                 Categories="_categories"
+                 Instruments="_instrumentOptions"
+                 OnClose="CloseOperationDialog"
+                 OnSaved="OnOperationSaved" />
+
 <InvestmentClassDialog Open="_allocationDialogOpen"
                        AssetClassName="@_allocationDialogTitle"
                        AssetClassColor="@_allocationDialogColor"
@@ -244,6 +257,10 @@ else if (_dashboard is { } dashboard)
     private string _allocationDialogColor = "#64748b";
     private string _allocationDialogItemsLabel = "strumenti";
     private IReadOnlyList<InvestmentAllocationItem> _allocationDialogItems = [];
+    private bool _operationDialogOpen;
+    private bool _operationOptionsLoading;
+    private IReadOnlyList<Category> _categories = [];
+    private IReadOnlyList<InvestmentOption> _instrumentOptions = [];
 
     private static readonly string[] AllocationPalette =
     [
@@ -401,6 +418,44 @@ else if (_dashboard is { } dashboard)
     }
 
     private void CloseAllocationDialog() => _allocationDialogOpen = false;
+
+    private async Task OpenOperationDialog()
+    {
+        if (_operationOptionsLoading)
+        {
+            return;
+        }
+
+        _operationOptionsLoading = true;
+        try
+        {
+            _categories = await CategoriesService.ListAsync();
+            var workspace = await Investments.LoadAsync();
+            _instrumentOptions = workspace.Assets
+                .Where(asset => !asset.IsArchived)
+                .OrderBy(asset => asset.Name, StringComparer.CurrentCultureIgnoreCase)
+                .Select(asset => new InvestmentOption(asset.InstrumentId, asset.Name))
+                .ToArray();
+            _operationDialogOpen = true;
+        }
+        catch (Exception)
+        {
+            await Notifications.Error("Impossibile aprire il modulo della nuova operazione.");
+        }
+        finally
+        {
+            _operationOptionsLoading = false;
+        }
+    }
+
+    private void CloseOperationDialog() => _operationDialogOpen = false;
+
+    private async Task OnOperationSaved(string message)
+    {
+        _operationDialogOpen = false;
+        await Notifications.Success(message);
+        await LoadAsync();
+    }
 
     private void HandleAllocationKeyDown(KeyboardEventArgs args, bool investments)
     {
