@@ -664,8 +664,8 @@ else if (_asset is { } asset)
     private int? _chartYear;
     private ReturnView _returnView = ReturnView.Cumulative;
     private ValueView _valueView = ValueView.Value;
-    private bool _valueZoomEnabled = true;
-    private bool _returnZoomEnabled = true;
+    private bool _valueZoomEnabled;
+    private bool _returnZoomEnabled;
     private bool _preferencesLoaded;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
